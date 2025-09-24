@@ -20,4 +20,7 @@ npm run dev
 #Backend
 cd backend
 npm run dev
-
+#== đẩy code lên github
+git add .
+git commit -m "Mô tả thay đổi, ví dụ: Update LandingPage CSS"
+git push
