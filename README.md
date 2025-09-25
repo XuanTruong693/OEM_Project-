@@ -24,3 +24,26 @@ npm run dev
 git add .
 git commit -m "Mô tả thay đổi, ví dụ: Update LandingPage CSS"
 git push
+
+--Cách lấy code về và đồng bộ project---
+Clone repository
+git clone https://github.com/USERNAME/OEM_Project-.git
+
+Di chuyển vào thư mục project
+cd OEM_Project-
+
+Kiểm tra branch hiện tại
+git branch
+
+Nếu muốn tạo branch mới để làm việc, dùng:
+git checkout -b feature-branch
+
+Đồng bộ với repository chính
+git pull origin main
+
+Đẩy thay đổi lên GitHub nếu đã xong những phần trong ngày
+git add .
+git commit -m "Mô tả thay đổi"
+git push origin main
+
+
