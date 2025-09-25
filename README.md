@@ -20,10 +20,6 @@ npm run dev
 -Backend
 cd backend
 npm run dev
--== đẩy code lên github
-git add .
-git commit -m "Mô tả thay đổi, ví dụ: Update LandingPage CSS"
-git push
 
 --Cách lấy code về và đồng bộ project---
 Clone repository
@@ -42,8 +38,9 @@ git checkout -b feature-branch
 git pull origin main
 
 Đẩy thay đổi lên GitHub nếu đã xong những phần trong ngày
+-== đẩy code lên github
 git add .
-git commit -m "Mô tả thay đổi"
-git push origin main
+git commit -m "Mô tả thay đổi, ví dụ: Update LandingPage CSS"
+git push
 
 
