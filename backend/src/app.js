@@ -6,7 +6,7 @@ app.use(cors());
 app.use(express.json());
 
 app.get("/api/info", (req, res) => {
-  res.json({ name: "OEM Backend", version: "1.0.0" });
+  res.json({ name: "OEM Backend", description: "Hệ thống đắc lực hỗ trợ thi trực tuyến hiệu quả", version: "1.0.0" });
 });
 
 const PORT = 5000;

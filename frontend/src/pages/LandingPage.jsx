@@ -3,13 +3,20 @@ import axios from "axios";
 import "./LandingPage.css";
 
 export default function LandingPage() {
-  const [info, setInfo] = useState(null);
+  // Khai báo state
+  const [apiInfo, setApiInfo] = useState(null);
 
   useEffect(() => {
+    // Fetch API data
     axios
-      .get("/api/info")
-      .then((res) => setInfo(res.data))
-      .catch((err) => console.error("API error:", err));
+      .get("http://localhost:5000/api/info")
+      .then((response) => {
+        console.log("API Response:", response.data);
+        setApiInfo(response.data);
+      })
+      .catch((error) => {
+        console.error("Error fetching API:", error);
+      });
   }, []);
 
   return (
@@ -20,8 +27,7 @@ export default function LandingPage() {
           <div className="nav-left">
             <div className="logo">
               <img src="/Logo.png" alt="OEM Logo" />
-              <div className="logo-text">
-              </div>
+              <div className="logo-text"></div>
             </div>
           </div>
 
@@ -52,9 +58,11 @@ export default function LandingPage() {
                 </h1>
               </div>
 
-              {info && (
+              {/* Hiển thị API Info*/}
+              {apiInfo && (
                 <p className="api-info">
-                  {info.name} - {info.version}
+                  {apiInfo.name} - v{apiInfo.version} 
+                  <br /> {apiInfo.description}
                 </p>
               )}
             </div>
