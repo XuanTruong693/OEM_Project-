@@ -2,16 +2,24 @@
 import React from "react";
 import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout.jsx";
+
+// Các trang có layout
 import LandingPage from "./pages/LandingPage.jsx";
 import AboutUs from "./pages/AboutUs.jsx";
 import Contract from "./pages/Contract.jsx";
 import Features from "./pages/Features.jsx";
 import News from "./pages/News.jsx";
 
+// Các trang auth (không layout)
+import LoginPage from "./authPages/LoginPage.jsx";
+import RegisterPage from "./authPages/RegisterPage.jsx";
+import RolePage from "./authPages/RolePage.jsx";
+
 const App = () => {
   return (
     <Router>
       <Routes>
+        {/* Các trang có Layout */}
         <Route
           path="/"
           element={
@@ -52,22 +60,10 @@ const App = () => {
             </Layout>
           }
         />
-        <Route
-          path="/dang-ky-ngay"
-          element={
-            <Layout>
-              <div className="p-4">Đăng Ký</div>
-            </Layout>
-          }
-        />
-        <Route
-          path="/dang-nhap"
-          element={
-            <Layout>
-              <div className="p-4">Đăng Nhập</div>
-            </Layout>
-          }
-        />
+
+        <Route path="/phan-quyen" element={<RolePage />} />
+        <Route path="/dang-nhap" element={<LoginPage />} />
+        <Route path="/dang-ky-ngay" element={<RegisterPage />} />
       </Routes>
     </Router>
   );

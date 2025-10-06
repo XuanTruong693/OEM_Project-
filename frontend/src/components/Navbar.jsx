@@ -23,8 +23,6 @@ const Navbar = () => {
           className="h-16 sm:h-20 md:h-24 w-auto"
         />
       </div>
-
-      {/* Menu */}
       <nav className="flex gap-5 sm:gap-8 md:gap-12 flex-1 justify-center items-center text-[#023e8a] font-extrabold">
         {menuItems.map(({ text, path }, idx) => (
           <span
@@ -36,17 +34,17 @@ const Navbar = () => {
           </span>
         ))}
       </nav>
-
-      {/* Nút hành động */}
       <div className="flex gap-2 sm:gap-3 items-center mt-2 md:mt-0 text-sm sm:text-base md:text-lg font-bold">
         <button
-          onClick={() => navigate("/dang-ky-ngay")}
+          onClick={() =>
+            navigate("/phan-quyen", { state: { mode: "register" } })
+          }
           className="!bg-[#0077b6] !text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-all duration-300 ease-in-out active:scale-95"
         >
           Đăng Ký Ngay
         </button>
         <button
-          onClick={() => navigate("/dang-nhap")}
+          onClick={() => navigate("/phan-quyen", { state: { mode: "login" } })}
           className="border-2 !border-[#0077b6] !bg-transparent !text-[#0077b6] px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-all duration-300 ease-in-out hover:bg-[#0077b6]/10 active:scale-95"
         >
           Đăng Nhập
