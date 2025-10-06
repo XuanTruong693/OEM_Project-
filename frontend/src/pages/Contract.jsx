@@ -23,7 +23,6 @@ export default function Contact() {
             Liên hệ
           </h2>
           <div className="bg-gradient-to-r from-blue-100 to-pink-100 p-8 rounded-3xl shadow flex flex-col md:flex-row justify-between items-center">
-            {/* Thông tin bên trái */}
             <div className="space-y-6 text-lg text-gray-800">
               {contacts.map((item, index) => (
                 <div key={index} className="flex items-center space-x-4">
@@ -35,15 +34,6 @@ export default function Contact() {
             <div className="mt-8 md:mt-0 text-center">
               <img src="/Logo.png" alt="OEM Logo" className="h-24 w-auto" />
             </div>
-          </div>
-          <div className="text-center mt-6 text-sm text-gray-500">
-            <a href="#" className="hover:underline">
-              Chính sách dịch vụ
-            </a>
-            <span className="mx-2">|</span>
-            <a href="#" className="hover:underline">
-              Điều khoản thông tin
-            </a>
           </div>
         </div>
       </div>

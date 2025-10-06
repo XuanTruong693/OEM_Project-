@@ -77,15 +77,6 @@ export default function Features() {
           </div>
         ))}
       </div>
-      <div className="text-center mt-6 text-sm text-gray-500">
-        <a href="#" className="hover:underline">
-          Chính sách dịch vụ
-        </a>
-        <span className="mx-2">|</span>
-        <a href="#" className="hover:underline">
-          Điều khoản thông tin
-        </a>
-      </div>
     </section>
   );
 }

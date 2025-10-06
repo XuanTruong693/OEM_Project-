@@ -46,15 +46,6 @@ export default function News() {
             ))}
           </div>
         </div>
-        <div className="flex justify-center items-center mt-6 text-sm text-gray-500 space-x-2">
-          <a href="#" className="hover:underline">
-            Chính sách dịch vụ
-          </a>
-          <span>|</span>
-          <a href="#" className="hover:underline">
-            Điều khoản thông tin
-          </a>
-        </div>
       </div>
     </section>
   );
