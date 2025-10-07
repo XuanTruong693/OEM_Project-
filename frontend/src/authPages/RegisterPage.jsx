@@ -61,16 +61,20 @@ const RegisterPage = () => {
 
       <div className="flex flex-col md:flex-row w-full max-w-6xl mx-auto my-10 shadow-lg rounded-2xl overflow-hidden bg-white">
         <div className="w-full md:w-1/2 p-6 md:p-10">
-          <div className="flex mb-6 border-b border-gray-200">
+          <div className="overflow-hidden flex mb-6 rounded-full border border-[#a2b9ff]">
             <button
               onClick={() => navigate("/dang-ky-ngay")}
-              className="flex-1 py-2 text-center font-semibold text-blue-600 border-b-2 border-blue-600"
+              className="flex-1 py-2 text-center !bg-[#51b9ff] !font-semibold !text-gray-900 
+               transition-all !border-none !outline-none focus:!outline-none 
+               focus-visible:!outline-none hover:!border-none active:!border-none"
             >
               Đăng ký
             </button>
             <button
               onClick={() => navigate("/dang-nhap")}
-              className="flex-1 py-2 text-center font-medium text-gray-500 hover:text-blue-600 transition-all"
+              className="flex-1 py-2 text-center !bg-[#e2f6ff] !font-medium !text-gray-900 
+               transition-all !border-none !outline-none focus:!outline-none 
+               focus-visible:!outline-none hover:!border-none active:!border-none"
             >
               Đăng nhập
             </button>
@@ -81,7 +85,6 @@ const RegisterPage = () => {
           </h3>
 
           <form className="space-y-4" onSubmit={handleRegister}>
-            {/* Họ + Tên */}
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="flex-1">
                 <input

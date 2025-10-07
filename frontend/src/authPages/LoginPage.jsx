@@ -30,7 +30,7 @@ const LoginPage = () => {
     const validationErrors = validate();
     setErrors(validationErrors);
     if (Object.keys(validationErrors).length === 0) {
-      alert("Đăng nhập thành công 🎉");
+      alert("Đăng nhập thành công");
       navigate("/");
     }
   };
@@ -52,16 +52,20 @@ const LoginPage = () => {
 
       <div className="flex flex-col md:flex-row w-full max-w-6xl mx-auto my-10 shadow-lg rounded-2xl overflow-hidden bg-white">
         <div className="w-full md:w-1/2 p-6 md:p-10">
-          <div className="flex mb-6 border-b border-gray-200">
+          <div className="overflow-hidden flex mb-6 border border-[#a2b9ff] rounded-full">
             <button
               onClick={() => navigate("/dang-ky-ngay")}
-              className="flex-1 py-2 text-center font-medium text-gray-500 hover:text-blue-600 transition-all"
+              className="flex-1 py-2 text-center !bg-[#e2f6ff] !text-gray-900 !font-medium transition-all 
+               !border-none !outline-none focus:!outline-none focus-visible:!outline-none 
+               hover:!border-none active:!border-none"
             >
               Đăng ký
             </button>
             <button
               onClick={() => navigate("/dang-nhap")}
-              className="flex-1 py-2 text-center font-semibold text-blue-600 border-b-2 border-blue-600"
+              className="flex-1 py-2 text-center !bg-[#51b9ff] !font-semibold !text-gray-900 
+               transition-all !border-none !outline-none focus:!outline-none focus-visible:!outline-none 
+               hover:!border-none active:!border-none"
             >
               Đăng nhập
             </button>
