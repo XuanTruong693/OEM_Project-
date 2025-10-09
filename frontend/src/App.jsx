@@ -1,4 +1,3 @@
-// src/App.jsx
 import React from "react";
 import {
   BrowserRouter as Router,
@@ -7,17 +6,20 @@ import {
   Navigate,
   useLocation,
 } from "react-router-dom";
+
 import Layout from "./components/Layout.jsx";
 import LandingPage from "./pages/LandingPage.jsx";
 import AboutUs from "./pages/AboutUs.jsx";
 import Contract from "./pages/Contract.jsx";
 import Features from "./pages/Features.jsx";
 import News from "./pages/News.jsx";
+
 import LoginPage from "./authPages/LoginPage.jsx";
 import RegisterPage from "./authPages/RegisterPage.jsx";
 import RolePage from "./authPages/RolePage.jsx";
+import CheckinStudent from "./authPages/CheckinStudent.jsx";
 
-// chặn truy cập trực tiếp vào trang đăng nhập và đăng ký thủ công
+// Chặn truy cập thủ công
 function ProtectedRoute({ children }) {
   const location = useLocation();
   const role = location.state?.role || sessionStorage.getItem("role");
@@ -36,6 +38,7 @@ const App = () => {
   return (
     <Router>
       <Routes>
+        {/* Trang chính */}
         <Route
           path="/"
           element={
@@ -77,7 +80,16 @@ const App = () => {
           }
         />
 
+        {/* Trang xác định vai trò */}
         <Route path="/phan-quyen" element={<RolePage />} />
+
+        {/* Checkin học viên */}
+        <Route
+          path="/checkin-student"
+          element={<CheckinStudent />}
+        />
+
+        {/* Login & Register */}
         <Route
           path="/dang-nhap"
           element={
@@ -94,6 +106,8 @@ const App = () => {
             </ProtectedRoute>
           }
         />
+
+        {/* Redirect */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
