@@ -1,20 +1,16 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { GoogleLogin } from "@react-oauth/google";
+import { jwtDecode } from "jwt-decode";
 
 const LoginPage = () => {
   const navigate = useNavigate();
-
   const [form, setForm] = useState({
     email: "",
     password: "",
   });
-
   const [errors, setErrors] = useState({});
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setForm({ ...form, [name]: value });
-  };
+  const [isLoading, setIsLoading] = useState(false); // Thêm trạng thái loading
 
   const validate = () => {
     const newErrors = {};
@@ -25,18 +21,72 @@ const LoginPage = () => {
     return newErrors;
   };
 
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm({ ...form, [name]: value });
+  };
+
   const handleLogin = (e) => {
     e.preventDefault();
     const validationErrors = validate();
     setErrors(validationErrors);
     if (Object.keys(validationErrors).length === 0) {
+      setIsLoading(true);
       alert("Đăng nhập thành công");
+      sessionStorage.setItem("role", "user");
+      setIsLoading(false);
       navigate("/");
     }
   };
 
-  const handleGoogleLogin = () => {
-    alert("Đăng nhập bằng Google");
+  const handleGoogleLoginSuccess = async (credentialResponse) => {
+    setIsLoading(true);
+    try {
+      const token = credentialResponse?.credential;
+      if (!token) {
+        alert("Không nhận được token từ Google!");
+        setIsLoading(false);
+        return;
+      }
+
+      let user;
+      try {
+        user = jwtDecode(token);
+      } catch (decodeError) {
+        console.error("JWT decode error:", decodeError);
+        alert("Lỗi khi xử lý thông tin Google!");
+        setIsLoading(false);
+        return;
+      }
+
+      const res = await fetch("http://localhost:5000/api/auth/google-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        sessionStorage.setItem("googleUser", JSON.stringify(user));
+        sessionStorage.setItem("role", "user");
+        alert("Đăng nhập bằng Google thành công!");
+        navigate("/");
+      } else {
+        // Xử lý lỗi cụ thể từ backend
+        const errorMessage =
+          data.message || "Đăng nhập bằng Google thất bại! Vui lòng thử lại.";
+        alert(errorMessage);
+      }
+    } catch (error) {
+      console.error("Lỗi đăng nhập Google:", error);
+      alert("Lỗi khi đăng nhập bằng Google! Vui lòng thử lại.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleLoginError = () => {
+    alert("Đăng nhập bằng Google thất bại! Vui lòng thử lại.");
   };
 
   return (
@@ -83,7 +133,8 @@ const LoginPage = () => {
                 value={form.email}
                 onChange={handleChange}
                 placeholder="Email"
-                className="w-full p-3 border !border-gray-300 rounded-lg focus:!ring-2 focus:!ring-blue-400 focus:!border-blue-400 outline-none !text-gray-800 placeholder-gray-400"
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none text-gray-800 placeholder-gray-400"
+                disabled={isLoading}
               />
               {errors.email && (
                 <p className="text-red-500 text-sm mt-1">{errors.email}</p>
@@ -97,7 +148,8 @@ const LoginPage = () => {
                 value={form.password}
                 onChange={handleChange}
                 placeholder="Mật khẩu"
-                className="w-full p-3 border !border-gray-300 rounded-lg focus:!ring-2 focus:!ring-blue-400 focus:!border-blue-400 outline-none !text-gray-800 placeholder-gray-400"
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none text-gray-800 placeholder-gray-400"
+                disabled={isLoading}
               />
               {errors.password && (
                 <p className="text-red-500 text-sm mt-1">{errors.password}</p>
@@ -114,34 +166,31 @@ const LoginPage = () => {
 
             <button
               type="submit"
-              className="w-full py-3 !bg-blue-600 !text-white rounded-lg !hover:bg-blue-700 transition-all font-semibold mt-2 active:scale-95"
+              className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-semibold mt-2 active:scale-95"
+              disabled={isLoading}
             >
-              Đăng nhập
+              {isLoading ? "Đang xử lý..." : "Đăng nhập"}
             </button>
 
             <span className="block text-center text-gray-500 text-sm mt-3">
               Hoặc đăng nhập bằng
             </span>
 
-            <button
-              type="button"
-              onClick={handleGoogleLogin}
-              className="w-auto mx-auto mt-3 py-2 px-6 !bg-white border !border-gray-300 rounded-lg flex items-center justify-center gap-2 hover:bg-gray-100 transition-all active:scale-95"
-            >
-              <img
-                src="https://www.google.com/favicon.ico"
-                alt="Google"
-                className="h-6 w-6"
+            <div className="flex justify-center mt-3">
+              <GoogleLogin
+                onSuccess={handleGoogleLoginSuccess}
+                onError={handleGoogleLoginError}
+                shape="pill"
+                size="large"
+                text="signin_with"
+                disabled={isLoading}
               />
-              <span className="!text-blue-600 text-base font-medium">
-                Google
-              </span>
-            </button>
+            </div>
           </form>
         </div>
 
         <div className="hidden md:flex w-1/2 items-center justify-center relative">
-          <div className="w-100 h-100 !bg-gradient-to-br !from-blue-100 !to-blue-200 rounded-full flex items-center justify-center shadow-inner">
+          <div className="w-100 h-100 bg-gradient-to-br from-blue-100 to-blue-200 rounded-full flex items-center justify-center shadow-inner">
             <img
               src="/icons/UI Image/item login,rgs.png"
               alt="Illustration"
