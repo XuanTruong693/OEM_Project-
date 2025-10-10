@@ -8,39 +8,22 @@ export default function RolePage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const storedRole = localStorage.getItem("role");
+    const storedRole = localStorage.getItem("selectedRole");
     if (storedRole) {
-      if (storedRole === "học viên") navigate("/verify-room");
-      else
-        navigate(
-          storedRole === "giảng viên" && isLogin
-            ? "/dang-nhap"
-            : "/dang-ky-ngay"
-        );
+      navigate(storedRole === "instructor" ? "/dang-nhap" : "/verify-room", {
+        state: { role: storedRole, fromRoleSelection: true },
+      });
     }
-
-    return () => {
-      const currentPath = window.location.pathname;
-      const allowedPaths = ["/verify-room", "/dang-nhap", "/dang-ky-ngay"];
-      if (!allowedPaths.includes(currentPath)) {
-        localStorage.removeItem("role");
-      }
-    };
-  }, [navigate, isLogin]);
+  }, [navigate]);
 
   const handleSelectRole = (role) => {
-    if (!localStorage.getItem("role")) {
-      setLoading(true);
-      localStorage.setItem("role", role);
-      if (role === "học viên") {
-        navigate("/verify-room", { state: { role, fromRoleSelection: true } });
-      } else if (role === "giảng viên") {
-        navigate(isLogin ? "/dang-nhap" : "/dang-ky-ngay", {
-          state: { role, fromRoleSelection: true },
-        });
-      }
-      setLoading(false);
-    }
+    setLoading(true);
+    const selectedRole = role === "giảng viên" ? "instructor" : "student";
+    localStorage.setItem("selectedRole", selectedRole);
+    navigate(role === "giảng viên" ? "/dang-nhap" : "/verify-room", {
+      state: { role: selectedRole, fromRoleSelection: true },
+    });
+    setLoading(false);
   };
 
   return (

@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { GoogleLogin } from "@react-oauth/google";
 import { jwtDecode } from "jwt-decode";
+import axios from "axios";
 
 const RegisterPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [form, setForm] = useState({
     lastName: "",
     firstName: "",
@@ -14,13 +16,11 @@ const RegisterPage = () => {
   });
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
-  const [role, setRole] = useState(localStorage.getItem("role") || "");
+  const role = localStorage.getItem("selectedRole") || "";
 
   useEffect(() => {
-    const storedRole = localStorage.getItem("role");
-    if (storedRole) setRole(storedRole);
-    else navigate("/phan-quyen");
-  }, [navigate]);
+    if (!role) navigate("/");
+  }, [role, navigate]);
 
   const validate = () => {
     const newErrors = {};
@@ -32,6 +32,8 @@ const RegisterPage = () => {
     if (!form.password.trim()) newErrors.password = "Vui lòng nhập mật khẩu";
     else if (form.password.length < 6)
       newErrors.password = "Mật khẩu phải ít nhất 6 ký tự";
+    else if (!/[A-Z]/.test(form.password))
+      newErrors.password = "Mật khẩu phải có ít nhất 1 chữ in hoa";
     if (form.confirmPassword !== form.password)
       newErrors.confirmPassword = "Mật khẩu nhập lại không khớp";
     return newErrors;
@@ -44,96 +46,54 @@ const RegisterPage = () => {
 
   const handleRegister = async (e) => {
     e.preventDefault();
-    const validationErrors = validate();
-    setErrors(validationErrors);
-
-    if (Object.keys(validationErrors).length === 0) {
-      setIsLoading(true);
-      try {
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        const mockToken = "mock-jwt-token";
-        localStorage.setItem("token", mockToken);
-
-        if (role === "học viên") {
-          const verifiedRoomId = localStorage.getItem("verifiedRoomId");
-          if (!verifiedRoomId) {
-            alert("Vui lòng xác minh mã phòng trước!");
-            navigate("/verify-room");
-            return;
-          }
-          navigate("/dashboard/hoc-vien");
-        } else if (role === "giảng viên") {
-          navigate("/dashboard/giang-vien");
-        } else {
-          navigate("/phan-quyen");
-        }
-      } catch (err) {
-        alert("Có lỗi xảy ra khi đăng ký!");
-      } finally {
-        setIsLoading(false);
-      }
+    const newErrors = validate();
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
     }
+    setIsLoading(true);
+    try {
+      const payload = { ...form, role };
+      if (role === "student")
+        payload.roomId = localStorage.getItem("verifiedRoomId");
+      const res = await axios.post("/api/auth/register", payload);
+      localStorage.setItem("token", res.data.token);
+      localStorage.setItem("role", role);
+      const from =
+        location.state?.from ||
+        `/${role === "student" ? "student" : "instructor"}-dashboard`;
+      navigate(from);
+    } catch (error) {
+      setErrors({ general: "Đăng ký thất bại, vui lòng thử lại" });
+    }
+    setIsLoading(false);
   };
 
   const handleGoogleSuccess = async (credentialResponse) => {
     setIsLoading(true);
     try {
-      const token = credentialResponse.credential;
-      let user;
-      try {
-        user = jwtDecode(token);
-        console.log("Google user:", user);
-      } catch (decodeError) {
-        console.error("JWT decode error:", decodeError);
-        alert("Lỗi khi xử lý thông tin Google!");
-        setIsLoading(false);
-        return;
-      }
-
-      const res = await fetch(
-        "http://localhost:5000/api/auth/google-register",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token }),
-        }
-      );
-
-      const data = await res.json();
-      if (res.ok) {
-        console.log("Đăng ký Google thành công:", data);
-        const { token: backendToken, role: backendRole } = data;
-        localStorage.setItem("token", backendToken);
-        localStorage.setItem("role", backendRole);
-
-        if (backendRole === "học viên") {
-          const verifiedRoomId = localStorage.getItem("verifiedRoomId");
-          if (!verifiedRoomId) {
-            alert("Vui lòng xác minh mã phòng trước!");
-            navigate("/verify-room");
-            return;
-          }
-          navigate("/dashboard/hoc-vien");
-        } else if (backendRole === "giảng viên") {
-          navigate("/dashboard/giang-vien");
-        } else {
-          navigate("/");
-        }
-      } else {
-        const errorMessage =
-          data.message || "Đăng ký Google thất bại! Vui lòng thử lại.";
-        alert(errorMessage);
-      }
-    } catch (err) {
-      console.error("Google register error:", err);
-      alert("Lỗi khi đăng ký bằng Google! Vui lòng thử lại.");
-    } finally {
-      setIsLoading(false);
+      const decoded = jwtDecode(credentialResponse.credential);
+      const res = await axios.post("/api/auth/google-register", {
+        email: decoded.email,
+        name: `${decoded.given_name} ${decoded.family_name}`,
+        role,
+        roomId:
+          role === "student" ? localStorage.getItem("verifiedRoomId") : null,
+      });
+      localStorage.setItem("token", res.data.token);
+      localStorage.setItem("role", role);
+      const from =
+        location.state?.from ||
+        `/${role === "student" ? "student" : "instructor"}-dashboard`;
+      navigate(from);
+    } catch (error) {
+      setErrors({ general: "Đăng ký Google thất bại" });
     }
+    setIsLoading(false);
   };
 
   const handleGoogleError = () => {
-    alert("Đăng ký bằng Google thất bại! Vui lòng thử lại.");
+    setErrors({ general: "Lỗi xác thực Google" });
   };
 
   return (
@@ -143,9 +103,7 @@ const RegisterPage = () => {
           src="/Logo.png"
           alt="OEM Logo"
           className="h-14 md:h-20 w-auto cursor-pointer"
-          onClick={() => {
-            navigate("/");
-          }}
+          onClick={() => navigate("/")}
         />
       </header>
       <div className="flex flex-col md:flex-row w-full max-w-6xl mx-auto my-10 shadow-lg rounded-2xl overflow-hidden bg-white">
@@ -178,6 +136,7 @@ const RegisterPage = () => {
                   placeholder="Họ"
                   disabled={isLoading}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none text-gray-800 placeholder-gray-400"
+                  maxLength={50}
                 />
                 {errors.lastName && (
                   <p className="text-red-500 text-sm mt-1">{errors.lastName}</p>
@@ -192,6 +151,7 @@ const RegisterPage = () => {
                   placeholder="Tên"
                   disabled={isLoading}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none text-gray-800 placeholder-gray-400"
+                  maxLength={50}
                 />
                 {errors.firstName && (
                   <p className="text-red-500 text-sm mt-1">
@@ -264,6 +224,11 @@ const RegisterPage = () => {
                 disabled={isLoading}
               />
             </div>
+            {errors.general && (
+              <p className="text-red-500 text-sm mt-2 text-center">
+                {errors.general}
+              </p>
+            )}
           </form>
         </div>
         <div className="hidden md:flex w-1/2 items-center justify-center relative">

@@ -17,24 +17,30 @@ import News from "./pages/News.jsx";
 import LoginPage from "./authPages/LoginPage.jsx";
 import RegisterPage from "./authPages/RegisterPage.jsx";
 import RolePage from "./authPages/RolePage.jsx";
-
 import VerifyRoom from "./authPages/VerifyRoom.jsx";
+// import StudentDashboard from "./pages/StudentDashboard.jsx";
+// import InstructorDashboard from "./pages/InstructorDashboard.jsx";
 
-// Chặn truy cập thủ công
-function ProtectedRoute({ children }) {
+// Chặn truy cập thủ công và kiểm tra xác thực
+function ProtectedRoute({ children, requiredRole }) {
   const location = useLocation();
-  const role = location.state?.role || sessionStorage.getItem("role");
+  const role = location.state?.role || localStorage.getItem("role");
+  const token = localStorage.getItem("token");
 
-  // Kiểm tra nếu truy cập thủ công (không có role từ state hoặc sessionStorage)
+  // Kiểm tra nếu truy cập thủ công (không có role hoặc token)
   const isManualAccess = !role && !location.state?.fromRoleSelection;
+  const isUnauthorized = requiredRole && role !== requiredRole && token;
 
   if (isManualAccess) {
     return <Navigate to="/phan-quyen" replace />;
   }
+  if (isUnauthorized) {
+    return <Navigate to="/dang-nhap" replace state={{ from: location }} />;
+  }
 
-  // Nếu có role từ state (từ RolePage), lưu vào sessionStorage
-  if (location.state?.role && !sessionStorage.getItem("role")) {
-    sessionStorage.setItem("role", location.state.role);
+  // Lưu role vào localStorage nếu có từ state
+  if (location.state?.role && !localStorage.getItem("role")) {
+    localStorage.setItem("role", location.state.role);
   }
 
   return children;
@@ -86,14 +92,12 @@ const App = () => {
           }
         />
 
-        {/* Trang xác định vai trò */}
         <Route path="/phan-quyen" element={<RolePage />} />
 
-        {/* Login & Register */}
         <Route
           path="/verify-room"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requiredRole="student">
               <VerifyRoom />
             </ProtectedRoute>
           }
@@ -114,6 +118,24 @@ const App = () => {
             </ProtectedRoute>
           }
         />
+
+        {/* Dashboard sau khi đăng nhập */}
+        {/* <Route
+          path="/student-dashboard"
+          element={
+            <ProtectedRoute requiredRole="student">
+              <StudentDashboard />
+            </ProtectedRoute>
+          }
+        /> */}
+        {/* <Route
+          path="/instructor-dashboard"
+          element={
+            <ProtectedRoute requiredRole="instructor">
+              <InstructorDashboard />
+            </ProtectedRoute>
+          }
+        /> */}
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
