@@ -6,18 +6,21 @@ import {
   Navigate,
   useLocation,
 } from "react-router-dom";
+
 import Layout from "./components/Layout.jsx";
 import LandingPage from "./pages/LandingPage.jsx";
 import AboutUs from "./pages/AboutUs.jsx";
 import Contract from "./pages/Contract.jsx";
 import Features from "./pages/Features.jsx";
 import News from "./pages/News.jsx";
+
 import LoginPage from "./authPages/LoginPage.jsx";
 import RegisterPage from "./authPages/RegisterPage.jsx";
 import RolePage from "./authPages/RolePage.jsx";
+
 import VerifyRoom from "./authPages/VerifyRoom.jsx";
 
-// Chặn truy cập trực tiếp vào trang đăng nhập và đăng ký thủ công
+// Chặn truy cập thủ công
 function ProtectedRoute({ children }) {
   const location = useLocation();
   const role = location.state?.role || sessionStorage.getItem("role");
@@ -41,6 +44,7 @@ const App = () => {
   return (
     <Router>
       <Routes>
+        {/* Trang chính */}
         <Route
           path="/"
           element={
@@ -82,7 +86,10 @@ const App = () => {
           }
         />
 
+        {/* Trang xác định vai trò */}
         <Route path="/phan-quyen" element={<RolePage />} />
+
+        {/* Login & Register */}
         <Route
           path="/verify-room"
           element={
@@ -107,6 +114,7 @@ const App = () => {
             </ProtectedRoute>
           }
         />
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>

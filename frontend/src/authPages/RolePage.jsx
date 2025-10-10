@@ -19,10 +19,8 @@ export default function RolePage() {
         );
     }
 
-    // 👇 Khi rời khỏi trang phân quyền (unmount), nếu người dùng chưa điều hướng hợp lệ => xóa role
     return () => {
       const currentPath = window.location.pathname;
-      // Nếu người dùng không đi đến 3 trang hợp lệ => xóa role
       const allowedPaths = ["/verify-room", "/dang-nhap", "/dang-ky-ngay"];
       if (!allowedPaths.includes(currentPath)) {
         localStorage.removeItem("role");
