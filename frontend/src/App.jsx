@@ -1,4 +1,3 @@
-// src/App.jsx
 import React from "react";
 import {
   BrowserRouter as Router,
@@ -16,17 +15,23 @@ import News from "./pages/News.jsx";
 import LoginPage from "./authPages/LoginPage.jsx";
 import RegisterPage from "./authPages/RegisterPage.jsx";
 import RolePage from "./authPages/RolePage.jsx";
+import VerifyRoom from "./authPages/VerifyRoom.jsx";
 
-// chặn truy cập trực tiếp vào trang đăng nhập và đăng ký thủ công
+// Chặn truy cập trực tiếp vào trang đăng nhập và đăng ký thủ công
 function ProtectedRoute({ children }) {
   const location = useLocation();
   const role = location.state?.role || sessionStorage.getItem("role");
-  if (location.state?.role) {
-    sessionStorage.setItem("role", location.state.role);
-  }
-  const isManualAccess = !location.state && !sessionStorage.getItem("role");
+
+  // Kiểm tra nếu truy cập thủ công (không có role từ state hoặc sessionStorage)
+  const isManualAccess = !role && !location.state?.fromRoleSelection;
+
   if (isManualAccess) {
     return <Navigate to="/phan-quyen" replace />;
+  }
+
+  // Nếu có role từ state (từ RolePage), lưu vào sessionStorage
+  if (location.state?.role && !sessionStorage.getItem("role")) {
+    sessionStorage.setItem("role", location.state.role);
   }
 
   return children;
@@ -78,6 +83,14 @@ const App = () => {
         />
 
         <Route path="/phan-quyen" element={<RolePage />} />
+        <Route
+          path="/verify-room"
+          element={
+            <ProtectedRoute>
+              <VerifyRoom />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/dang-nhap"
           element={

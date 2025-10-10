@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { GoogleLogin } from "@react-oauth/google";
 import { jwtDecode } from "jwt-decode";
@@ -13,9 +13,15 @@ const RegisterPage = () => {
     confirmPassword: "",
   });
   const [errors, setErrors] = useState({});
-  const [isLoading, setIsLoading] = useState(false); // Trạng thái loading
+  const [isLoading, setIsLoading] = useState(false);
+  const [role, setRole] = useState(localStorage.getItem("role") || "");
 
-  // Validate cơ bản
+  useEffect(() => {
+    const storedRole = localStorage.getItem("role");
+    if (storedRole) setRole(storedRole);
+    else navigate("/phan-quyen");
+  }, [navigate]);
+
   const validate = () => {
     const newErrors = {};
     if (!form.lastName.trim()) newErrors.lastName = "Vui lòng nhập họ";
@@ -36,23 +42,46 @@ const RegisterPage = () => {
     setForm({ ...form, [name]: value });
   };
 
-  const handleRegister = (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault();
     const validationErrors = validate();
     setErrors(validationErrors);
+
     if (Object.keys(validationErrors).length === 0) {
-      alert("Đăng ký thành công");
-      navigate("/dang-nhap");
+      setIsLoading(true);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const mockToken = "mock-jwt-token";
+        localStorage.setItem("token", mockToken);
+
+        if (role === "học viên") {
+          const verifiedRoomId = localStorage.getItem("verifiedRoomId");
+          if (!verifiedRoomId) {
+            alert("Vui lòng xác minh mã phòng trước!");
+            navigate("/verify-room");
+            return;
+          }
+          navigate("/dashboard/hoc-vien");
+        } else if (role === "giảng viên") {
+          navigate("/dashboard/giang-vien");
+        } else {
+          navigate("/phan-quyen");
+        }
+      } catch (err) {
+        alert("Có lỗi xảy ra khi đăng ký!");
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
   const handleGoogleSuccess = async (credentialResponse) => {
-    setIsLoading(true); // Bật trạng thái loading
+    setIsLoading(true);
     try {
       const token = credentialResponse.credential;
       let user;
       try {
-        user = jwtDecode(token); // Giải mã token
+        user = jwtDecode(token);
         console.log("Google user:", user);
       } catch (decodeError) {
         console.error("JWT decode error:", decodeError);
@@ -61,7 +90,6 @@ const RegisterPage = () => {
         return;
       }
 
-      // Gửi token đến backend
       const res = await fetch(
         "http://localhost:5000/api/auth/google-register",
         {
@@ -71,13 +99,27 @@ const RegisterPage = () => {
         }
       );
 
-      const data = await res.json(); // Lấy dữ liệu từ phản hồi
+      const data = await res.json();
       if (res.ok) {
         console.log("Đăng ký Google thành công:", data);
-        alert("Đăng ký Google thành công!");
-        navigate("/");
+        const { token: backendToken, role: backendRole } = data;
+        localStorage.setItem("token", backendToken);
+        localStorage.setItem("role", backendRole);
+
+        if (backendRole === "học viên") {
+          const verifiedRoomId = localStorage.getItem("verifiedRoomId");
+          if (!verifiedRoomId) {
+            alert("Vui lòng xác minh mã phòng trước!");
+            navigate("/verify-room");
+            return;
+          }
+          navigate("/dashboard/hoc-vien");
+        } else if (backendRole === "giảng viên") {
+          navigate("/dashboard/giang-vien");
+        } else {
+          navigate("/");
+        }
       } else {
-        // Xử lý lỗi cụ thể từ backend
         const errorMessage =
           data.message || "Đăng ký Google thất bại! Vui lòng thử lại.";
         alert(errorMessage);
@@ -86,7 +128,7 @@ const RegisterPage = () => {
       console.error("Google register error:", err);
       alert("Lỗi khi đăng ký bằng Google! Vui lòng thử lại.");
     } finally {
-      setIsLoading(false); // Tắt trạng thái loading
+      setIsLoading(false);
     }
   };
 
@@ -101,35 +143,30 @@ const RegisterPage = () => {
           src="/Logo.png"
           alt="OEM Logo"
           className="h-14 md:h-20 w-auto cursor-pointer"
-          onClick={() => navigate("/")}
+          onClick={() => {
+            navigate("/");
+          }}
         />
       </header>
-
       <div className="flex flex-col md:flex-row w-full max-w-6xl mx-auto my-10 shadow-lg rounded-2xl overflow-hidden bg-white">
         <div className="w-full md:w-1/2 p-6 md:p-10">
           <div className="overflow-hidden flex mb-6 rounded-full !border !border-[#a2b9ff]">
             <button
               onClick={() => navigate("/dang-ky-ngay")}
-              className="flex-1 py-2 text-center !bg-[#51b9ff] !font-semibold !text-gray-900 
-               transition-all !border-none !outline-none focus:!outline-none 
-               focus-visible:!outline-none hover:!border-none active:!border-none"
+              className="flex-1 py-2 text-center !bg-[#51b9ff] !font-semibold !text-gray-900 transition-all !border-none !outline-none focus:!outline-none focus-visible:!outline-none hover:!border-none active:!border-none"
             >
               Đăng ký
             </button>
             <button
               onClick={() => navigate("/dang-nhap")}
-              className="flex-1 py-2 text-center !bg-[#e2f6ff] !font-medium !text-gray-900 
-               transition-all !border-none !outline-none focus:!outline-none 
-               focus-visible:!outline-none hover:!border-none active:!border-none"
+              className="flex-1 py-2 text-center !bg-[#e2f6ff] !font-medium !text-gray-900 transition-all !border-none !outline-none focus:!outline-none focus-visible:!outline-none hover:!border-none active:!border-none"
             >
               Đăng nhập
             </button>
           </div>
-
           <h3 className="text-2xl md:text-3xl font-bold text-red-600 mb-6 text-center uppercase">
             Đăng ký ngay
           </h3>
-
           <form className="space-y-4" onSubmit={handleRegister}>
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="flex-1">
@@ -139,13 +176,13 @@ const RegisterPage = () => {
                   value={form.lastName}
                   onChange={handleChange}
                   placeholder="Họ"
+                  disabled={isLoading}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none text-gray-800 placeholder-gray-400"
                 />
                 {errors.lastName && (
                   <p className="text-red-500 text-sm mt-1">{errors.lastName}</p>
                 )}
               </div>
-
               <div className="flex-1">
                 <input
                   type="text"
@@ -153,6 +190,7 @@ const RegisterPage = () => {
                   value={form.firstName}
                   onChange={handleChange}
                   placeholder="Tên"
+                  disabled={isLoading}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none text-gray-800 placeholder-gray-400"
                 />
                 {errors.firstName && (
@@ -162,7 +200,6 @@ const RegisterPage = () => {
                 )}
               </div>
             </div>
-
             <div>
               <input
                 type="email"
@@ -170,13 +207,13 @@ const RegisterPage = () => {
                 value={form.email}
                 onChange={handleChange}
                 placeholder="Email"
+                disabled={isLoading}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none text-gray-800 placeholder-gray-400"
               />
               {errors.email && (
                 <p className="text-red-500 text-sm mt-1">{errors.email}</p>
               )}
             </div>
-
             <div>
               <input
                 type="password"
@@ -184,13 +221,13 @@ const RegisterPage = () => {
                 value={form.password}
                 onChange={handleChange}
                 placeholder="Mật khẩu"
+                disabled={isLoading}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none text-gray-800 placeholder-gray-400"
               />
               {errors.password && (
                 <p className="text-red-500 text-sm mt-1">{errors.password}</p>
               )}
             </div>
-
             <div>
               <input
                 type="password"
@@ -198,6 +235,7 @@ const RegisterPage = () => {
                 value={form.confirmPassword}
                 onChange={handleChange}
                 placeholder="Nhập lại mật khẩu"
+                disabled={isLoading}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none text-gray-800 placeholder-gray-400"
               />
               {errors.confirmPassword && (
@@ -206,19 +244,16 @@ const RegisterPage = () => {
                 </p>
               )}
             </div>
-
             <button
               type="submit"
-              className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-semibold mt-2 active:scale-95"
+              className="w-full py-3 !bg-blue-600 !text-white rounded-lg !hover:bg-blue-700 transition-all font-semibold mt-2 active:scale-95"
               disabled={isLoading}
             >
               {isLoading ? "Đang xử lý..." : "Đăng ký"}
             </button>
-
             <span className="block text-center text-gray-500 text-sm mt-3">
               Hoặc đăng ký nhanh bằng
             </span>
-
             <div className="flex justify-center mt-3">
               <GoogleLogin
                 onSuccess={handleGoogleSuccess}
@@ -231,7 +266,6 @@ const RegisterPage = () => {
             </div>
           </form>
         </div>
-
         <div className="hidden md:flex w-1/2 items-center justify-center relative">
           <div className="w-100 h-100 bg-gradient-to-br from-blue-100 to-blue-200 rounded-full flex items-center justify-center shadow-inner">
             <img
