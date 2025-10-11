@@ -27,15 +27,14 @@ function ProtectedRoute({ children, requiredRole }) {
   const role = location.state?.role || localStorage.getItem("role");
   const token = localStorage.getItem("token");
 
-  // Kiểm tra nếu truy cập thủ công (không có role hoặc token)
   const isManualAccess = !role && !location.state?.fromRoleSelection;
   const isUnauthorized = requiredRole && role !== requiredRole && token;
 
   if (isManualAccess) {
-    return <Navigate to="/phan-quyen" replace />;
+    return <Navigate to="/role" replace />;
   }
   if (isUnauthorized) {
-    return <Navigate to="/dang-nhap" replace state={{ from: location }} />;
+    return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
   // Lưu role vào localStorage nếu có từ state
@@ -92,7 +91,7 @@ const App = () => {
           }
         />
 
-        <Route path="/phan-quyen" element={<RolePage />} />
+        <Route path="/role" element={<RolePage />} />
 
         <Route
           path="/verify-room"
@@ -103,7 +102,7 @@ const App = () => {
           }
         />
         <Route
-          path="/dang-nhap"
+          path="/login"
           element={
             <ProtectedRoute>
               <LoginPage />
@@ -111,7 +110,7 @@ const App = () => {
           }
         />
         <Route
-          path="/dang-ky-ngay"
+          path="/register"
           element={
             <ProtectedRoute>
               <RegisterPage />

@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { GoogleLogin } from "@react-oauth/google";
 import { jwtDecode } from "jwt-decode";
 import axios from "axios";
 
 const RegisterPage = () => {
   const navigate = useNavigate();
-  const location = useLocation();
   const [form, setForm] = useState({
     lastName: "",
     firstName: "",
@@ -16,7 +15,7 @@ const RegisterPage = () => {
   });
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
-  const role = localStorage.getItem("selectedRole") || "";
+  const [role, setRole] = useState(localStorage.getItem("selectedRole") || "");
 
   useEffect(() => {
     if (!role) navigate("/");
@@ -32,8 +31,6 @@ const RegisterPage = () => {
     if (!form.password.trim()) newErrors.password = "Vui lòng nhập mật khẩu";
     else if (form.password.length < 6)
       newErrors.password = "Mật khẩu phải ít nhất 6 ký tự";
-    else if (!/[A-Z]/.test(form.password))
-      newErrors.password = "Mật khẩu phải có ít nhất 1 chữ in hoa";
     if (form.confirmPassword !== form.password)
       newErrors.confirmPassword = "Mật khẩu nhập lại không khớp";
     return newErrors;
@@ -53,16 +50,13 @@ const RegisterPage = () => {
     }
     setIsLoading(true);
     try {
-      const payload = { ...form, role };
+      const payload = { ...form, role: role };
       if (role === "student")
         payload.roomId = localStorage.getItem("verifiedRoomId");
       const res = await axios.post("/api/auth/register", payload);
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("role", role);
-      const from =
-        location.state?.from ||
-        `/${role === "student" ? "student" : "instructor"}-dashboard`;
-      navigate(from);
+      navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
     } catch (error) {
       setErrors({ general: "Đăng ký thất bại, vui lòng thử lại" });
     }
@@ -76,16 +70,13 @@ const RegisterPage = () => {
       const res = await axios.post("/api/auth/google-register", {
         email: decoded.email,
         name: `${decoded.given_name} ${decoded.family_name}`,
-        role,
+        role: role,
         roomId:
           role === "student" ? localStorage.getItem("verifiedRoomId") : null,
       });
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("role", role);
-      const from =
-        location.state?.from ||
-        `/${role === "student" ? "student" : "instructor"}-dashboard`;
-      navigate(from);
+      navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
     } catch (error) {
       setErrors({ general: "Đăng ký Google thất bại" });
     }
@@ -103,20 +94,22 @@ const RegisterPage = () => {
           src="/Logo.png"
           alt="OEM Logo"
           className="h-14 md:h-20 w-auto cursor-pointer"
-          onClick={() => navigate("/")}
+          onClick={() => {
+            navigate("/");
+          }}
         />
       </header>
       <div className="flex flex-col md:flex-row w-full max-w-6xl mx-auto my-10 shadow-lg rounded-2xl overflow-hidden bg-white">
         <div className="w-full md:w-1/2 p-6 md:p-10">
           <div className="overflow-hidden flex mb-6 rounded-full !border !border-[#a2b9ff]">
             <button
-              onClick={() => navigate("/dang-ky-ngay")}
+              onClick={() => navigate("/register")}
               className="flex-1 py-2 text-center !bg-[#51b9ff] !font-semibold !text-gray-900 transition-all !border-none !outline-none focus:!outline-none focus-visible:!outline-none hover:!border-none active:!border-none"
             >
               Đăng ký
             </button>
             <button
-              onClick={() => navigate("/dang-nhap")}
+              onClick={() => navigate("/login")}
               className="flex-1 py-2 text-center !bg-[#e2f6ff] !font-medium !text-gray-900 transition-all !border-none !outline-none focus:!outline-none focus-visible:!outline-none hover:!border-none active:!border-none"
             >
               Đăng nhập
@@ -136,7 +129,6 @@ const RegisterPage = () => {
                   placeholder="Họ"
                   disabled={isLoading}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none text-gray-800 placeholder-gray-400"
-                  maxLength={50}
                 />
                 {errors.lastName && (
                   <p className="text-red-500 text-sm mt-1">{errors.lastName}</p>
@@ -151,7 +143,6 @@ const RegisterPage = () => {
                   placeholder="Tên"
                   disabled={isLoading}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none text-gray-800 placeholder-gray-400"
-                  maxLength={50}
                 />
                 {errors.firstName && (
                   <p className="text-red-500 text-sm mt-1">

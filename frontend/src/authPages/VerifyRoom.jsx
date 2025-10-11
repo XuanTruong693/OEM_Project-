@@ -10,7 +10,7 @@ export default function VerifyRoom() {
   const role = localStorage.getItem("selectedRole");
 
   useEffect(() => {
-    if (role !== "student") {
+    if (!role || role !== "student") {
       navigate("/");
     }
   }, [role, navigate]);
@@ -35,8 +35,8 @@ export default function VerifyRoom() {
         localStorage.setItem("verifiedRoomId", res.data.roomId);
         const nextPath =
           localStorage.getItem("isLoginMode") === "true"
-            ? "/dang-nhap"
-            : "/dang-ky-ngay";
+            ? "/login"
+            : "/register";
         navigate(nextPath);
       } else {
         setError("Mã phòng không hợp lệ");
