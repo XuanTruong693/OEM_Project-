@@ -1,4 +1,3 @@
-// src/App.jsx
 import React from "react";
 import {
   BrowserRouter as Router,
@@ -7,26 +6,40 @@ import {
   Navigate,
   useLocation,
 } from "react-router-dom";
+
 import Layout from "./components/Layout.jsx";
 import LandingPage from "./pages/LandingPage.jsx";
 import AboutUs from "./pages/AboutUs.jsx";
 import Contract from "./pages/Contract.jsx";
 import Features from "./pages/Features.jsx";
 import News from "./pages/News.jsx";
+
 import LoginPage from "./authPages/LoginPage.jsx";
 import RegisterPage from "./authPages/RegisterPage.jsx";
 import RolePage from "./authPages/RolePage.jsx";
+import VerifyRoom from "./authPages/VerifyRoom.jsx";
+// import StudentDashboard from "./pages/StudentDashboard.jsx";
+// import InstructorDashboard from "./pages/InstructorDashboard.jsx";
 
-// chặn truy cập trực tiếp vào trang đăng nhập và đăng ký thủ công
-function ProtectedRoute({ children }) {
+// Chặn truy cập thủ công và kiểm tra xác thực
+function ProtectedRoute({ children, requiredRole }) {
   const location = useLocation();
-  const role = location.state?.role || sessionStorage.getItem("role");
-  if (location.state?.role) {
-    sessionStorage.setItem("role", location.state.role);
-  }
-  const isManualAccess = !location.state && !sessionStorage.getItem("role");
+  const role = location.state?.role || localStorage.getItem("role");
+  const token = localStorage.getItem("token");
+
+  const isManualAccess = !role && !location.state?.fromRoleSelection;
+  const isUnauthorized = requiredRole && role !== requiredRole && token;
+
   if (isManualAccess) {
-    return <Navigate to="/phan-quyen" replace />;
+    return <Navigate to="/role" replace />;
+  }
+  if (isUnauthorized) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
+  // Lưu role vào localStorage nếu có từ state
+  if (location.state?.role && !localStorage.getItem("role")) {
+    localStorage.setItem("role", location.state.role);
   }
 
   return children;
@@ -36,6 +49,7 @@ const App = () => {
   return (
     <Router>
       <Routes>
+        {/* Trang chính */}
         <Route
           path="/"
           element={
@@ -77,9 +91,18 @@ const App = () => {
           }
         />
 
-        <Route path="/phan-quyen" element={<RolePage />} />
+        <Route path="/role" element={<RolePage />} />
+
         <Route
-          path="/dang-nhap"
+          path="/verify-room"
+          element={
+            <ProtectedRoute requiredRole="student">
+              <VerifyRoom />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/login"
           element={
             <ProtectedRoute>
               <LoginPage />
@@ -87,13 +110,32 @@ const App = () => {
           }
         />
         <Route
-          path="/dang-ky-ngay"
+          path="/register"
           element={
             <ProtectedRoute>
               <RegisterPage />
             </ProtectedRoute>
           }
         />
+
+        {/* Dashboard sau khi đăng nhập */}
+        {/* <Route
+          path="/student-dashboard"
+          element={
+            <ProtectedRoute requiredRole="student">
+              <StudentDashboard />
+            </ProtectedRoute>
+          }
+        /> */}
+        {/* <Route
+          path="/instructor-dashboard"
+          element={
+            <ProtectedRoute requiredRole="instructor">
+              <InstructorDashboard />
+            </ProtectedRoute>
+          }
+        /> */}
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>

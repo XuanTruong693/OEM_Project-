@@ -1,17 +1,30 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 
 export default function RolePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const isLogin = location.state?.mode === "login";
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    localStorage.removeItem("selectedRole");
+    const storedRole = localStorage.getItem("selectedRole");
+    if (storedRole) {
+      navigate(storedRole === "instructor" ? "/login" : "/verify-room", {
+        state: { role: storedRole, fromRoleSelection: true },
+      });
+    }
+  }, [navigate]);
 
   const handleSelectRole = (role) => {
-    if (isLogin) {
-      navigate("/dang-nhap", { state: { role } });
-    } else {
-      navigate("/dang-ky-ngay", { state: { role } });
-    }
+    setLoading(true);
+    const selectedRole = role === "instructor" ? "instructor" : "student";
+    localStorage.setItem("selectedRole", selectedRole);
+    navigate(role === "instructor" ? "/login" : "/verify-room", {
+      state: { role: selectedRole, fromRoleSelection: true },
+    });
+    setLoading(false);
   };
 
   return (
@@ -44,16 +57,25 @@ export default function RolePage() {
 
           <div className="flex w-full gap-4">
             <button
-              onClick={() => handleSelectRole("giảng viên")}
-              className="flex-1 px-8 py-3 border !border-blue-500 !text-blue-600 rounded-lg !bg-white !hover:bg-blue-50 !text-lg !sm:text-xl !font-semibold transition-all active:scale-95"
+              onClick={() => handleSelectRole("instructor")}
+              disabled={loading}
+              className="flex-1 px-8 py-3 border !border-blue-500 !text-blue-600 rounded-lg !bg-white 
+             !hover:bg-blue-50 !text-lg !sm:text-xl !font-semibold transition-all active:scale-95 
+             active:!border-blue-700 focus:!border-blue-700  focus:!ring-blue-300 
+             focus:!outline-none active:!outline-none"
             >
-              Giảng viên
+              {loading ? "Đang xử lý..." : "instructor"}
             </button>
+
             <button
-              onClick={() => handleSelectRole("học viên")}
-              className="flex-1 px-8 py-3 border !border-blue-500 !text-blue-600 rounded-lg !bg-white !hover:bg-blue-50 !text-lg !sm:text-xl !font-semibold transition-all active:scale-95"
+              onClick={() => handleSelectRole("student")}
+              disabled={loading}
+              className="flex-1 px-8 py-3 border !border-blue-500 !text-blue-600 rounded-lg !bg-white 
+             !hover:bg-blue-50 !text-lg !sm:text-xl !font-semibold transition-all active:scale-95 
+             active:!border-blue-700 focus:!border-blue-700  focus:!ring-blue-300 
+             focus:!outline-none active:!outline-none"
             >
-              Học viên
+              {loading ? "Đang xử lý..." : "student"}
             </button>
           </div>
         </div>
