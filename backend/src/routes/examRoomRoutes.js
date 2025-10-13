@@ -1,9 +1,11 @@
-import express from "express";
-import { verifyRoom } from "../controllers/examRoomController.js";
-import { verifyToken } from "../middleware/authMiddleware.js";
-
+const express = require("express");
 const router = express.Router();
+const { createExam, verifyExamCode } = require("../controllers/examRoomController");
+const { authMiddleware, authorizeRole  } = require("../middleware/authMiddleware");
 
-router.get("/verify/:code", verifyToken, verifyRoom);
+router.post("/verify", verifyExamCode);
 
-export default router;
+router.post("/create", authMiddleware, authorizeRole("instructor"), createExam);
+
+module.exports = router;
+

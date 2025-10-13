@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { GoogleLogin } from "@react-oauth/google";
-import axios from "axios";
+import axiosClient from "../api/axiosClient";
 
 const LoginPage = () => {
   const navigate = useNavigate();
@@ -43,9 +43,12 @@ const LoginPage = () => {
       const payload = { ...form, role: role };
       if (role === "student")
         payload.roomId = localStorage.getItem("verifiedRoomId");
-      const res = await axios.post("/api/auth/login", payload);
-      localStorage.setItem("token", res.data.token);
-      localStorage.setItem("role", role);
+      const res = await axiosClient.post("/auth/login", {
+  email: form.email,
+  password_hash: form.password,
+});
+      localStorage.setItem("token", res.data.accessToken); // accessToken từ backend
+localStorage.setItem("role", res.data.user.role);
       navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
     } catch (error) {
       setErrors({ general: "Đăng nhập thất bại, vui lòng kiểm tra lại" });

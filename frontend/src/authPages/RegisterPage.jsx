@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { GoogleLogin } from "@react-oauth/google";
 import { jwtDecode } from "jwt-decode";
-import axios from "axios";
+import axiosClient from "../api/axiosClient";
+
 
 const RegisterPage = () => {
   const navigate = useNavigate();
@@ -50,12 +51,28 @@ const RegisterPage = () => {
     }
     setIsLoading(true);
     try {
-      const payload = { ...form, role: role };
-      if (role === "student")
-        payload.roomId = localStorage.getItem("verifiedRoomId");
-      const res = await axios.post("/api/auth/register", payload);
-      localStorage.setItem("token", res.data.token);
-      localStorage.setItem("role", role);
+      const payload = {
+  fullName: `${form.lastName} ${form.firstName}`,
+  email: form.email,
+  password_hash: form.password,
+  confirmPassword: form.confirmPassword,
+  role: role,
+};
+  if (role === "student") {
+  const storedRoomCode = localStorage.getItem("verifiedRoomCode");
+  
+  if (!storedRoomCode) {
+    setErrors({ general: "Không tìm thấy mã phòng thi. Vui lòng quay lại và xác thực lại." });
+    setIsLoading(false);
+    return;
+  }
+  
+  payload.roomCode = storedRoomCode;
+}
+
+const res = await axiosClient.post("/auth/register", payload);
+localStorage.setItem("token", res.data.accessToken);
+localStorage.setItem("role", res.data.user.role);
       navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
     } catch (error) {
       setErrors({ general: "Đăng ký thất bại, vui lòng thử lại" });

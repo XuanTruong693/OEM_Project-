@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import axiosClient from "../api/axiosClient";
 
 export default function VerifyRoom() {
   const navigate = useNavigate();
-  const [roomCode, setRoomCode] = useState("");
+   const [examCode, setExamCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const role = localStorage.getItem("selectedRole");
@@ -15,37 +15,66 @@ export default function VerifyRoom() {
     }
   }, [role, navigate]);
 
-  const handleVerify = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const res = await axios.get(`/api/auth/verify-room/${roomCode}`);
-      if (res.data.valid) {
-        localStorage.setItem("verifiedRoomId", res.data.roomId);
-        const nextPath =
-          localStorage.getItem("isLoginMode") === "true"
-            ? "/login"
-            : "/register";
-        navigate(nextPath);
-      } else {
-        setError(res.data.message || "Mã phòng không hợp lệ");
-      }
-    } catch (error) {
-      setError(
-        error.response?.data?.message || "Có lỗi xảy ra, vui lòng thử lại"
-      );
-    }
-    setLoading(false);
-  };
+ const handleVerify = async () => {
+
+  setLoading(true);
+
+  setError("");
+
+  try {
+
+  
+
+    const res = await axiosClient.post("/exam_rooms/verify", {
+
+      roomCode: examCode.trim(), 
+
+    });
+
+
+
+    if (res.data.valid) {
+
+     
+
+      localStorage.setItem("verifiedRoomCode", examCode.trim()); 
+
+      localStorage.setItem("verifiedExamId", res.data.examId);
+
+      
+
+      navigate(
+
+        localStorage.getItem("isLoginMode") === "true" ? "/login" : "/register"
+
+      );
+
+    } else {
+
+      setError("Mã truy cập không hợp lệ");
+
+    }
+
+  } catch (error) {
+
+    setError(
+
+      error.response?.data?.message || "Có lỗi xảy ra, vui lòng thử lại"
+
+    );
+
+  }
+
+  setLoading(false);
+
+};
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
       <header className="mx-auto flex items-center justify-start px-6 py-4 w-full max-w-6xl">
         <div
           className="flex items-center gap-3 cursor-pointer"
-          onClick={() => {
-            navigate("/");
-          }}
+          onClick={() => navigate("/")}
         >
           <img
             src="/Logo.png"
@@ -75,10 +104,10 @@ export default function VerifyRoom() {
               Mã truy cập vào phần thi
             </span>
             <input
-              id="roomCode"
+              id="examCode"
               type="text"
-              value={roomCode}
-              onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+              value={examCode}
+              onChange={(e) => setExamCode(e.target.value.toUpperCase())}
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleVerify();
               }}

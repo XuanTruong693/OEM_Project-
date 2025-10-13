@@ -1,37 +1,126 @@
-import bcrypt from "bcryptjs";
-import User from "../models/User.js";
-import { generateToken } from "../utils/generateToken.js";
+const bcrypt = require("bcrypt");
+const User = require("../models/User");
+const ExamRoom = require("../models/ExamRoom");
+const { generateAccessToken, generateRefreshToken } = require("../utils/generateToken");
 
-export const register = async (req, res) => {
+const SALT_ROUNDS = 10;
+
+// Đăng ký người dùng mới
+async function register(req, res) {
   try {
-    const { firstName, lastName, email, password } = req.body;
+    const { fullName, email, password_hash, confirmPassword, role, roomCode } = req.body;
 
-    const exists = await User.findOne({ email });
-    if (exists) return res.status(400).json({ message: "Email already registered", status: "error" });
+    if (!fullName || !email || !password_hash || !confirmPassword || !role) {
+      return res.status(400).json({ message: "Thiếu trường bắt buộc" });
+    }
+    if (password_hash.length < 8) {
+      return res.status(400).json({ message: "Mật khẩu phải ≥ 8 ký tự" });
+    }
+    if (password_hash !== confirmPassword) {
+      return res.status(400).json({ message: "Mật khẩu và xác nhận không khớp" });
+    }
 
-    const hashed = await bcrypt.hash(password, 10);
-    const user = await User.create({ firstName, lastName, email, password: hashed });
+    const existing = await User.findOne({ where: { email } });
+    if (existing) {
+      return res.status(400).json({ message: "Email đã được đăng ký" });
+    }
 
-    const token = generateToken(user);
-    res.status(201).json({ message: "Register success", status: "success", token, role: user.role });
-  } catch {
-    res.status(500).json({ message: "Server error", status: "error" });
+    const hashed = await bcrypt.hash(password_hash, SALT_ROUNDS);
+    let newUser;
+
+    if (role === "instructor") {
+      newUser = await User.create({
+        full_name: fullName,
+        email,
+        password_hash: hashed,
+        role: "instructor",
+      });
+    } else if (role === "student") {
+      if (!roomCode) {
+        return res.status(400).json({ message: "Cần mã phòng thi để đăng ký học viên" });
+      }
+      const room = await ExamRoom.findOne({ where: { exam_room_code: roomCode } });
+      if (!room) {
+        return res.status(400).json({ message: "Mã phòng thi không hợp lệ" });
+      }
+
+      newUser = await User.create({
+        full_name: fullName,
+        email,
+        password_hash: hashed,
+        role: "student",
+      });
+
+    
+    } else {
+      return res.status(400).json({ message: "Role không hợp lệ" });
+    }
+
+    const payload = {
+      userId: newUser.id,
+      email: newUser.email,
+      role: newUser.role,
+    };
+    const accessToken = generateAccessToken(payload);
+    const refreshToken = generateRefreshToken(payload);
+
+    return res.status(201).json({
+      user: {
+        id: newUser.id,
+        fullName: newUser.full_name,
+        email: newUser.email,
+        role: newUser.role,
+      },
+      accessToken,
+      refreshToken,
+    });
+  } catch (error) {
+    console.error("Register error:", error);
+    return res.status(500).json({ message: "Lỗi server" });
   }
-};
+}
 
-export const login = async (req, res) => {
+// Đăng nhập
+async function login(req, res) {
   try {
-    const { email, password } = req.body;
+    const { email, password_hash } = req.body;
+    if (!email || !password_hash) {
+      return res.status(400).json({ message: "Thiếu email hoặc mật khẩu" });
+    }
 
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "User not found", status: "error" });
+    const user = await User.findOne({ where: { email } });
+    if (!user) {
+      return res.status(401).json({ message: "Email hoặc mật khẩu không đúng" });
+    }
 
-    const valid = await bcrypt.compare(password, user.password);
-    if (!valid) return res.status(401).json({ message: "Invalid password", status: "error" });
+    const match = await bcrypt.compare(password_hash, user.password_hash);
+    if (!match) {
+      return res.status(401).json({ message: "Email hoặc mật khẩu không đúng" });
+    }
 
-    const token = generateToken(user);
-    res.status(200).json({ message: "Login success", status: "success", token, role: user.role });
-  } catch {
-    res.status(500).json({ message: "Server error", status: "error" });
+    const payload = {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+    };
+
+    const accessToken = generateAccessToken(payload);
+    const refreshToken = generateRefreshToken(payload);
+
+    return res.status(200).json({
+      user: {
+        id: user.id,
+        fullName: user.full_name,
+        email: user.email,
+        role: user.role,
+      },
+      accessToken,
+      refreshToken,
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+    return res.status(500).json({ message: "Lỗi server" });
   }
-};
+}
+
+module.exports = { register, login };

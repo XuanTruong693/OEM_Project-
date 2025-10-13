@@ -1,28 +1,33 @@
-import express from "express";
-import cors from "cors";
-import dotenv from "dotenv";
-// ❌ Tạm thời tắt kết nối DB (vì bạn chưa có)
-// import connectDB from "./config/db.js";
-import authRoutes from "./routes/authRoutes.js";
-import examRoomRoutes from "./routes/examRoomRoutes.js";
-
-dotenv.config();
-
-// ✅ Tạm thời bỏ gọi connectDB để tránh lỗi
-// connectDB();
-
+const express = require('express');
+const cors = require('cors');
 const app = express();
+const sequelize = require('./config/db');
+const authRoutes = require('./routes/authRoutes');
+const examRoomRoutes = require('./routes/examRoomRoutes');
+
+
 app.use(cors());
 app.use(express.json());
 
-// Đăng ký route
-app.use("/api/auth", authRoutes);
-app.use("/api/exam-room", examRoomRoutes);
-
-// Kiểm tra server
-app.get("/", (req, res) => {
-  res.send("✅ OEM API running (in-memory mode)");
-});
+app.use('/auth', authRoutes);
+app.use('/exam_rooms', examRoomRoutes);
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+
+sequelize.authenticate()
+  .then(() => {
+    console.log('✅ DB connected');
+    return Promise.resolve();
+  })
+  .then(() => {
+    console.log('✅ Models synchronized');
+    app.listen(PORT, () => {
+      console.log(`🚀 Server is running at http://localhost:${PORT}`);
+    });
+  })
+  .catch(err => {
+    console.error('❌ DB sync error:', err);
+  });
+
+
+module.exports = app;
