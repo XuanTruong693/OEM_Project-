@@ -1,11 +1,12 @@
-import jwt from "jsonwebtoken";
+const jwt = require("jsonwebtoken");
+require("dotenv").config();
 
-export const generateToken = (user) => {
-  const payload = {
-    id: user._id,
-    role: user.role,
-    verifiedRoomId: user.verifiedRoomId || null,
-  };
+function generateAccessToken(payload) {
+  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "15m" });
+}
 
-  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "2h" });
-};
+function generateRefreshToken(payload) {
+  return jwt.sign(payload, process.env.JWT_REFRESH_SECRET, { expiresIn: "7d" });
+}
+
+module.exports = { generateAccessToken, generateRefreshToken };

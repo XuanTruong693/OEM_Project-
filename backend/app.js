@@ -1,21 +1,28 @@
-const express = require("express");
-const cors = require("cors");
-require("dotenv").config();
-
+const express = require('express');
 const app = express();
-app.use(cors());
+const sequelize = require('./src/config/db');
+const authRoutes = require('./src/routes/authRoutes');
+const examRoomRoutes = require('./src/routes/examRoomRoutes');
+console.log("📦 authRoutes:", typeof authRoutes);
+console.log("📦 examRoomRoutes:", typeof examRoomRoutes);
+console.log("📦 authRoutes value:", authRoutes);
+console.log("📦 examRoomRoutes value:", examRoomRoutes);
+
 app.use(express.json());
 
-// Sample API
-app.get("/api/info", (req, res) => {
-  res.json({
-    name: "OEM Mini",
-    description: "Hệ thống đắc lực hỗ trợ thi trực tuyến hiệu quả",
-    version: "1.0.0"
-  });
-});
+app.use('/auth', authRoutes);
+app.use('/exam_rooms', examRoomRoutes);
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Backend running on http://localhost:${PORT}`);
-});
+sequelize.authenticate()
+  .then(() => {
+    console.log('✅ DB connected');
+    return sequelize.sync();
+  })
+  .then(() => {
+    console.log('✅ Models synchronized');
+  })
+  .catch(err => {
+    console.error('❌ DB sync error:', err);
+  });
+
+module.exports = app;

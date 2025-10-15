@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+
 import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 
@@ -6,6 +7,7 @@ export default function VerifyRoom() {
   const navigate = useNavigate();
   const location = useLocation();
   const [roomCode, setRoomCode] = useState("");
+
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const role = localStorage.getItem("selectedRole");
@@ -60,9 +62,7 @@ export default function VerifyRoom() {
       <header className="mx-auto flex items-center justify-start px-6 py-4 w-full max-w-6xl">
         <div
           className="flex items-center gap-3 cursor-pointer"
-          onClick={() => {
-            navigate("/");
-          }}
+          onClick={() => navigate("/")}
         >
           <img
             src="/Logo.png"
@@ -92,10 +92,10 @@ export default function VerifyRoom() {
               Mã truy cập vào phần thi
             </span>
             <input
-              id="roomCode"
+              id="examCode"
               type="text"
-              value={roomCode}
-              onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+              value={examCode}
+              onChange={(e) => setExamCode(e.target.value.toUpperCase())}
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleVerify();
               }}
