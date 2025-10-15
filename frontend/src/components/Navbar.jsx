@@ -37,13 +37,13 @@ const Navbar = () => {
       <div className="flex gap-2 sm:gap-3 items-center mt-2 md:mt-0 text-sm sm:text-base md:text-lg font-bold">
         <button
           onClick={() => navigate("/role", { state: { mode: "register" } })}
-          className="!bg-[#0077b6] !text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-all duration-300 ease-in-out active:scale-95"
+          className="bg-[#0077b6] cursor-pointer text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-all duration-300 ease-in-out active:scale-95"
         >
           Đăng Ký Ngay
         </button>
         <button
           onClick={() => navigate("/role", { state: { mode: "login" } })}
-          className="border-2 !border-[#0077b6] !bg-transparent !text-[#0077b6] px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-all duration-300 ease-in-out hover:bg-[#0077b6]/10 active:scale-95"
+          className="border cursor-pointer border-[#0077b6] !bg-transparent text-[#0077b6] px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-all duration-300 ease-in-out hover:bg-[#0077b6]/10 active:scale-95"
         >
           Đăng Nhập
         </button>

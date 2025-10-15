@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-
 import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 
@@ -7,7 +6,6 @@ export default function VerifyRoom() {
   const navigate = useNavigate();
   const location = useLocation();
   const [roomCode, setRoomCode] = useState("");
-
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const role = localStorage.getItem("selectedRole");
@@ -27,11 +25,8 @@ export default function VerifyRoom() {
     setLoading(true);
     setError("");
     try {
-      const token = localStorage.getItem("token");
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-
-      const res = await axios.get(`/api/auth/verify/${roomCode}`, { headers });
-
+      // ✅ FIX: Đổi URL khớp BE "/verify/:code"
+      const res = await axios.get(`/api/auth/verify/${roomCode}`);
       if (res.data.valid) {
         localStorage.setItem("verifiedRoomId", res.data.roomId);
         const nextPath = location.state?.fromRoleSelection
@@ -92,16 +87,17 @@ export default function VerifyRoom() {
               Mã truy cập vào phần thi
             </span>
             <input
-              id="examCode"
+              id="roomCode"
               type="text"
-              value={examCode}
-              onChange={(e) => setExamCode(e.target.value.toUpperCase())}
+              value={roomCode}
+              onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleVerify();
               }}
               maxLength={12}
               className="w-full p-2 border rounded-md !text-gray-700 focus:outline-none !bg-white focus:!ring-blue-400 border-gray-400"
               placeholder="Nhập mã truy cập"
+              disabled={loading}
             />
           </div>
 
@@ -111,19 +107,28 @@ export default function VerifyRoom() {
 
           <button
             onClick={handleVerify}
-            disabled={loading}
-            className={`w-full py-2 rounded-md !text-white font-medium flex items-center justify-center gap-2 transition-colors ${
-              loading
+            disabled={loading || !roomCode.trim()}
+            className={`w-full py-2 rounded-md !text-white font-medium flex items-center justify-center gap-2 transition-all ${
+              loading || !roomCode.trim()
                 ? "!bg-blue-300 cursor-not-allowed"
-                : "!bg-blue-500 !hover:bg-blue-600"
+                : "!bg-blue-500 !hover:bg-blue-600 active:scale-95"
             }`}
           >
-            <img
-              src="/icons/UI Image/tick.png"
-              alt="Tick Icon"
-              className="!h-4 sm:h-7 w-auto"
-            />
-            Xác nhận
+            {loading ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                <span>Đang xác nhận...</span>
+              </>
+            ) : (
+              <>
+                <img
+                  src="/icons/UI Image/tick.png"
+                  alt="Tick Icon"
+                  className="!h-4 sm:h-7 w-auto"
+                />
+                Xác nhận
+              </>
+            )}
           </button>
         </div>
       </div>
