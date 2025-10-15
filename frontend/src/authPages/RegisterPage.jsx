@@ -50,15 +50,25 @@ const RegisterPage = () => {
     }
     setIsLoading(true);
     try {
-      const payload = { ...form, role: role };
-      if (role === "student")
-        payload.roomId = localStorage.getItem("verifiedRoomId");
+      const payload = {
+        firstName: form.firstName,
+        lastName: form.lastName,
+        email: form.email,
+        password: form.password,
+      };
       const res = await axios.post("/api/auth/register", payload);
+
       localStorage.setItem("token", res.data.token);
-      localStorage.setItem("role", role);
-      navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
+      localStorage.setItem("role", res.data.role);
+      navigate(
+        `/${res.data.role === "student" ? "student" : "instructor"}-dashboard`
+      );
     } catch (error) {
-      setErrors({ general: "Đăng ký thất bại, vui lòng thử lại" });
+      if (error.response?.data?.message) {
+        setErrors({ general: error.response.data.message });
+      } else {
+        setErrors({ general: "Đăng ký thất bại, vui lòng thử lại" });
+      }
     }
     setIsLoading(false);
   };

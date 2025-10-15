@@ -17,14 +17,27 @@ export default function RolePage() {
     }
   }, [navigate]);
 
-  const handleSelectRole = (role) => {
+  const handleSelectRole = async (role) => {
     setLoading(true);
     const selectedRole = role === "instructor" ? "instructor" : "student";
-    localStorage.setItem("selectedRole", selectedRole);
-    navigate(role === "instructor" ? "/login" : "/verify-room", {
-      state: { role: selectedRole, fromRoleSelection: true },
-    });
-    setLoading(false);
+
+    try {
+      localStorage.setItem("selectedRole", selectedRole);
+
+      if (selectedRole === "instructor") {
+        navigate("/login", {
+          state: { role: selectedRole, fromRoleSelection: true },
+        });
+      } else {
+        navigate("/verify-room", {
+          state: { role: selectedRole, fromRoleSelection: true },
+        });
+      }
+    } catch (error) {
+      console.error("Lỗi chọn role:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

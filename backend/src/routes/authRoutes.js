@@ -19,12 +19,16 @@ router.post("/register", async (req, res) => {
   try {
     const { firstName, lastName, email, password } = req.body;
     if (!email || !password) {
-      return res.status(400).json({ message: "Thiếu email hoặc password", status: "error" });
+      return res
+        .status(400)
+        .json({ message: "Thiếu email hoặc password", status: "error" });
     }
 
     const existingUser = users.find((u) => u.email === email);
     if (existingUser) {
-      return res.status(400).json({ message: "Email đã tồn tại", status: "error" });
+      return res
+        .status(400)
+        .json({ message: "Email đã tồn tại", status: "error" });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -41,7 +45,12 @@ router.post("/register", async (req, res) => {
     users.push(newUser);
     const token = generateToken(newUser);
 
-    res.status(201).json({ message: "Đăng ký thành công", status: "success", token, role: newUser.role });
+    res.status(201).json({
+      message: "Đăng ký thành công",
+      status: "success",
+      token,
+      role: newUser.role,
+    });
   } catch (err) {
     res.status(500).json({ message: "Lỗi server", status: "error" });
   }
@@ -53,13 +62,22 @@ router.post("/login", async (req, res) => {
     const { email, password } = req.body;
     const user = users.find((u) => u.email === email);
 
-    if (!user) return res.status(404).json({ message: "Không tìm thấy tài khoản", status: "error" });
+    if (!user)
+      return res
+        .status(404)
+        .json({ message: "Không tìm thấy tài khoản", status: "error" });
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: "Sai mật khẩu", status: "error" });
+    if (!isMatch)
+      return res.status(400).json({ message: "Sai mật khẩu", status: "error" });
 
     const token = generateToken(user);
-    res.json({ message: "Đăng nhập thành công", status: "success", token, role: user.role });
+    res.json({
+      message: "Đăng nhập thành công",
+      status: "success",
+      token,
+      role: user.role,
+    });
   } catch (err) {
     res.status(500).json({ message: "Lỗi server", status: "error" });
   }
@@ -73,6 +91,7 @@ router.get("/verify-room/:code", (req, res) => {
   if (code === "ABC123") {
     return res.json({ valid: true, roomId: "room_001" });
   } else {
+    console.log(res);
     return res.json({ valid: false, message: "Mã phòng không hợp lệ" });
   }
 });

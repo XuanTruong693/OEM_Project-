@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { GoogleLogin } from "@react-oauth/google";
 import axios from "axios";
+import { jwtDecode } from "jwt-decode";
 
 const LoginPage = () => {
   const navigate = useNavigate();
@@ -40,13 +41,12 @@ const LoginPage = () => {
     }
     setLoading(true);
     try {
-      const payload = { ...form, role: role };
-      if (role === "student")
-        payload.roomId = localStorage.getItem("verifiedRoomId");
-      const res = await axios.post("/api/auth/login", payload);
+      const res = await axios.post("/api/auth/login", form);
       localStorage.setItem("token", res.data.token);
-      localStorage.setItem("role", role);
-      navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
+      localStorage.setItem("role", res.data.role);
+      navigate(
+        `/${res.data.role === "student" ? "student" : "instructor"}-dashboard`
+      );
     } catch (error) {
       setErrors({ general: "Đăng nhập thất bại, vui lòng kiểm tra lại" });
     }

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 
 export default function VerifyRoom() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [roomCode, setRoomCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -16,17 +17,33 @@ export default function VerifyRoom() {
   }, [role, navigate]);
 
   const handleVerify = async () => {
+    if (!roomCode.trim()) {
+      setError("Vui lòng nhập mã phòng");
+      return;
+    }
+
     setLoading(true);
     setError("");
     try {
-      const res = await axios.get(`/api/auth/verify-room/${roomCode}`);
+      const token = localStorage.getItem("token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+      const res = await axios.get(`/api/auth/verify/${roomCode}`, { headers });
+
       if (res.data.valid) {
         localStorage.setItem("verifiedRoomId", res.data.roomId);
-        const nextPath =
-          localStorage.getItem("isLoginMode") === "true"
-            ? "/login"
-            : "/register";
-        navigate(nextPath);
+        const nextPath = location.state?.fromRoleSelection
+          ? "/login"
+          : localStorage.getItem("isLoginMode") === "true"
+          ? "/login"
+          : "/register";
+        navigate(nextPath, {
+          state: {
+            role,
+            verifiedRoomId: res.data.roomId,
+            fromRoleSelection: location.state?.fromRoleSelection,
+          },
+        });
       } else {
         setError(res.data.message || "Mã phòng không hợp lệ");
       }
