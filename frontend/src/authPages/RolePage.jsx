@@ -17,32 +17,33 @@ export default function RolePage() {
   }, []);
 
   const handleSelectRole = async (role) => {
-    setLoading(true);
-    const selectedRole = role === "instructor" ? "instructor" : "student";
-    
+  setLoading(true);
+  const selectedRole = role === "instructor" ? "instructor" : "student";
+
+  try {
     // Xóa tất cả dữ liệu cũ khi chọn role mới
     localStorage.removeItem("token");
     localStorage.removeItem("role");
     localStorage.removeItem("verifiedRoomId");
     localStorage.removeItem("verifiedRoomCode");
-    
+
     localStorage.setItem("selectedRole", selectedRole);
 
-      if (selectedRole === "instructor") {
-        navigate("/login", {
-          state: { role: selectedRole, fromRoleSelection: true },
-        });
-      } else {
-        navigate("/verify-room", {
-          state: { role: selectedRole, fromRoleSelection: true },
-        });
-      }
-    } catch (error) {
-      console.error("Lỗi chọn role:", error);
-    } finally {
-      setLoading(false);
+    if (selectedRole === "instructor") {
+      navigate("/login", {
+        state: { role: selectedRole, fromRoleSelection: true },
+      });
+    } else {
+      navigate("/verify-room", {
+        state: { role: selectedRole, fromRoleSelection: true },
+      });
     }
-  };
+  } catch (error) {
+    console.error("Lỗi chọn role:", error);
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
