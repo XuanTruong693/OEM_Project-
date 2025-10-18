@@ -72,7 +72,7 @@ const RegisterPage = () => {
           return;
         }
         payload.roomCode = storedRoomCode;
-        console.log("📘 Room code xác thực:", storedRoomCode);
+        console.log("Room code xác thực:", storedRoomCode);
       }
 
       const res = await axiosClient.post("/auth/register", payload);

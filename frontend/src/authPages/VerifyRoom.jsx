@@ -25,7 +25,6 @@ export default function VerifyRoom() {
     setLoading(true);
     setError("");
     try {
-      // ✅ FIX: Đổi URL khớp BE "/verify/:code"
       const res = await axios.get(`/api/auth/verify/${roomCode}`);
       if (res.data.valid) {
         localStorage.setItem("verifiedRoomId", res.data.roomId);
