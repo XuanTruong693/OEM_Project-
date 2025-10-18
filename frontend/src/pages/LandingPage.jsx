@@ -3,6 +3,7 @@ import axios from "axios";
 
 export default function LandingPage() {
   const [apiInfo, setApiInfo] = useState(null);
+  const [apiError, setApiError] = useState(null);
 
   useEffect(() => {
     axios
@@ -10,9 +11,12 @@ export default function LandingPage() {
       .then((response) => {
         console.log("API Response:", response.data);
         setApiInfo(response.data);
+        setApiError(null);
       })
       .catch((error) => {
         console.error("Error fetching API:", error);
+        setApiError("Không thể kết nối đến server");
+        setApiInfo(null);
       });
   }, []);
 
@@ -37,6 +41,11 @@ export default function LandingPage() {
                   {apiInfo.name} - v{apiInfo.version}
                   <br />
                   {apiInfo.description}
+                </p>
+              )}
+              {apiError && (
+                <p className="mt-6 p-4 text-red-700 text-sm md:text-base bg-red-50 rounded">
+                  ⚠️ {apiError}
                 </p>
               )}
             </div>

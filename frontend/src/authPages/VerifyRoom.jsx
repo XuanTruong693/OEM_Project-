@@ -1,52 +1,78 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import axios from "axios";
+import axiosClient from "../api/axiosClient";
+import LoadingSpinner from "../components/LoadingSpinner";
 
 export default function VerifyRoom() {
   const navigate = useNavigate();
   const location = useLocation();
   const [roomCode, setRoomCode] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const role = localStorage.getItem("selectedRole");
 
   useEffect(() => {
+    // Chỉ redirect nếu không phải từ role selection
+    const fromRoleSelection = location.state?.fromRoleSelection;
+    
+    if (!fromRoleSelection) {
+      // Kiểm tra nếu đã đăng nhập, redirect về dashboard
+      const token = localStorage.getItem("token");
+      const userRole = localStorage.getItem("role");
+      if (token && userRole) {
+        navigate(`/${userRole === "student" ? "student" : "instructor"}-dashboard`);
+        return;
+      }
+    }
+
     if (!role || role !== "student") {
       navigate("/");
     }
-  }, [role, navigate]);
+  }, [role, navigate, location.state]);
 
   const handleVerify = async () => {
     if (!roomCode.trim()) {
       setError("Vui lòng nhập mã phòng");
+      setSuccess("");
       return;
     }
 
     setLoading(true);
     setError("");
+    setSuccess("");
     try {
-      const res = await axios.get(`/api/auth/verify/${roomCode}`);
+      const res = await axiosClient.get(`/auth/verify-room/${roomCode}`);
       if (res.data.valid) {
+        setSuccess("✅ Mã phòng thi hợp lệ! Đang chuyển hướng...");
         localStorage.setItem("verifiedRoomId", res.data.roomId);
-        const nextPath = location.state?.fromRoleSelection
-          ? "/login"
-          : localStorage.getItem("isLoginMode") === "true"
-          ? "/login"
-          : "/register";
-        navigate(nextPath, {
-          state: {
-            role,
-            verifiedRoomId: res.data.roomId,
-            fromRoleSelection: location.state?.fromRoleSelection,
-          },
-        });
+        localStorage.setItem("verifiedRoomCode", res.data.examCode);
+        
+        // Delay để hiển thị thông báo thành công
+        setTimeout(() => {
+          const nextPath = location.state?.fromRoleSelection
+            ? "/login"
+            : localStorage.getItem("isLoginMode") === "true"
+            ? "/login"
+            : "/register";
+          navigate(nextPath, {
+            state: {
+              role,
+              verifiedRoomId: res.data.roomId,
+              verifiedRoomCode: res.data.examCode,
+              fromRoleSelection: location.state?.fromRoleSelection,
+            },
+          });
+        }, 1500);
       } else {
         setError(res.data.message || "Mã phòng không hợp lệ");
+        setSuccess("");
       }
     } catch (error) {
       setError(
         error.response?.data?.message || "Có lỗi xảy ra, vui lòng thử lại"
       );
+      setSuccess("");
     }
     setLoading(false);
   };
@@ -104,6 +130,10 @@ export default function VerifyRoom() {
             <p className="text-red-500 text-sm text-center mb-4">{error}</p>
           )}
 
+          {success && (
+            <p className="text-green-600 text-sm text-center mb-4 font-medium">{success}</p>
+          )}
+
           <button
             onClick={handleVerify}
             disabled={loading || !roomCode.trim()}
@@ -114,10 +144,7 @@ export default function VerifyRoom() {
             }`}
           >
             {loading ? (
-              <>
-                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                <span>Đang xác nhận...</span>
-              </>
+              <LoadingSpinner size="sm" text="Đang xác nhận..." />
             ) : (
               <>
                 <img

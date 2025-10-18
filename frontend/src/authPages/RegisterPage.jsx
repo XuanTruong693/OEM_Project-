@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { GoogleLogin } from "@react-oauth/google";
 import { jwtDecode } from "jwt-decode";
 import axiosClient from "../api/axiosClient";
+import LoadingSpinner from "../components/LoadingSpinner";
 
 const RegisterPage = () => {
   const navigate = useNavigate();
@@ -14,11 +15,29 @@ const RegisterPage = () => {
     confirmPassword: "",
   });
   const [errors, setErrors] = useState({});
+  const [success, setSuccess] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [role, setRole] = useState(localStorage.getItem("selectedRole") || "");
 
   useEffect(() => {
-    if (!role) navigate("/");
+    // Kiểm tra nếu đã đăng nhập, redirect về dashboard
+    const token = localStorage.getItem("token");
+    const userRole = localStorage.getItem("role");
+    if (token && userRole) {
+      navigate(`/${userRole === "student" ? "student" : "instructor"}-dashboard`);
+      return;
+    }
+
+    if (!role) {
+      // Nếu không có role, redirect về trang chọn role
+      navigate("/role");
+    } else if (role === "student") {
+      // Nếu là student nhưng chưa có verifiedRoomId, redirect về verify-room
+      const verifiedRoomId = localStorage.getItem("verifiedRoomId");
+      if (!verifiedRoomId) {
+        navigate("/verify-room");
+      }
+    }
   }, [role, navigate]);
 
   const validate = () => {
@@ -46,15 +65,17 @@ const RegisterPage = () => {
     const newErrors = validate();
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
+      setSuccess("");
       return;
     }
 
     setIsLoading(true);
+    setErrors({});
+    setSuccess("");
     const payload = {
-      fullName: `${form.lastName} ${form.firstName}`,
+      full_name: `${form.lastName} ${form.firstName}`,
       email: form.email,
-      password_hash: form.password,
-      confirmPassword: form.confirmPassword,
+      password: form.password,
       role: role,
     };
 
@@ -71,23 +92,28 @@ const RegisterPage = () => {
           setIsLoading(false);
           return;
         }
-        payload.roomCode = storedRoomCode;
-        console.log("Room code xác thực:", storedRoomCode);
+        payload.roomId = storedRoomCode;
+        console.log("Room Code xác thực:", storedRoomCode);
       }
 
       const res = await axiosClient.post("/auth/register", payload);
       console.log("Register response:", res.data);
 
-      localStorage.setItem("token", res.data.accessToken);
-      localStorage.setItem("role", res.data.user.role);
-
-      navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
+      setSuccess("🎉 Đăng ký thành công! Đang chuyển hướng...");
+      
+      // Delay để hiển thị thông báo thành công
+      setTimeout(() => {
+        localStorage.setItem("token", res.data.token);
+        localStorage.setItem("role", res.data.user.role);
+        navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
+      }, 1500);
     } catch (error) {
       console.error("Register error:", error);
       setErrors({
         general:
           error.response?.data?.message || "Đăng ký thất bại, vui lòng thử lại",
       });
+      setSuccess("");
     } finally {
       setIsLoading(false);
     }
@@ -95,25 +121,48 @@ const RegisterPage = () => {
 
   const handleGoogleSuccess = async (credentialResponse) => {
     setIsLoading(true);
+    setErrors({});
+    setSuccess("");
     try {
       console.log("🔹 Google login success:", credentialResponse);
 
-      const res = await axiosClient.post("/auth/google", {
+      const payload = {
         idToken: credentialResponse.credential,
-        role, 
-      });
+        role,
+      };
+
+      // ✅ Nếu là student, cần thêm roomId
+      if (role === "student") {
+        const storedRoomCode = localStorage.getItem("verifiedRoomCode");
+        if (!storedRoomCode) {
+          setErrors({
+            general: "Không tìm thấy mã phòng thi. Vui lòng quay lại và xác thực lại.",
+          });
+          setIsLoading(false);
+          return;
+        }
+        payload.roomId = storedRoomCode;
+        console.log("Room Code xác thực cho Google:", storedRoomCode);
+      }
+
+      const res = await axiosClient.post("/auth/google", payload);
 
       console.log("✅ Google backend response:", res.data);
 
-      localStorage.setItem("token", res.data.token);
-      localStorage.setItem("role", res.data.user.role);
-
-      navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
+      setSuccess("🎉 Đăng ký Google thành công! Đang chuyển hướng...");
+      
+      // Delay để hiển thị thông báo thành công
+      setTimeout(() => {
+        localStorage.setItem("token", res.data.token);
+        localStorage.setItem("role", res.data.user.role);
+        navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
+      }, 1500);
     } catch (error) {
       console.error("Google register error:", error);
       setErrors({
         general: error.response?.data?.message || "Đăng ký Google thất bại",
       });
+      setSuccess("");
     } finally {
       setIsLoading(false);
     }
@@ -238,10 +287,14 @@ const RegisterPage = () => {
 
             <button
               type="submit"
-              className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-semibold mt-2 active:scale-95"
+              className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-semibold mt-2 active:scale-95 flex items-center justify-center"
               disabled={isLoading}
             >
-              {isLoading ? "Đang xử lý..." : "Đăng ký"}
+              {isLoading ? (
+                <LoadingSpinner size="sm" text="Đang xử lý..." />
+              ) : (
+                "Đăng ký"
+              )}
             </button>
 
             <span className="block text-center text-gray-500 text-sm mt-3">
@@ -264,6 +317,13 @@ const RegisterPage = () => {
                 {errors.general}
               </p>
             )}
+
+            {success && (
+              <p className="text-green-600 text-sm mt-2 text-center font-medium">
+                {success}
+              </p>
+            )}
+
           </form>
         </div>
 

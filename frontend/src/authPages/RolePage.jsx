@@ -6,12 +6,24 @@ export default function RolePage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    localStorage.removeItem("selectedRole");
+    // Không tự động redirect, để user có thể chọn role mới
+    // Chỉ xóa selectedRole nếu đã đăng nhập
+    const token = localStorage.getItem("token");
+    if (token) {
+      localStorage.removeItem("selectedRole");
+    }
   }, []);
 
   const handleSelectRole = (role) => {
     setLoading(true);
     const selectedRole = role === "instructor" ? "instructor" : "student";
+    
+    // Xóa tất cả dữ liệu cũ khi chọn role mới
+    localStorage.removeItem("token");
+    localStorage.removeItem("role");
+    localStorage.removeItem("verifiedRoomId");
+    localStorage.removeItem("verifiedRoomCode");
+    
     localStorage.setItem("selectedRole", selectedRole);
 
     if (selectedRole === "instructor") {
@@ -54,14 +66,14 @@ export default function RolePage() {
               disabled={loading}
               className="flex-1 px-8 py-3 border !border-blue-500 !text-blue-600 rounded-lg !bg-white !hover:bg-blue-50 !text-lg !sm:text-xl !font-semibold transition-all active:scale-95 active:!border-blue-700 focus:!border-blue-700 focus:!ring-blue-300 focus:!outline-none active:!outline-none"
             >
-              {loading ? "Đang xử lý..." : "instructor"}
+              {loading ? "Đang xử lý..." : "Instructor"}
             </button>
             <button
               onClick={() => handleSelectRole("student")}
               disabled={loading}
               className="flex-1 px-8 py-3 border !border-blue-500 !text-blue-600 rounded-lg !bg-white !hover:bg-blue-50 !text-lg !sm:text-xl !font-semibold transition-all active:scale-95 active:!border-blue-700 focus:!border-blue-700 focus:!ring-blue-300 focus:!outline-none active:!outline-none"
             >
-              {loading ? "Đang xử lý..." : "student"}
+              {loading ? "Đang xử lý..." : "Student"}
             </button>
           </div>
         </div>
