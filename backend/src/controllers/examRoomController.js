@@ -1,19 +1,57 @@
-import ExamRoom from "../models/ExamRoom.js";
-import User from "../models/User.js";
+const Exam = require("../models/ExamRoom");
 
-export const verifyRoom = async (req, res) => {
+
+const crypto = require("crypto");
+
+async function createExam(req, res) {
   try {
-    const { code } = req.params;
-    const room = await ExamRoom.findOne({ code });
-
-    if (!room) return res.status(404).json({ message: "Invalid room code", status: "error" });
-
-    if (req.user && req.user.role === "student") {
-      await User.findByIdAndUpdate(req.user.id, { verifiedRoomId: room._id });
+       if (req.user.role !== "instructor") {
+      return res.status(403).json({ message: "Chỉ giảng viên mới có thể tạo bài thi" });
     }
 
-    return res.status(200).json({ message: "Room verified", status: "success", valid: true, roomId: room._id });
-  } catch {
-    res.status(500).json({ message: "Server error", status: "error" });
+        const { courseId, title, duration } = req.body;
+    if (!courseId || !title || !duration) {
+      return res.status(400).json({ message: "Vui lòng cung cấp đủ thông tin: courseId, title, duration" });
+    }
+
+    
+    const roomCode = crypto.randomBytes(4).toString("hex").toUpperCase();
+
+        const newExam = await Exam.create({
+      course_id: courseId,
+      title: title,
+      duration: duration,
+      exam_room_code: roomCode,
+          });
+
+    return res.status(201).json({
+      message: "Tạo bài thi thành công",
+      exam: newExam,
+    });
+  } catch (error) {
+    console.error("Create exam error:", error);
+    return res.status(500).json({ message: "Lỗi server" });
   }
-};
+}
+
+
+async function verifyExamCode(req, res) {
+  try {
+    const { roomCode } = req.body;
+    if (!roomCode) {
+      return res.status(400).json({ message: "Cần mã phòng thi" });
+    }
+
+        const exam = await Exam.findOne({ where: { exam_room_code: roomCode } });
+    if (!exam) {
+      return res.status(400).json({ message: "Mã phòng thi không hợp lệ" });
+    }
+
+    return res.status(200).json({ valid: true, examId: exam.id });
+  } catch (error) {
+    console.error("Verify exam code error:", error);
+    return res.status(500).json({ message: "Lỗi server" });
+  }
+}
+
+module.exports = { createExam, verifyExamCode };

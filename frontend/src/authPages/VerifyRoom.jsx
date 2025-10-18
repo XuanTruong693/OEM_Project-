@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 
 export default function VerifyRoom() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [roomCode, setRoomCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -15,34 +16,37 @@ export default function VerifyRoom() {
     }
   }, [role, navigate]);
 
-  const validateRoomCode = (value) => {
-    if (!value.trim()) return "Vui lòng nhập mã phòng";
-    return "";
-  };
-
   const handleVerify = async () => {
-    setLoading(true);
-    setError("");
-    const err = validateRoomCode(roomCode);
-    if (err) {
-      setError(err);
-      setLoading(false);
+    if (!roomCode.trim()) {
+      setError("Vui lòng nhập mã phòng");
       return;
     }
+
+    setLoading(true);
+    setError("");
     try {
-      const res = await axios.get(`/api/exam-room/verify/${roomCode}`);
+      const res = await axios.get(`/api/auth/verify/${roomCode}`);
       if (res.data.valid) {
         localStorage.setItem("verifiedRoomId", res.data.roomId);
-        const nextPath =
-          localStorage.getItem("isLoginMode") === "true"
-            ? "/login"
-            : "/register";
-        navigate(nextPath);
+        const nextPath = location.state?.fromRoleSelection
+          ? "/login"
+          : localStorage.getItem("isLoginMode") === "true"
+          ? "/login"
+          : "/register";
+        navigate(nextPath, {
+          state: {
+            role,
+            verifiedRoomId: res.data.roomId,
+            fromRoleSelection: location.state?.fromRoleSelection,
+          },
+        });
       } else {
-        setError("Mã phòng không hợp lệ");
+        setError(res.data.message || "Mã phòng không hợp lệ");
       }
     } catch (error) {
-      setError("Có lỗi xảy ra, vui lòng thử lại");
+      setError(
+        error.response?.data?.message || "Có lỗi xảy ra, vui lòng thử lại"
+      );
     }
     setLoading(false);
   };
@@ -52,9 +56,7 @@ export default function VerifyRoom() {
       <header className="mx-auto flex items-center justify-start px-6 py-4 w-full max-w-6xl">
         <div
           className="flex items-center gap-3 cursor-pointer"
-          onClick={() => {
-            navigate("/");
-          }}
+          onClick={() => navigate("/")}
         >
           <img
             src="/Logo.png"
@@ -63,6 +65,7 @@ export default function VerifyRoom() {
           />
         </div>
       </header>
+
       <div className="bg-gray-100 mt-8 flex flex-col items-center justify-center">
         <div className="bg-white w-full max-w-[400px] p-6 rounded-lg shadow-md border border-gray-300">
           <div className="mb-6 flex items-center justify-center gap-4">
@@ -77,6 +80,7 @@ export default function VerifyRoom() {
               Truy cập phần thi
             </h2>
           </div>
+
           <div className="mb-4 p-4 bg-[#C0D9EB] rounded-lg border border-blue-200">
             <span className="block text-sm font-medium text-gray-600 mb-2">
               Mã truy cập vào phần thi
@@ -85,48 +89,45 @@ export default function VerifyRoom() {
               id="roomCode"
               type="text"
               value={roomCode}
-              onChange={(e) => {
-                const next = e.target.value.toUpperCase();
-                setRoomCode(next);
-                if (error) {
-                  const maybe = validateRoomCode(next);
-                  if (!maybe) setError("");
-                }
-              }}
-              onBlur={() => {
-                const err = validateRoomCode(roomCode);
-                if (err) setError(err);
-              }}
+              onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleVerify();
-                }
+                if (e.key === "Enter") handleVerify();
               }}
               maxLength={12}
-              className={`w-full p-2 border rounded-md !text-gray-700 focus:outline-none !bg-white focus:!ring-blue-400 ${
-                error ? "border-red-400" : "border-gray-400"
-              }`}
+              className="w-full p-2 border rounded-md !text-gray-700 focus:outline-none !bg-white focus:!ring-blue-400 border-gray-400"
               placeholder="Nhập mã truy cập"
+              disabled={loading}
             />
           </div>
+
           {error && (
             <p className="text-red-500 text-sm text-center mb-4">{error}</p>
           )}
+
           <button
             onClick={handleVerify}
-            disabled={loading}
-            className={`w-full py-2 rounded-md !text-white font-medium flex items-center justify-center gap-2 transition-colors ${
-              loading
+            disabled={loading || !roomCode.trim()}
+            className={`w-full py-2 rounded-md !text-white font-medium flex items-center justify-center gap-2 transition-all ${
+              loading || !roomCode.trim()
                 ? "!bg-blue-300 cursor-not-allowed"
-                : "!bg-blue-500 !hover:bg-blue-600"
+                : "!bg-blue-500 !hover:bg-blue-600 active:scale-95"
             }`}
           >
-            <img
-              src="/icons/UI Image/tick.png"
-              alt="Tick Icon"
-              className="!h-4 sm:h-7 w-auto"
-            />
-            Xác nhận
+            {loading ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                <span>Đang xác nhận...</span>
+              </>
+            ) : (
+              <>
+                <img
+                  src="/icons/UI Image/tick.png"
+                  alt="Tick Icon"
+                  className="!h-4 sm:h-7 w-auto"
+                />
+                Xác nhận
+              </>
+            )}
           </button>
         </div>
       </div>
