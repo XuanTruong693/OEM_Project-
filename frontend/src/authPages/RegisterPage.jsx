@@ -99,8 +99,8 @@ const RegisterPage = () => {
       console.log("🔹 Google login success:", credentialResponse);
 
       const res = await axiosClient.post("/auth/google", {
-        idToken: credentialResponse.credential, // ✅ Gửi idToken đúng chuẩn
-        role, // ✅ Gửi vai trò (student/instructor)
+        idToken: credentialResponse.credential,
+        role, 
       });
 
       console.log("✅ Google backend response:", res.data);
