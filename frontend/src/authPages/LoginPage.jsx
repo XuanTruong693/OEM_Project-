@@ -1,20 +1,45 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { GoogleLogin } from "@react-oauth/google";
 import { jwtDecode } from "jwt-decode";
 import axios from "axios";
 import axiosClient from "../api/axiosClient";
+import LoadingSpinner from "../components/LoadingSpinner";
 
 const LoginPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [form, setForm] = useState({ email: "", password: "" });
   const [errors, setErrors] = useState({});
+  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const role = localStorage.getItem("selectedRole") || "";
 
   useEffect(() => {
-    if (!role) navigate("/");
-  }, [role, navigate]);
+    // Chỉ redirect nếu không phải từ role selection
+    const fromRoleSelection = location.state?.fromRoleSelection;
+    
+    if (!fromRoleSelection) {
+      // Kiểm tra nếu đã đăng nhập, redirect về dashboard
+      const token = localStorage.getItem("token");
+      const userRole = localStorage.getItem("role");
+      if (token && userRole) {
+        navigate(`/${userRole === "student" ? "student" : "instructor"}-dashboard`);
+        return;
+      }
+    }
+
+    if (!role) {
+      // Nếu không có role, redirect về trang chọn role
+      navigate("/role");
+    } else if (role === "student") {
+      // Nếu là student nhưng chưa có verifiedRoomId, redirect về verify-room
+      const verifiedRoomId = localStorage.getItem("verifiedRoomId");
+      if (!verifiedRoomId) {
+        navigate("/verify-room");
+      }
+    }
+  }, [role, navigate, location.state]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -36,35 +61,43 @@ const LoginPage = () => {
     const newErrors = validate();
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
+      setSuccess("");
       return;
     }
     setLoading(true);
     setErrors({});
+    setSuccess("");
     console.log("Đang đăng nhập với:", form);
 
     try {
       const payload = {
         email: form.email,
-        password_hash: form.password,
+        password: form.password,
         role,
         roomId:
-          role === "student" ? localStorage.getItem("verifiedRoomId") : null,
+          role === "student" ? localStorage.getItem("verifiedRoomCode") : null,
       };
 
       const res = await axiosClient.post("/auth/login", payload);
       console.log("✅ Kết quả đăng nhập:", res.data);
 
-      localStorage.setItem("token", res.data.accessToken);
-      localStorage.setItem("role", res.data.user.role);
+      setSuccess("🎉 Đăng nhập thành công! Đang chuyển hướng...");
+      
+      // Delay để hiển thị thông báo thành công
+      setTimeout(() => {
+        localStorage.setItem("token", res.data.token);
+        localStorage.setItem("role", res.data.user.role);
 
-      const dashboard =
-        role === "student" ? "student-dashboard" : "instructor-dashboard";
-      navigate(`/${dashboard}`);
+        const dashboard =
+          role === "student" ? "student-dashboard" : "instructor-dashboard";
+        navigate(`/${dashboard}`);
+      }, 1500);
     } catch (error) {
       console.error("Lỗi đăng nhập:", error);
       setErrors({
         general: error.response?.data?.message || "Đăng nhập thất bại",
       });
+      setSuccess("");
     } finally {
       setLoading(false);
     }
@@ -72,27 +105,33 @@ const LoginPage = () => {
 
   const handleGoogleLoginSuccess = async (credentialResponse) => {
     setLoading(true);
-    console.log("🔹 Google login success:", credentialResponse);
-
+    setErrors({});
+    setSuccess("");
     try {
-      const decoded = jwtDecode(credentialResponse.credential);
-      console.log("Email Google:", decoded.email);
-
-      const res = await axios.post("/api/auth/google-login", {
-        email: decoded.email,
+      // Gửi nguyên JWT cho backend
+      const payload = {
+        idToken: credentialResponse.credential,
         role,
         roomId:
-          role === "student" ? localStorage.getItem("verifiedRoomId") : null,
-      });
+          role === "student" ? localStorage.getItem("verifiedRoomCode") : null,
+      };
+
+      const res = await axiosClient.post("/auth/google", payload);
 
       console.log("✅ Kết quả Google login:", res.data);
-      localStorage.setItem("token", res.data.token);
-      localStorage.setItem("role", role);
 
-      navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
+      setSuccess("🎉 Đăng nhập Google thành công! Đang chuyển hướng...");
+      
+      // Delay để hiển thị thông báo thành công
+      setTimeout(() => {
+        localStorage.setItem("token", res.data.token);
+        localStorage.setItem("role", res.data.user.role);
+        navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
+      }, 1500);
     } catch (error) {
       console.error("Lỗi Google login:", error);
       setErrors({ general: "Đăng nhập Google thất bại" });
+      setSuccess("");
     } finally {
       setLoading(false);
     }
@@ -184,10 +223,7 @@ const LoginPage = () => {
               }`}
             >
               {loading ? (
-                <>
-                  <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                  <span>Đang đăng nhập...</span>
-                </>
+                <LoadingSpinner size="sm" text="Đang đăng nhập..." />
               ) : (
                 "Đăng nhập"
               )}
@@ -209,6 +245,13 @@ const LoginPage = () => {
               {errors.general}
             </p>
           )}
+
+          {success && (
+            <p className="text-green-600 text-sm mt-2 text-center font-medium">
+              {success}
+            </p>
+          )}
+
         </div>
 
         <div className="hidden md:flex w-1/2 items-center justify-center relative">

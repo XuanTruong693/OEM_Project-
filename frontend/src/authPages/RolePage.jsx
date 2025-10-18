@@ -8,37 +8,42 @@ export default function RolePage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    localStorage.removeItem("selectedRole");
-    const storedRole = localStorage.getItem("selectedRole");
-    if (storedRole) {
-      navigate(storedRole === "instructor" ? "/login" : "/verify-room", {
-        state: { role: storedRole, fromRoleSelection: true },
-      });
+    // Không tự động redirect, để user có thể chọn role mới
+    // Chỉ xóa selectedRole nếu đã đăng nhập
+    const token = localStorage.getItem("token");
+    if (token) {
+      localStorage.removeItem("selectedRole");
     }
-  }, [navigate]);
+  }, []);
 
   const handleSelectRole = async (role) => {
-    setLoading(true);
-    const selectedRole = role === "instructor" ? "instructor" : "student";
+  setLoading(true);
+  const selectedRole = role === "instructor" ? "instructor" : "student";
 
-    try {
-      localStorage.setItem("selectedRole", selectedRole);
+  try {
+    // Xóa tất cả dữ liệu cũ khi chọn role mới
+    localStorage.removeItem("token");
+    localStorage.removeItem("role");
+    localStorage.removeItem("verifiedRoomId");
+    localStorage.removeItem("verifiedRoomCode");
 
-      if (selectedRole === "instructor") {
-        navigate("/login", {
-          state: { role: selectedRole, fromRoleSelection: true },
-        });
-      } else {
-        navigate("/verify-room", {
-          state: { role: selectedRole, fromRoleSelection: true },
-        });
-      }
-    } catch (error) {
-      console.error("Lỗi chọn role:", error);
-    } finally {
-      setLoading(false);
+    localStorage.setItem("selectedRole", selectedRole);
+
+    if (selectedRole === "instructor") {
+      navigate("/login", {
+        state: { role: selectedRole, fromRoleSelection: true },
+      });
+    } else {
+      navigate("/verify-room", {
+        state: { role: selectedRole, fromRoleSelection: true },
+      });
     }
-  };
+  } catch (error) {
+    console.error("Lỗi chọn role:", error);
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
@@ -77,7 +82,7 @@ export default function RolePage() {
              active:!border-blue-700 focus:!border-blue-700  focus:!ring-blue-300 
              focus:!outline-none active:!outline-none"
             >
-              {loading ? "Đang xử lý..." : "instructor"}
+              {loading ? "Đang xử lý..." : "Instructor"}
             </button>
 
             <button
@@ -88,7 +93,7 @@ export default function RolePage() {
              active:!border-blue-700 focus:!border-blue-700  focus:!ring-blue-300 
              focus:!outline-none active:!outline-none"
             >
-              {loading ? "Đang xử lý..." : "student"}
+              {loading ? "Đang xử lý..." : "Student"}
             </button>
           </div>
         </div>
