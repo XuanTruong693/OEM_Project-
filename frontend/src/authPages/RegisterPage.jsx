@@ -96,23 +96,24 @@ const RegisterPage = () => {
   const handleGoogleSuccess = async (credentialResponse) => {
     setIsLoading(true);
     try {
-      const decoded = jwtDecode(credentialResponse.credential);
-      console.log("Google user info:", decoded);
+      console.log("🔹 Google login success:", credentialResponse);
 
-      const res = await axiosClient.post("/auth/google-register", {
-        email: decoded.email,
-        name: `${decoded.given_name} ${decoded.family_name}`,
-        role: role,
-        roomId:
-          role === "student" ? localStorage.getItem("verifiedRoomId") : null,
+      const res = await axiosClient.post("/auth/google", {
+        idToken: credentialResponse.credential, // ✅ Gửi idToken đúng chuẩn
+        role, // ✅ Gửi vai trò (student/instructor)
       });
 
-      localStorage.setItem("token", res.data.accessToken);
-      localStorage.setItem("role", role);
+      console.log("✅ Google backend response:", res.data);
+
+      localStorage.setItem("token", res.data.token);
+      localStorage.setItem("role", res.data.user.role);
+
       navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
     } catch (error) {
       console.error("Google register error:", error);
-      setErrors({ general: "Đăng ký Google thất bại" });
+      setErrors({
+        general: error.response?.data?.message || "Đăng ký Google thất bại",
+      });
     } finally {
       setIsLoading(false);
     }
