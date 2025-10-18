@@ -1,7 +1,6 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/db");
 
-
 const User = sequelize.define(
   "User",
   {
@@ -11,36 +10,35 @@ const User = sequelize.define(
       primaryKey: true,
     },
     full_name: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(100), // ✅ Khớp DB
       allowNull: false,
     },
     email: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(120), // ✅ Khớp DB
       allowNull: false,
       unique: true,
     },
     password_hash: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(255),
       allowNull: false,
     },
     role: {
-      type: DataTypes.ENUM("admin","instructor", "student"),
+      type: DataTypes.ENUM("admin", "instructor", "student"),
       allowNull: false,
     },
     created_at: {
       type: DataTypes.DATE,
-      allowNull: true,
+      defaultValue: DataTypes.NOW, 
     },
     verify_room_code: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(20), 
       allowNull: true,
     },
   },
   {
-    tableName: "users",      
-    timestamps: false,      
+    tableName: "users",
+    timestamps: false, 
   }
 );
 
 module.exports = User;
-

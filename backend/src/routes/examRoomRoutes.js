@@ -8,4 +8,3 @@ router.post("/verify", verifyExamCode);
 router.post("/create", authMiddleware, authorizeRole("instructor"), createExam);
 
 module.exports = router;
-
