@@ -87,14 +87,7 @@ const App = () => {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
 
-        <Route
-          path="/verify-room"
-          element={
-            <ProtectedRoute requiredRole="student">
-              <VerifyRoom />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/verify-room" element={<VerifyRoom />} />
         <Route
           path="/student-dashboard"
           element={
