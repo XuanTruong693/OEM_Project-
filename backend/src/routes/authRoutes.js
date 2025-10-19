@@ -39,10 +39,10 @@ router.post("/google", async (req, res) => {
     const full_name = payload.name;
 
     // ✅ Kiểm tra role hợp lệ
-    const validRoles = ["student", "instructor"];
+    const validRoles = ["student", "instructor", "admin"];
     if (!validRoles.includes(role)) {
       return res.status(400).json({
-        message: "Vai trò không hợp lệ (phải chọn student hoặc instructor)",
+        message: "Vai trò không hợp lệ (phải chọn student hoặc instructor hoặc admin)",
         status: "error",
       });
     }
