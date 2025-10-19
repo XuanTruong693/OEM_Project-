@@ -6,10 +6,10 @@ const features = [
     icon: "/icons/UI Image/8194264.png",
     title: "Tạo đề thi nhanh chóng",
     desc: [
-      "Hỗ trợ nhập đề từ file Excel, hệ thống tự động phân loại câu hỏi trắc nghiệm và tự luận.",
-      "Kết hợp Excel (liệu trường ô luôn xanh) kèm theo biểu tượng bắt buộc tại ô giấy.",
-      "Có thêm dấu check để thể hiện sự đồng phân loại.",
-      "Phong cách đơn giản, trực quan, dễ gọi nhớ đến thẻ “tạo đề thi từ file Excel”.",
+      "Giảng viên có thể tải lên file Excel chứa câu hỏi, hệ thống tự động phân loại MCQ và Essay, giảm thời gian nhập liệu thủ công.",
+      "Hệ thống nhận diện và sắp xếp câu hỏi theo dạng trắc nghiệm và tự luận để chuẩn bị đề thi nhanh chóng.",
+      "Giảng viên có thể chỉnh sửa câu hỏi ngay sau khi import, đảm bảo độ chính xác của đề thi",
+      "Hệ thống kiểm soát số lượng câu hỏi tối đa trên mỗi đề để duy trì sự hợp lý và dễ quản lý.",
     ],
   },
   {
@@ -17,28 +17,29 @@ const features = [
     title: "Chấm điểm tự động thông minh",
     desc: [
       "Trắc nghiệm được chấm ngay lập tức, còn bài tự luận được AI/NLP gợi ý điểm số.",
-      "Một bảng báo lỗi trắc nghiệm có tick ✅.",
-      "Hình ảnh đưa người với mạch AI có phòng trừ lỗi nhận thức.",
-      "Có thêm biểu tượng đồng hồ nhấn mạnh tốc độ nhanh chóng.",
+      "Khi học sinh nộp bài, hệ thống chấm điểm MCQ dựa trên đáp án đúng đã đánh dấu.",
+      "Giảng viên xem lại và điều chỉnh điểm AI trước khi công bố chính thức, đảm bảo công bằng.",
+      "Hệ thống ghi nhận lịch sử điểm và thao tác chỉnh sửa, hỗ trợ kiểm tra và edit sau này",
     ],
   },
   {
     icon: "/icons/UI Image/123.png",
     title: "Kết quả minh bạch & công bằng",
     desc: [
-      "Giảng viên xem, điều chỉnh và xác nhận kết quả trước khi công bố.",
-      "Một màn hình máy tính hiển thị biểu đồ cột hoặc báo cáo kết quả.",
-      "Phía trên có dấu check vàng tượng trưng cho sự xác nhận.",
-      "Kết hợp hình người (giảng viên) nhằm thể hiện giám sát để đảm bảo minh bạch.",
+      "Học sinh xem điểm MCQ ngay sau khi nộp bài; điểm tự luận được xác nhận bởi giảng viên.",
+      "Giảng viên và quản trị viên có thể xuất điểm và thống kê thành file CSV/Excel để lưu trữ và phân tích.",
+      "Giảng viên xem tổng quan kết quả của tất cả học sinh trong khóa học.",
+      "Điểm tự luận chỉ được công bố sau khi giảng viên kiểm tra gợi ý từ AI, giảm sai lệch và thiên vị.",
     ],
   },
   {
     icon: "/icons/UI Image/124.png",
     title: "Bảo mật và an toàn dữ liệu",
     desc: [
-      "Sử dụng JWT, bcrypt và các tiêu chuẩn bảo mật phổ biến để bảo vệ dữ liệu.",
-      "Một ổ khóa vàng chắc chắn. Ổ giữa ổ khóa có biểu tượng check ✅ tượng trưng cho an toàn.",
-      "Có thể thêm một vài chi tiết “digital” (mạch điện, tấm shield) để nhấn mạnh tính bảo mật công nghệ.",
+      "Sử dụng JWT, bcrypt và các tiêu chuẩn bảo mật phổ biến để bảo vệ dữ liệu và phân quyền role-based để bảo vệ dữ liệu và quyền truy cập.",
+      "Mật khẩu được lưu bằng bcrypt để bảo vệ thông tin người dùng.",
+      "Hệ thống validate input để chống SQL Injection/XSS và lưu nhật ký hoạt động để theo dõi hành vi đáng ngờ.",
+      "Data người dùng được sao lưu thường xuyên để tránh mất mát dữ liệu.",
     ],
   },
 ];
@@ -61,10 +62,7 @@ export default function Features() {
                 alt="icon"
                 className="w-12 h-12 mb-3 object-contain"
               />
-              <h3
-                className="font-semibold text-md"
-                style={{ color: "#180eff" }}
-              >
+              <h3 className="font-bold text-md" style={{ color: "#180eff" }}>
                 {feature.title}
               </h3>
             </div>

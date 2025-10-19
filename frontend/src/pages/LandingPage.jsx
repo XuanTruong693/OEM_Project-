@@ -5,20 +5,20 @@ export default function LandingPage() {
   const [apiInfo, setApiInfo] = useState(null);
   const [apiError, setApiError] = useState(null);
 
-  useEffect(() => {
-    axios
-      .get("http://localhost:5000/api/info")
-      .then((response) => {
-        console.log("API Response:", response.data);
-        setApiInfo(response.data);
-        setApiError(null);
-      })
-      .catch((error) => {
-        console.error("Error fetching API:", error);
-        setApiError("Không thể kết nối đến server");
-        setApiInfo(null);
-      });
-  }, []);
+  // useEffect(() => {
+  //   axios
+  //     // .get("http://localhost:5000/api/info")
+  //     // .then((response) => {
+  //     //   console.log("API Response:", response.data);
+  //     //   setApiInfo(response.data);
+  //     //   setApiError(null);
+  //     // })
+  //     // .catch((error) => {
+  //     //   console.error("Error fetching API:", error);
+  //     //   setApiError("Không thể kết nối đến server");
+  //     //   setApiInfo(null);
+  //     // });
+  // }, []);
 
   return (
     <section className="w-full min-h-[calc(100vh-60px)] p-6 ">
