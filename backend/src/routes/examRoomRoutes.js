@@ -1,10 +1,12 @@
 const express = require("express");
 const router = express.Router();
 const { createExam, verifyExamCode } = require("../controllers/examRoomController");
-const { authMiddleware, authorizeRole  } = require("../middleware/authMiddleware");
+const { verifyToken, authorizeRole } = require("../middleware/authMiddleware");
 
+// ✅ Kiểm tra mã phòng thi (cho sinh viên)
 router.post("/verify", verifyExamCode);
 
-router.post("/create", authMiddleware, authorizeRole("instructor"), createExam);
+// ✅ Tạo phòng thi (chỉ giảng viên)
+router.post("/create", verifyToken, authorizeRole("instructor"), createExam);
 
 module.exports = router;

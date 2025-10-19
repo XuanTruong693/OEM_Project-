@@ -402,6 +402,19 @@ JOIN exams e ON e.course_id = c.id
 LEFT JOIN submissions s ON s.exam_id = e.id
 GROUP BY e.id;
 
+USE oem_mini;
+
+CREATE OR REPLACE VIEW v_instructor_stats AS
+SELECT 
+  c.instructor_id,
+  COUNT(DISTINCT e.id) AS total_exams,
+  COUNT(s.id) AS total_submissions,
+  COUNT(DISTINCT s.user_id) AS total_students
+FROM courses c
+LEFT JOIN exams e ON e.course_id = c.id
+LEFT JOIN submissions s ON s.exam_id = e.id
+GROUP BY c.instructor_id;
+
 -- ============================================================================
 -- ✅ END OF SCRIPT (OEM Mini v5 - Instructor Final Version)
 -- ============================================================================

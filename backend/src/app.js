@@ -4,8 +4,9 @@ const cors = require("cors");
 const sequelize = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
 const examRoomRoutes = require("./routes/examRoomRoutes");
-
+const instructorRoutes = require("./routes/instructorRoutes");
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
@@ -18,8 +19,11 @@ if (process.env.NODE_ENV === "development") {
 }
 
 // ✅ Mount routes
-app.use("/auth", authRoutes);
-app.use("/exam_rooms", examRoomRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/exam_rooms", examRoomRoutes);
+app.use("/api/instructor", instructorRoutes);
+app.use("/api/instructor", require("./routes/instructorRoutes"));
+
 
 // ✅ Route test
 app.get("/", (req, res) => {
