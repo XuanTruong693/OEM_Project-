@@ -24,7 +24,9 @@ const RegisterPage = () => {
     const token = localStorage.getItem("token");
     const userRole = localStorage.getItem("role");
     if (token && userRole) {
-      navigate(`/${userRole === "student" ? "student" : "instructor"}-dashboard`);
+      navigate(
+        `/${userRole === "student" ? "student" : "instructor"}-dashboard`
+      );
       return;
     }
 
@@ -100,7 +102,7 @@ const RegisterPage = () => {
       console.log("Register response:", res.data);
 
       setSuccess("🎉 Đăng ký thành công! Đang chuyển hướng...");
-      
+
       // Delay để hiển thị thông báo thành công
       setTimeout(() => {
         localStorage.setItem("token", res.data.token);
@@ -136,7 +138,8 @@ const RegisterPage = () => {
         const storedRoomCode = localStorage.getItem("verifiedRoomCode");
         if (!storedRoomCode) {
           setErrors({
-            general: "Không tìm thấy mã phòng thi. Vui lòng quay lại và xác thực lại.",
+            general:
+              "Không tìm thấy mã phòng thi. Vui lòng quay lại và xác thực lại.",
           });
           setIsLoading(false);
           return;
@@ -150,7 +153,7 @@ const RegisterPage = () => {
       console.log("✅ Google backend response:", res.data);
 
       setSuccess("🎉 Đăng ký Google thành công! Đang chuyển hướng...");
-      
+
       // Delay để hiển thị thông báo thành công
       setTimeout(() => {
         localStorage.setItem("token", res.data.token);
@@ -323,7 +326,6 @@ const RegisterPage = () => {
                 {success}
               </p>
             )}
-
           </form>
         </div>
 

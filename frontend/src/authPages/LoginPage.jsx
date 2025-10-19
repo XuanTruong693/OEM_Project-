@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { GoogleLogin } from "@react-oauth/google";
-import { jwtDecode } from "jwt-decode";
-import axios from "axios";
 import axiosClient from "../api/axiosClient";
 import LoadingSpinner from "../components/LoadingSpinner";
 
@@ -16,24 +14,22 @@ const LoginPage = () => {
   const role = localStorage.getItem("selectedRole") || "";
 
   useEffect(() => {
-    // Chỉ redirect nếu không phải từ role selection
     const fromRoleSelection = location.state?.fromRoleSelection;
-    
+
+    // Nếu đã đăng nhập rồi thì redirect thẳng dashboard
     if (!fromRoleSelection) {
-      // Kiểm tra nếu đã đăng nhập, redirect về dashboard
       const token = localStorage.getItem("token");
       const userRole = localStorage.getItem("role");
       if (token && userRole) {
-        navigate(`/${userRole === "student" ? "student" : "instructor"}-dashboard`);
+        navigate(
+          `/${userRole === "student" ? "student" : "instructor"}-dashboard`
+        );
         return;
       }
     }
-
     if (!role) {
-      // Nếu không có role, redirect về trang chọn role
       navigate("/role");
     } else if (role === "student") {
-      // Nếu là student nhưng chưa có verifiedRoomId, redirect về verify-room
       const verifiedRoomId = localStorage.getItem("verifiedRoomId");
       if (!verifiedRoomId) {
         navigate("/verify-room");
@@ -57,17 +53,16 @@ const LoginPage = () => {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-
     const newErrors = validate();
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       setSuccess("");
       return;
     }
+
     setLoading(true);
     setErrors({});
     setSuccess("");
-    console.log("Đang đăng nhập với:", form);
 
     try {
       const payload = {
@@ -82,15 +77,20 @@ const LoginPage = () => {
       console.log("✅ Kết quả đăng nhập:", res.data);
 
       setSuccess("🎉 Đăng nhập thành công! Đang chuyển hướng...");
-      
-      // Delay để hiển thị thông báo thành công
+
       setTimeout(() => {
         localStorage.setItem("token", res.data.token);
         localStorage.setItem("role", res.data.user.role);
+        localStorage.setItem(
+          "fullname",
+          res.data.user.full_name || "Giảng viên"
+        );
+        localStorage.setItem(
+          "avatar",
+          res.data.user.avatar || "/icons/UI Image/default-avatar.png"
+        );
 
-        const dashboard =
-          role === "student" ? "student-dashboard" : "instructor-dashboard";
-        navigate(`/${dashboard}`);
+        navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
       }, 1500);
     } catch (error) {
       console.error("Lỗi đăng nhập:", error);
@@ -102,13 +102,12 @@ const LoginPage = () => {
       setLoading(false);
     }
   };
-
   const handleGoogleLoginSuccess = async (credentialResponse) => {
     setLoading(true);
     setErrors({});
     setSuccess("");
+
     try {
-      // Gửi nguyên JWT cho backend
       const payload = {
         idToken: credentialResponse.credential,
         role,
@@ -117,15 +116,22 @@ const LoginPage = () => {
       };
 
       const res = await axiosClient.post("/auth/google", payload);
-
       console.log("✅ Kết quả Google login:", res.data);
 
       setSuccess("🎉 Đăng nhập Google thành công! Đang chuyển hướng...");
-      
-      // Delay để hiển thị thông báo thành công
+
       setTimeout(() => {
         localStorage.setItem("token", res.data.token);
         localStorage.setItem("role", res.data.user.role);
+        localStorage.setItem(
+          "fullname",
+          res.data.user.full_name || "Giảng viên"
+        );
+        localStorage.setItem(
+          "avatar",
+          res.data.user.avatar || "/icons/UI Image/default-avatar.png"
+        );
+
         navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
       }, 1500);
     } catch (error) {
@@ -251,7 +257,6 @@ const LoginPage = () => {
               {success}
             </p>
           )}
-
         </div>
 
         <div className="hidden md:flex w-1/2 items-center justify-center relative">
