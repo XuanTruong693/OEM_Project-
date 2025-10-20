@@ -16,24 +16,21 @@ const LoginPage = () => {
   useEffect(() => {
     const fromRoleSelection = location.state?.fromRoleSelection;
 
-    // Nếu đã đăng nhập rồi thì redirect thẳng dashboard
+    // Nếu đã đăng nhập thì chuyển thẳng vào dashboard
     if (!fromRoleSelection) {
       const token = localStorage.getItem("token");
       const userRole = localStorage.getItem("role");
       if (token && userRole) {
-        navigate(
-          `/${userRole === "student" ? "student" : "instructor"}-dashboard`
-        );
+        navigate(`/${userRole === "student" ? "student" : "instructor"}-dashboard`);
         return;
       }
     }
+
     if (!role) {
       navigate("/role");
     } else if (role === "student") {
       const verifiedRoomId = localStorage.getItem("verifiedRoomId");
-      if (!verifiedRoomId) {
-        navigate("/verify-room");
-      }
+      if (!verifiedRoomId) navigate("/verify-room");
     }
   }, [role, navigate, location.state]);
 
@@ -51,6 +48,7 @@ const LoginPage = () => {
     return newErrors;
   };
 
+  // --- Login thường ---
   const handleLogin = async (e) => {
     e.preventDefault();
     const newErrors = validate();
@@ -69,31 +67,36 @@ const LoginPage = () => {
         email: form.email,
         password: form.password,
         role,
-        roomId:
-          role === "student" ? localStorage.getItem("verifiedRoomCode") : null,
       };
 
+      if (role === "student") {
+        const roomId = localStorage.getItem("verifiedRoomId");
+        if (!roomId) {
+          setErrors({
+            general: "Không tìm thấy mã phòng thi. Vui lòng xác thực lại.",
+          });
+          setLoading(false);
+          return;
+        }
+        payload.roomId = roomId;
+      }
+
+      console.log("[DEV] Login payload gửi backend:", payload);
       const res = await axiosClient.post("/auth/login", payload);
-      console.log("✅ Kết quả đăng nhập:", res.data);
+      console.log("[DEV] ✅ Login thành công:", res.data);
 
       setSuccess("🎉 Đăng nhập thành công! Đang chuyển hướng...");
 
       setTimeout(() => {
         localStorage.setItem("token", res.data.token);
         localStorage.setItem("role", res.data.user.role);
-        localStorage.setItem(
-          "fullname",
-          res.data.user.full_name || "Giảng viên"
-        );
-        localStorage.setItem(
-          "avatar",
-          res.data.user.avatar || "/icons/UI Image/default-avatar.png"
-        );
+        localStorage.setItem("fullname", res.data.user.full_name || "Người dùng");
+        localStorage.setItem("avatar", res.data.user.avatar || "/icons/UI Image/default-avatar.png");
 
         navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
       }, 1500);
     } catch (error) {
-      console.error("Lỗi đăng nhập:", error);
+      console.error("❌ Lỗi đăng nhập:", error?.response?.data || error);
       setErrors({
         general: error.response?.data?.message || "Đăng nhập thất bại",
       });
@@ -102,7 +105,14 @@ const LoginPage = () => {
       setLoading(false);
     }
   };
+
+  // --- Google login ---
   const handleGoogleLoginSuccess = async (credentialResponse) => {
+    if (!credentialResponse?.credential) {
+      setErrors({ general: "Không nhận được Google credential" });
+      return;
+    }
+
     setLoading(true);
     setErrors({});
     setSuccess("");
@@ -111,32 +121,39 @@ const LoginPage = () => {
       const payload = {
         idToken: credentialResponse.credential,
         role,
-        roomId:
-          role === "student" ? localStorage.getItem("verifiedRoomCode") : null,
       };
 
+      if (role === "student") {
+        const roomId = localStorage.getItem("verifiedRoomId");
+        if (!roomId) {
+          setErrors({
+            general: "Không tìm thấy mã phòng thi. Vui lòng xác thực lại.",
+          });
+          setLoading(false);
+          return;
+        }
+        payload.roomId = roomId;
+      }
+
+      console.log("[DEV] Google login payload gửi backend:", payload);
       const res = await axiosClient.post("/auth/google", payload);
-      console.log("✅ Kết quả Google login:", res.data);
+      console.log("[DEV] ✅ Google login thành công:", res.data);
 
       setSuccess("🎉 Đăng nhập Google thành công! Đang chuyển hướng...");
 
       setTimeout(() => {
         localStorage.setItem("token", res.data.token);
         localStorage.setItem("role", res.data.user.role);
-        localStorage.setItem(
-          "fullname",
-          res.data.user.full_name || "Giảng viên"
-        );
-        localStorage.setItem(
-          "avatar",
-          res.data.user.avatar || "/icons/UI Image/default-avatar.png"
-        );
+        localStorage.setItem("fullname", res.data.user.full_name || "Người dùng");
+        localStorage.setItem("avatar", res.data.user.avatar || "/icons/UI Image/default-avatar.png");
 
         navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
       }, 1500);
     } catch (error) {
-      console.error("Lỗi Google login:", error);
-      setErrors({ general: "Đăng nhập Google thất bại" });
+      console.error("❌ Lỗi Google login:", error?.response?.data || error);
+      setErrors({
+        general: error.response?.data?.message || "Đăng nhập Google thất bại",
+      });
       setSuccess("");
     } finally {
       setLoading(false);
@@ -144,7 +161,7 @@ const LoginPage = () => {
   };
 
   const handleGoogleLoginError = () => {
-    console.error("Lỗi xác thực Google");
+    console.error("⚠️ Lỗi xác thực Google");
     setErrors({ general: "Lỗi xác thực Google" });
   };
 

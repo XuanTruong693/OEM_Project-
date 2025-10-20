@@ -1,3 +1,4 @@
+// ✅ Bản chuẩn của VerifyRoom.jsx (không đổi UI, chỉ đổi logic)
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import axiosClient from "../api/axiosClient";
@@ -13,11 +14,9 @@ export default function VerifyRoom() {
   const role = localStorage.getItem("selectedRole");
 
   useEffect(() => {
-    // Chỉ redirect nếu không phải từ role selection
     const fromRoleSelection = location.state?.fromRoleSelection;
 
     if (!fromRoleSelection) {
-      // Kiểm tra nếu đã đăng nhập, redirect về dashboard
       const token = localStorage.getItem("token");
       const userRole = localStorage.getItem("role");
       if (token && userRole) {
@@ -45,12 +44,15 @@ export default function VerifyRoom() {
     setSuccess("");
     try {
       const res = await axiosClient.get(`/auth/verify-room/${roomCode}`);
+      console.log("[DEV] Verify room response:", res.data);
+
       if (res.data.valid) {
         setSuccess("✅ Mã phòng thi hợp lệ! Đang chuyển hướng...");
-        localStorage.setItem("verifiedRoomId", res.data.roomId);
+
+        // ✅ Lưu theo exam_room_code, không phải roomId (ID)
+        localStorage.setItem("verifiedRoomId", res.data.examCode); // <--- code, not id
         localStorage.setItem("verifiedRoomCode", res.data.examCode);
 
-        // Delay để hiển thị thông báo thành công
         setTimeout(() => {
           const nextPath = location.state?.fromRoleSelection
             ? "/login"
@@ -60,9 +62,8 @@ export default function VerifyRoom() {
           navigate(nextPath, {
             state: {
               role,
-              verifiedRoomId: res.data.roomId,
+              verifiedRoomId: res.data.examCode, // giữ code
               verifiedRoomCode: res.data.examCode,
-              fromRoleSelection: location.state?.fromRoleSelection,
             },
           });
         }, 1500);
