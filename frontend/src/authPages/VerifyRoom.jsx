@@ -15,13 +15,15 @@ export default function VerifyRoom() {
   useEffect(() => {
     // Chỉ redirect nếu không phải từ role selection
     const fromRoleSelection = location.state?.fromRoleSelection;
-    
+
     if (!fromRoleSelection) {
       // Kiểm tra nếu đã đăng nhập, redirect về dashboard
       const token = localStorage.getItem("token");
       const userRole = localStorage.getItem("role");
       if (token && userRole) {
-        navigate(`/${userRole === "student" ? "student" : "instructor"}-dashboard`);
+        navigate(
+          `/${userRole === "student" ? "student" : "instructor"}-dashboard`
+        );
         return;
       }
     }
@@ -47,7 +49,7 @@ export default function VerifyRoom() {
         setSuccess("✅ Mã phòng thi hợp lệ! Đang chuyển hướng...");
         localStorage.setItem("verifiedRoomId", res.data.roomId);
         localStorage.setItem("verifiedRoomCode", res.data.examCode);
-        
+
         // Delay để hiển thị thông báo thành công
         setTimeout(() => {
           const nextPath = location.state?.fromRoleSelection
@@ -131,7 +133,9 @@ export default function VerifyRoom() {
           )}
 
           {success && (
-            <p className="text-green-600 text-sm text-center mb-4 font-medium">{success}</p>
+            <p className="text-green-600 text-sm text-center mb-4 font-medium">
+              {success}
+            </p>
           )}
 
           <button
