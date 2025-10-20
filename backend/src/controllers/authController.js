@@ -5,17 +5,20 @@ const { generateAccessToken, generateRefreshToken } = require("../utils/generate
 
 const SALT_ROUNDS = 10;
 
-// Đăng ký người dùng mới
+// ------------------- Đăng ký -------------------
 async function register(req, res) {
   try {
     const { fullName, email, password_hash, confirmPassword, role, roomCode } = req.body;
 
+    // ✅ Kiểm tra dữ liệu đầu vào
     if (!fullName || !email || !password_hash || !confirmPassword || !role) {
       return res.status(400).json({ message: "Thiếu trường bắt buộc" });
     }
+
     if (password_hash.length < 8) {
       return res.status(400).json({ message: "Mật khẩu phải ≥ 8 ký tự" });
     }
+
     if (password_hash !== confirmPassword) {
       return res.status(400).json({ message: "Mật khẩu và xác nhận không khớp" });
     }
@@ -39,6 +42,7 @@ async function register(req, res) {
       if (!roomCode) {
         return res.status(400).json({ message: "Cần mã phòng thi để đăng ký học viên" });
       }
+
       const room = await ExamRoom.findOne({ where: { exam_room_code: roomCode } });
       if (!room) {
         return res.status(400).json({ message: "Mã phòng thi không hợp lệ" });
@@ -51,16 +55,19 @@ async function register(req, res) {
         role: "student",
       });
 
-    
+      // 🔧 Tùy logic của bạn: nếu cần liên kết học viên vào phòng thi
+      // await room.addStudent(newUser);
     } else {
       return res.status(400).json({ message: "Role không hợp lệ" });
     }
 
+    // ✅ payload đồng bộ với middleware verifyToken
     const payload = {
-      userId: newUser.id,
+      id: newUser.id, // ⚠️ dùng id chứ không phải userId
       email: newUser.email,
       role: newUser.role,
     };
+
     const accessToken = generateAccessToken(payload);
     const refreshToken = generateRefreshToken(payload);
 
@@ -75,12 +82,12 @@ async function register(req, res) {
       refreshToken,
     });
   } catch (error) {
-    console.error("Register error:", error);
+    console.error("❌ Register error:", error);
     return res.status(500).json({ message: "Lỗi server" });
   }
 }
 
-// Đăng nhập
+// ------------------- Đăng nhập -------------------
 async function login(req, res) {
   try {
     const { email, password_hash } = req.body;
@@ -99,7 +106,7 @@ async function login(req, res) {
     }
 
     const payload = {
-      userId: user.id,
+      id: user.id, // ✅ đồng bộ với verifyToken
       email: user.email,
       role: user.role,
     };
@@ -118,7 +125,7 @@ async function login(req, res) {
       refreshToken,
     });
   } catch (error) {
-    console.error("Login error:", error);
+    console.error("❌ Login error:", error);
     return res.status(500).json({ message: "Lỗi server" });
   }
 }
