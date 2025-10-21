@@ -435,6 +435,11 @@ LEFT JOIN exams e ON e.course_id = c.id
 LEFT JOIN submissions s ON s.exam_id = e.id
 GROUP BY c.instructor_id;
 
+-- Update existing users with avatar and gender
+USE oem_mini;
+ALTER TABLE users
+ADD COLUMN avatar VARCHAR(255) NULL AFTER password_hash,
+ADD COLUMN gender ENUM('male', 'female', 'other') NULL AFTER avatar
 -- ============================================================================
 -- ✅ END OF SCRIPT (OEM Mini v5 - Instructor Final Version)
 -- ============================================================================
