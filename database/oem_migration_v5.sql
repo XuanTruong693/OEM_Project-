@@ -402,6 +402,7 @@ JOIN exams e ON e.course_id = c.id
 LEFT JOIN submissions s ON s.exam_id = e.id
 GROUP BY e.id;
 
+-- Migrate existing verify_room_code data
 use oem_mini;
 ALTER TABLE users MODIFY COLUMN verify_room_code BOOLEAN DEFAULT FALSE;
 CREATE TABLE user_verified_rooms (
@@ -417,12 +418,12 @@ CREATE TABLE user_verified_rooms (
         ON UPDATE CASCADE ON DELETE CASCADE,
     UNIQUE KEY uq_user_room (user_id, exam_room_code)
 );
--- Migrate existing verify_room_code data
+-- Migrate existing user avatars
 USE oem_mini;
-
 ALTER TABLE users
 ADD COLUMN avatar VARCHAR(255) NULL AFTER password_hash,
 ADD COLUMN gender ENUM('male', 'female', 'other') NULL AFTER avatar;
+
 -- View for instructor statistics
 CREATE OR REPLACE VIEW v_instructor_stats AS
 SELECT
@@ -435,11 +436,6 @@ LEFT JOIN exams e ON e.course_id = c.id
 LEFT JOIN submissions s ON s.exam_id = e.id
 GROUP BY c.instructor_id;
 
--- Update existing users with avatar and gender
-USE oem_mini;
-ALTER TABLE users
-ADD COLUMN avatar VARCHAR(255) NULL AFTER password_hash,
-ADD COLUMN gender ENUM('male', 'female', 'other') NULL AFTER avatar
 -- ============================================================================
 -- ✅ END OF SCRIPT (OEM Mini v5 - Instructor Final Version)
 -- ============================================================================
