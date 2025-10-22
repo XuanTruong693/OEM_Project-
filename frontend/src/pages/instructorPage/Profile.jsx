@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { FiLogOut, FiCamera } from "react-icons/fi";
+import { FiLogOut, FiCamera, FiSave } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 
 const Profile = () => {
@@ -151,7 +151,6 @@ const Profile = () => {
                     />
                   </div>
                 </div>
-
                 <div className="flex items-center gap-3">
                   <label className="w-24 text-xl text-[#606060] font-normal">
                     Giới tính:
@@ -172,7 +171,6 @@ const Profile = () => {
                     ))}
                   </div>
                 </div>
-
                 {[
                   {
                     label: "Email:",
@@ -199,9 +197,10 @@ const Profile = () => {
                 <div className="flex justify-center pt-4">
                   <button
                     type="submit"
-                    className="bg-blue-500 hover:bg-blue-600 text-white font-normal px-6 py-2 rounded-lg transition"
+                    className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white font-normal px-6 py-2 rounded-lg transition group"
                   >
-                    Lưu hồ sơ
+                    <FiSave className="text-xl group-hover:text-blue-100 transition" />
+                    <span className="text-xl">Lưu hồ sơ</span>
                   </button>
                 </div>
               </form>

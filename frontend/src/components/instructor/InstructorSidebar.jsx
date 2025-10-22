@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   FiHome,
@@ -8,55 +8,51 @@ import {
   FiClipboard,
   FiSettings,
   FiChevronDown,
-  FiChevronUp,
 } from "react-icons/fi";
 
 const InstructorSidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [openMenu, setOpenMenu] = useState(null);
-
-  const handleToggle = (label) => {
-    setOpenMenu(openMenu === label ? null : label);
-  };
+  const [openDropdown, setOpenDropdown] = useState(false);
 
   const menu = [
-    {
-      icon: FiHome,
-      label: "Dashboard",
-      path: "/instructor-dashboard",
-    },
+    { icon: FiHome, label: "Dashboard", path: "/instructor-dashboard" },
     {
       icon: FiFolder,
       label: "Resources",
-      children: [
-        {
-          icon: FiFileText,
-          label: "Exam Bank",
-          path: "/exam-bank",
-        },
-        {
-          icon: FiEdit3,
-          label: "Assign Exam",
-          path: "/assign-exam",
-        },
-      ],
+      path: "/resources",
+      hasDropdown: true,
     },
-    {
-      icon: FiClipboard,
-      label: "Result",
-      path: "/result",
-    },
+    { icon: FiFileText, label: "Exam Bank", path: "/exam-bank" },
+    { icon: FiEdit3, label: "Assign Exam", path: "/assign-exam" },
+    { icon: FiClipboard, label: "Result", path: "/result" },
   ];
 
-  const setting = {
-    icon: FiSettings,
-    label: "Setting",
-    path: "/setting",
+  const setting = { icon: FiSettings, label: "Setting", path: "/setting" };
+
+  const dropdownRef = useRef(null);
+  const resourcesRef = useRef(null);
+
+  const handleMouseEnter = (item) => {
+    if (item.hasDropdown) setOpenDropdown(true);
+  };
+
+  const handleMouseLeave = (e, item) => {
+    if (item.hasDropdown) {
+      const related = e.relatedTarget;
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(related) &&
+        resourcesRef.current &&
+        !resourcesRef.current.contains(related)
+      ) {
+        setOpenDropdown(false);
+      }
+    }
   };
 
   return (
-    <aside className="min-h-screen h-full bg-gradient-to-b from-[#E8F5FF] to-[#CAEAFF] rounded-3xl p-5 shadow-md flex flex-col justify-between">
+    <aside className="w-64 h-screen bg-gradient-to-b from-[#E8F5FF] to-[#CAEAFF] rounded-tr-3xl rounded-br-3xl p-5 shadow-md flex flex-col justify-between relative">
       <div>
         <div
           className="flex items-center justify-center mb-8 cursor-pointer"
@@ -69,28 +65,27 @@ const InstructorSidebar = () => {
           />
         </div>
 
-        <nav className="flex flex-col gap-2">
+        <nav className="flex flex-col gap-2 relative">
           {menu.map((item, idx) => {
+            const isActive = location.pathname === item.path;
             const Icon = item.icon;
-            const isActive =
-              location.pathname === item.path ||
-              (item.children &&
-                item.children.some(
-                  (child) => child.path === location.pathname
-                ));
-            const isOpen = openMenu === item.label;
 
             return (
-              <div key={idx}>
+              <div key={idx} className="relative">
                 <button
-                  onClick={() =>
-                    item.children
-                      ? handleToggle(item.label)
-                      : navigate(item.path)
-                  }
+                  ref={item.hasDropdown ? resourcesRef : null}
+                  onClick={() => {
+                    if (item.hasDropdown) {
+                      setOpenDropdown((prev) => !prev);
+                    } else {
+                      navigate(item.path);
+                    }
+                  }}
+                  onMouseEnter={() => handleMouseEnter(item)}
+                  onMouseLeave={(e) => handleMouseLeave(e, item)}
                   className={`group flex items-center justify-between text-lg font-medium px-4 py-3 rounded-xl transition-all duration-200 w-full ${
                     isActive
-                      ? "bg-[#0080FF]/10 text-[#0080FF] shadow-sm border-l-4"
+                      ? "bg-[#0080FF]/10 border-l-4 border-[#0080FF] text-[#0080FF] shadow-sm"
                       : "text-gray-700 hover:bg-[#A0D4FF]/60 hover:text-[#0080FF]"
                   }`}
                 >
@@ -102,58 +97,36 @@ const InstructorSidebar = () => {
                           : "text-gray-600 group-hover:text-[#0080FF]"
                       }`}
                     />
-                    <span className="transition-colors duration-200">
-                      {item.label}
-                    </span>
+                    <span>{item.label}</span>
                   </div>
-                  {item.children &&
-                    (isOpen ? (
-                      <FiChevronUp
-                        className={`w-5 h-5  transition-colors duration-200  ${
-                          isActive
-                            ? "text-[#0080FF] "
-                            : "text-gray-500 group-hover:text-[#0080FF]"
-                        }`}
-                      />
-                    ) : (
-                      <FiChevronDown
-                        className={`w-5 h-5 transition-colors duration-200  ${
-                          isActive
-                            ? "text-[#0080FF]"
-                            : "text-gray-500 group-hover:text-[#0080FF]"
-                        }`}
-                      />
-                    ))}
+
+                  {/* Chevron (không xoay) */}
+                  {item.hasDropdown && (
+                    <FiChevronDown className="w-5 h-5 text-gray-600 group-hover:text-[#0080FF]" />
+                  )}
                 </button>
 
-                {item.children && isOpen && (
-                  <div className="ml-8 mt-2 flex flex-col gap-1">
-                    {item.children.map((subItem, subIdx) => {
-                      const SubIcon = subItem.icon;
-                      const isSubActive = location.pathname === subItem.path;
-                      return (
-                        <button
-                          key={subIdx}
-                          onClick={() => navigate(subItem.path)}
-                          className={`group flex items-center gap-3 text-base font-medium px-3 py-2 rounded-lg transition-all duration-200 w-full ${
-                            isSubActive
-                              ? "bg-[#0080FF]/10 text-[#0080FF] border-l-4"
-                              : "text-gray-600 hover:bg-[#A0D4FF]/60 hover:text-[#0080FF]"
-                          }`}
-                        >
-                          <SubIcon
-                            className={`w-5 h-5 transition-colors duration-200 ${
-                              isSubActive
-                                ? "text-[#0080FF]"
-                                : "text-gray-600 group-hover:text-[#0080FF]"
-                            }`}
-                          />
-                          <span className="transition-colors duration-200">
-                            {subItem.label}
-                          </span>
-                        </button>
-                      );
-                    })}
+                {item.hasDropdown && openDropdown && (
+                  <div
+                    ref={dropdownRef}
+                    onMouseLeave={(e) => handleMouseLeave(e, item)}
+                    onMouseEnter={() => setOpenDropdown(true)}
+                    className="absolute left-full top-0 ml-[1px] bg-white shadow-lg rounded-xl border border-gray-200 py-2 w-44 z-20"
+                  >
+                    <button
+                      onClick={() => navigate("/exam-bank")}
+                      className="flex items-center gap-3 px-4 py-2 hover:bg-[#E8F5FF] text-gray-700 hover:text-[#0080FF] w-full text-left"
+                    >
+                      <FiFileText className="w-5 h-5" />
+                      Exam Bank
+                    </button>
+                    <button
+                      onClick={() => navigate("/assign-exam")}
+                      className="flex items-center gap-3 px-4 py-2 hover:bg-[#E8F5FF] text-gray-700 hover:text-[#0080FF] w-full text-left"
+                    >
+                      <FiEdit3 className="w-5 h-5" />
+                      Assign Exam
+                    </button>
                   </div>
                 )}
               </div>
@@ -167,7 +140,7 @@ const InstructorSidebar = () => {
           onClick={() => navigate(setting.path)}
           className={`group flex items-center gap-3 text-lg font-medium px-4 py-3 rounded-xl transition-all duration-200 w-full ${
             location.pathname === setting.path
-              ? "bg-[#0080FF]/10 text-[#0080FF] shadow-sm border-l-4"
+              ? "bg-[#0080FF]/10 border-l-4 border-[#0080FF] text-[#0080FF] shadow-sm"
               : "text-gray-700 hover:bg-[#A0D4FF]/60 hover:text-[#0080FF]"
           }`}
         >
@@ -178,9 +151,7 @@ const InstructorSidebar = () => {
                 : "text-gray-600 group-hover:text-[#0080FF]"
             }`}
           />
-          <span className="transition-colors duration-200">
-            {setting.label}
-          </span>
+          <span>{setting.label}</span>
         </button>
       </div>
     </aside>
