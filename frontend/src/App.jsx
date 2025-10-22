@@ -23,11 +23,11 @@ import VerifyRoom from "./authPages/VerifyRoom.jsx";
 import InstructorDashboard from "./pages/instructorPage/InstructorDashboard.jsx";
 import AssignExam from "./pages/instructorPage/AssignExam.jsx";
 import ExamBank from "./pages/instructorPage/ExamBank.jsx";
-import Resource from "./pages/instructorPage/Resource.jsx";
 import Result from "./pages/instructorPage/Result.jsx";
 import Setting from "./pages/instructorPage/Setting.jsx";
 
-import InstructorSidebar from "./components/Instructor/InstructorSidebar.jsx";
+import InstructorSidebar from "./components/instructor/InstructorSidebar.jsx";
+import Profile from "./pages/instructorPage/Profile.jsx";
 
 function ProtectedRoute({ children, requiredRole }) {
   const location = useLocation();
@@ -47,9 +47,10 @@ function ProtectedRoute({ children, requiredRole }) {
 
 function InstructorLayout() {
   return (
-    <div className="flex bg-gray-50 min-h-screen">
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
       <InstructorSidebar />
-      <main className="flex-1 p-6 overflow-y-auto">
+
+      <main className="flex-1 overflow-y-auto p-6">
         <Outlet />
       </main>
     </div>
@@ -126,11 +127,11 @@ const App = () => {
             path="/instructor-dashboard"
             element={<InstructorDashboard />}
           />
-          <Route path="/resources" element={<Resource />} />
           <Route path="/exam-bank" element={<ExamBank />} />
           <Route path="/assign-exam" element={<AssignExam />} />
           <Route path="/result" element={<Result />} />
           <Route path="/setting" element={<Setting />} />
+          <Route path="/profile" element={<Profile />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

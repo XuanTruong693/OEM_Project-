@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   FiHome,
@@ -7,48 +7,56 @@ import {
   FiEdit3,
   FiClipboard,
   FiSettings,
+  FiChevronDown,
+  FiChevronUp,
 } from "react-icons/fi";
 
 const InstructorSidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const [openMenu, setOpenMenu] = useState(null);
+
+  const handleToggle = (label) => {
+    setOpenMenu(openMenu === label ? null : label);
+  };
 
   const menu = [
     {
-      icon: <FiHome className="w-6 h-6" />,
+      icon: FiHome,
       label: "Dashboard",
       path: "/instructor-dashboard",
     },
     {
-      icon: <FiFolder className="w-6 h-6" />,
+      icon: FiFolder,
       label: "Resources",
-      path: "/resources",
+      children: [
+        {
+          icon: FiFileText,
+          label: "Exam Bank",
+          path: "/exam-bank",
+        },
+        {
+          icon: FiEdit3,
+          label: "Assign Exam",
+          path: "/assign-exam",
+        },
+      ],
     },
     {
-      icon: <FiFileText className="w-6 h-6" />,
-      label: "Exam Bank",
-      path: "/exam-bank",
-    },
-    {
-      icon: <FiEdit3 className="w-6 h-6" />,
-      label: "Assign Exam",
-      path: "/assign-exam",
-    },
-    {
-      icon: <FiClipboard className="w-6 h-6" />,
+      icon: FiClipboard,
       label: "Result",
       path: "/result",
     },
   ];
 
   const setting = {
-    icon: <FiSettings className="w-6 h-6" />,
+    icon: FiSettings,
     label: "Setting",
     path: "/setting",
   };
 
   return (
-    <aside className="w-64 h-screen bg-gradient-to-b from-[#E8F5FF] to-[#CAEAFF] rounded-3xl p-5 shadow-md flex flex-col justify-between">
+    <aside className="min-h-screen h-full bg-gradient-to-b from-[#E8F5FF] to-[#CAEAFF] rounded-3xl p-5 shadow-md flex flex-col justify-between">
       <div>
         <div
           className="flex items-center justify-center mb-8 cursor-pointer"
@@ -63,26 +71,92 @@ const InstructorSidebar = () => {
 
         <nav className="flex flex-col gap-2">
           {menu.map((item, idx) => {
-            const isActive = location.pathname === item.path;
+            const Icon = item.icon;
+            const isActive =
+              location.pathname === item.path ||
+              (item.children &&
+                item.children.some(
+                  (child) => child.path === location.pathname
+                ));
+            const isOpen = openMenu === item.label;
+
             return (
-              <button
-                key={idx}
-                onClick={() => navigate(item.path)}
-                className={`flex items-center gap-4 text-lg font-medium px-4 py-3 rounded-xl transition-all duration-200 ${
-                  isActive
-                    ? "bg-[#0080FF]/10 border-[#0080FF] text-[#0080FF] shadow-sm"
-                    : "text-gray-700 hover:bg-[#A0D4FF]/60 hover:text-[#0080FF]"
-                }`}
-              >
-                <span
-                  className={`transition-transform duration-200 ${
-                    isActive ? "text-[#0080FF]" : "text-gray-600"
+              <div key={idx}>
+                <button
+                  onClick={() =>
+                    item.children
+                      ? handleToggle(item.label)
+                      : navigate(item.path)
+                  }
+                  className={`group flex items-center justify-between text-lg font-medium px-4 py-3 rounded-xl transition-all duration-200 w-full ${
+                    isActive
+                      ? "bg-[#0080FF]/10 text-[#0080FF] shadow-sm border-l-4"
+                      : "text-gray-700 hover:bg-[#A0D4FF]/60 hover:text-[#0080FF]"
                   }`}
                 >
-                  {item.icon}
-                </span>
-                <span>{item.label}</span>
-              </button>
+                  <div className="flex items-center gap-4">
+                    <Icon
+                      className={`w-6 h-6 transition-colors duration-200 ${
+                        isActive
+                          ? "text-[#0080FF]"
+                          : "text-gray-600 group-hover:text-[#0080FF]"
+                      }`}
+                    />
+                    <span className="transition-colors duration-200">
+                      {item.label}
+                    </span>
+                  </div>
+                  {item.children &&
+                    (isOpen ? (
+                      <FiChevronUp
+                        className={`w-5 h-5  transition-colors duration-200  ${
+                          isActive
+                            ? "text-[#0080FF] "
+                            : "text-gray-500 group-hover:text-[#0080FF]"
+                        }`}
+                      />
+                    ) : (
+                      <FiChevronDown
+                        className={`w-5 h-5 transition-colors duration-200  ${
+                          isActive
+                            ? "text-[#0080FF]"
+                            : "text-gray-500 group-hover:text-[#0080FF]"
+                        }`}
+                      />
+                    ))}
+                </button>
+
+                {item.children && isOpen && (
+                  <div className="ml-8 mt-2 flex flex-col gap-1">
+                    {item.children.map((subItem, subIdx) => {
+                      const SubIcon = subItem.icon;
+                      const isSubActive = location.pathname === subItem.path;
+                      return (
+                        <button
+                          key={subIdx}
+                          onClick={() => navigate(subItem.path)}
+                          className={`group flex items-center gap-3 text-base font-medium px-3 py-2 rounded-lg transition-all duration-200 w-full ${
+                            isSubActive
+                              ? "bg-[#0080FF]/10 text-[#0080FF] border-l-4"
+                              : "text-gray-600 hover:bg-[#A0D4FF]/60 hover:text-[#0080FF]"
+                          }`}
+                        >
+                          <SubIcon
+                            className={`w-5 h-5 transition-colors duration-200 ${
+                              isSubActive
+                                ? "text-[#0080FF]"
+                                : "text-gray-600 group-hover:text-[#0080FF]"
+                            }`}
+                          />
+                          <span className="transition-colors duration-200">
+                            {subItem.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             );
           })}
         </nav>
@@ -91,22 +165,22 @@ const InstructorSidebar = () => {
       <div className="border-t border-blue-100 pt-3 mt-3">
         <button
           onClick={() => navigate(setting.path)}
-          className={`flex items-center gap-3 text-lg font-medium px-4 py-3 rounded-xl transition-all duration-200 w-full ${
+          className={`group flex items-center gap-3 text-lg font-medium px-4 py-3 rounded-xl transition-all duration-200 w-full ${
             location.pathname === setting.path
-              ? "bg-[#0080FF]/10 border-l-4 border-[#0080FF] text-[#0080FF] shadow-sm"
+              ? "bg-[#0080FF]/10 text-[#0080FF] shadow-sm border-l-4"
               : "text-gray-700 hover:bg-[#A0D4FF]/60 hover:text-[#0080FF]"
           }`}
         >
-          <span
-            className={`transition-transform duration-200 ${
+          <setting.icon
+            className={`w-6 h-6 transition-colors duration-200 ${
               location.pathname === setting.path
                 ? "text-[#0080FF]"
-                : "text-gray-600"
+                : "text-gray-600 group-hover:text-[#0080FF]"
             }`}
-          >
-            {setting.icon}
+          />
+          <span className="transition-colors duration-200">
+            {setting.label}
           </span>
-          <span>{setting.label}</span>
         </button>
       </div>
     </aside>
