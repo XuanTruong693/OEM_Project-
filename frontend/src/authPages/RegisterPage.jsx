@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { GoogleLogin } from "@react-oauth/google";
-import { jwtDecode } from "jwt-decode";
 import axiosClient from "../api/axiosClient";
 import LoadingSpinner from "../components/LoadingSpinner";
 
@@ -16,31 +15,20 @@ const RegisterPage = () => {
   });
   const [errors, setErrors] = useState({});
   const [success, setSuccess] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [role, setRole] = useState(localStorage.getItem("selectedRole") || "");
+  const [loading, setLoading] = useState(false);
+  const role = localStorage.getItem("selectedRole") || "";
 
+  // --- Kiểm tra role + roomId ---
   useEffect(() => {
-    // Kiểm tra nếu đã đăng nhập, redirect về dashboard
-    const token = localStorage.getItem("token");
-    const userRole = localStorage.getItem("role");
-    if (token && userRole) {
-      navigate(
-        `/${userRole === "student" ? "student" : "instructor"}-dashboard`
-      );
-      return;
-    }
-
-    if (!role) {
-      // Nếu không có role, redirect về trang chọn role
-      navigate("/role");
-    } else if (role === "student") {
-      // Nếu là student nhưng chưa có verifiedRoomId, redirect về verify-room
+    if (!role) navigate("/role");
+    else if (role === "student") {
       const verifiedRoomId = localStorage.getItem("verifiedRoomId");
-      if (!verifiedRoomId) {
-        navigate("/verify-room");
-      }
+      if (!verifiedRoomId) navigate("/verify-room");
     }
   }, [role, navigate]);
+
+  const handleChange = (e) =>
+    setForm({ ...form, [e.target.name]: e.target.value });
 
   const validate = () => {
     const newErrors = {};
@@ -57,11 +45,7 @@ const RegisterPage = () => {
     return newErrors;
   };
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setForm({ ...form, [name]: value });
-  };
-
+  // --- Đăng ký thường ---
   const handleRegister = async (e) => {
     e.preventDefault();
     const newErrors = validate();
@@ -71,103 +55,92 @@ const RegisterPage = () => {
       return;
     }
 
-    setIsLoading(true);
+    setLoading(true);
     setErrors({});
     setSuccess("");
-    const payload = {
-      full_name: `${form.lastName} ${form.firstName}`,
-      email: form.email,
-      password: form.password,
-      role: role,
-    };
-
-    console.log("Register payload:", payload);
 
     try {
-      if (role === "student") {
-        const storedRoomCode = localStorage.getItem("verifiedRoomCode");
-        if (!storedRoomCode) {
-          setErrors({
-            general:
-              "Không tìm thấy mã phòng thi. Vui lòng quay lại và xác thực lại.",
-          });
-          setIsLoading(false);
-          return;
-        }
-        payload.roomId = storedRoomCode;
-        console.log("Room Code xác thực:", storedRoomCode);
-      }
-
-      const res = await axiosClient.post("/auth/register", payload);
-      console.log("Register response:", res.data);
-
-      setSuccess("🎉 Đăng ký thành công! Đang chuyển hướng...");
-
-      // Delay để hiển thị thông báo thành công
-      setTimeout(() => {
-        localStorage.setItem("token", res.data.token);
-        localStorage.setItem("role", res.data.user.role);
-        navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
-      }, 1500);
-    } catch (error) {
-      console.error("Register error:", error);
-      setErrors({
-        general:
-          error.response?.data?.message || "Đăng ký thất bại, vui lòng thử lại",
-      });
-      setSuccess("");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleGoogleSuccess = async (credentialResponse) => {
-    setIsLoading(true);
-    setErrors({});
-    setSuccess("");
-    try {
-      console.log("🔹 Google login success:", credentialResponse);
-
       const payload = {
-        idToken: credentialResponse.credential,
+        full_name: `${form.lastName} ${form.firstName}`.trim(),
+        email: form.email,
+        password: form.password,
         role,
       };
 
-      // ✅ Nếu là student, cần thêm roomId
       if (role === "student") {
-        const storedRoomCode = localStorage.getItem("verifiedRoomCode");
-        if (!storedRoomCode) {
+        const roomId = localStorage.getItem("verifiedRoomId");
+        if (!roomId) {
           setErrors({
-            general:
-              "Không tìm thấy mã phòng thi. Vui lòng quay lại và xác thực lại.",
+            general: "Không tìm thấy mã phòng thi. Vui lòng xác thực lại.",
           });
-          setIsLoading(false);
+          setLoading(false);
           return;
         }
-        payload.roomId = storedRoomCode;
-        console.log("Room Code xác thực cho Google:", storedRoomCode);
+        payload.roomId = roomId;
+        console.log("[DEV] Register payload:", payload);
       }
 
-      const res = await axiosClient.post("/auth/google", payload);
+      const res = await axiosClient.post("/auth/register", payload);
+      console.log("[DEV] Register success:", res.data);
+      setSuccess("🎉 Đăng ký thành công! Đang chuyển hướng...");
 
-      console.log("✅ Google backend response:", res.data);
-
-      setSuccess("🎉 Đăng ký Google thành công! Đang chuyển hướng...");
-
-      // Delay để hiển thị thông báo thành công
       setTimeout(() => {
         localStorage.setItem("token", res.data.token);
         localStorage.setItem("role", res.data.user.role);
         navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
       }, 1500);
     } catch (error) {
-      console.error("Google register error:", error);
+      console.error("❌ Register error:", error);
+      setErrors({
+        general: error.response?.data?.message || "Đăng ký thất bại",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- Google Register ---
+  const handleGoogleSuccess = async (credentialResponse) => {
+    if (!credentialResponse?.credential) {
+      setErrors({ general: "Không nhận được Google credential" });
+      return;
+    }
+
+    setLoading(true);
+    setErrors({});
+    setSuccess("");
+
+    try {
+      const payload = { idToken: credentialResponse.credential, role };
+      if (role === "student") {
+        const roomId = localStorage.getItem("verifiedRoomId");
+        if (!roomId) {
+          setErrors({
+            general: "Không tìm thấy mã phòng thi. Vui lòng xác thực lại.",
+          });
+          setLoading(false);
+          return;
+        }
+        payload.roomId = roomId;
+      }
+
+      console.log("[DEV] Google register payload:", payload);
+      const res = await axiosClient.post("/auth/google", payload);
+      console.log("[DEV] Google register response:", res.data);
+      setSuccess("🎉 Đăng ký Google thành công! Đang chuyển hướng...");
+
+      setTimeout(() => {
+        localStorage.setItem("token", res.data.token);
+        localStorage.setItem("role", res.data.user.role);
+        navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
+      }, 1500);
+    } catch (error) {
+      console.error("❌ Google register error:", error);
       setErrors({
         general: error.response?.data?.message || "Đăng ký Google thất bại",
       });
-      setSuccess("");
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
@@ -177,7 +150,7 @@ const RegisterPage = () => {
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
-      <header className="flex flex-col md:flex-row items-center justify-between mx-auto w-full max-w-7xl px-3 py-2 md:px-4 md:py-3 gap-2 md:gap-3">
+      <header className="flex flex-col md:flex-row items-center justify-between mx-auto w-full max-w-7xl px-3 py-2 gap-2 md:gap-3">
         <img
           src="/Logo.png"
           alt="OEM Logo"
@@ -191,13 +164,13 @@ const RegisterPage = () => {
           <div className="overflow-hidden flex mb-6 rounded-full border border-[#a2b9ff]">
             <button
               onClick={() => navigate("/register")}
-              className="flex-1 py-2 text-center bg-[#51b9ff] font-semibold text-gray-900 transition-all"
+              className="flex-1 py-2 text-center bg-[#51b9ff] font-semibold text-gray-900"
             >
               Đăng ký
             </button>
             <button
               onClick={() => navigate("/login")}
-              className="flex-1 py-2 text-center bg-[#e2f6ff] font-medium text-gray-900 transition-all"
+              className="flex-1 py-2 text-center bg-[#e2f6ff] font-medium text-gray-900"
             >
               Đăng nhập
             </button>
@@ -209,91 +182,57 @@ const RegisterPage = () => {
 
           <form className="space-y-4" onSubmit={handleRegister}>
             <div className="flex flex-col sm:flex-row gap-3">
-              <div className="flex-1">
-                <input
-                  type="text"
-                  name="lastName"
-                  value={form.lastName}
-                  onChange={handleChange}
-                  placeholder="Họ"
-                  disabled={isLoading}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400"
-                />
-                {errors.lastName && (
-                  <p className="text-red-500 text-sm mt-1">{errors.lastName}</p>
-                )}
-              </div>
-              <div className="flex-1">
-                <input
-                  type="text"
-                  name="firstName"
-                  value={form.firstName}
-                  onChange={handleChange}
-                  placeholder="Tên"
-                  disabled={isLoading}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400"
-                />
-                {errors.firstName && (
-                  <p className="text-red-500 text-sm mt-1">
-                    {errors.firstName}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div>
               <input
-                type="email"
-                name="email"
-                value={form.email}
+                className="flex-1 p-3 border rounded-lg focus:ring-2 focus:ring-blue-400"
+                name="lastName"
+                placeholder="Họ"
+                value={form.lastName}
                 onChange={handleChange}
-                placeholder="Email"
-                disabled={isLoading}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400"
+                disabled={loading}
               />
-              {errors.email && (
-                <p className="text-red-500 text-sm mt-1">{errors.email}</p>
-              )}
-            </div>
-
-            <div>
               <input
-                type="password"
-                name="password"
-                value={form.password}
+                className="flex-1 p-3 border rounded-lg focus:ring-2 focus:ring-blue-400"
+                name="firstName"
+                placeholder="Tên"
+                value={form.firstName}
                 onChange={handleChange}
-                placeholder="Mật khẩu"
-                disabled={isLoading}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400"
+                disabled={loading}
               />
-              {errors.password && (
-                <p className="text-red-500 text-sm mt-1">{errors.password}</p>
-              )}
             </div>
-
-            <div>
-              <input
-                type="password"
-                name="confirmPassword"
-                value={form.confirmPassword}
-                onChange={handleChange}
-                placeholder="Nhập lại mật khẩu"
-                disabled={isLoading}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400"
-              />
-              {errors.confirmPassword && (
-                <p className="text-red-500 text-sm mt-1">
-                  {errors.confirmPassword}
-                </p>
-              )}
-            </div>
+            <input
+              type="email"
+              name="email"
+              placeholder="Email"
+              value={form.email}
+              onChange={handleChange}
+              disabled={loading}
+              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-400"
+            />
+            <input
+              type="password"
+              name="password"
+              placeholder="Mật khẩu"
+              value={form.password}
+              onChange={handleChange}
+              disabled={loading}
+              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-400"
+            />
+            <input
+              type="password"
+              name="confirmPassword"
+              placeholder="Nhập lại mật khẩu"
+              value={form.confirmPassword}
+              onChange={handleChange}
+              disabled={loading}
+              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-400"
+            />
 
             <button
               type="submit"
-              className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-semibold mt-2 active:scale-95 flex items-center justify-center"
-              disabled={isLoading}
+              disabled={loading}
+              className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold flex items-center justify-center"
             >
-              {isLoading ? (
+              {loading ? (
                 <LoadingSpinner size="sm" text="Đang xử lý..." />
               ) : (
                 "Đăng ký"
@@ -303,15 +242,10 @@ const RegisterPage = () => {
             <span className="block text-center text-gray-500 text-sm mt-3">
               Hoặc đăng ký nhanh bằng
             </span>
-
             <div className="flex justify-center mt-3">
               <GoogleLogin
                 onSuccess={handleGoogleSuccess}
                 onError={handleGoogleError}
-                shape="pill"
-                size="large"
-                text="signup_with"
-                disabled={isLoading}
               />
             </div>
 
@@ -320,7 +254,6 @@ const RegisterPage = () => {
                 {errors.general}
               </p>
             )}
-
             {success && (
               <p className="text-green-600 text-sm mt-2 text-center font-medium">
                 {success}

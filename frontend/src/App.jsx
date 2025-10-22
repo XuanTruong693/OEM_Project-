@@ -25,6 +25,7 @@ import AssignExam from "./pages/instructorPage/AssignExam.jsx";
 import ExamBank from "./pages/instructorPage/ExamBank.jsx";
 import Result from "./pages/instructorPage/Result.jsx";
 import Setting from "./pages/instructorPage/Setting.jsx";
+import StudentDashboard from "./pages/studentPage/StudentDashboard.jsx";
 
 import InstructorSidebar from "./components/instructor/InstructorSidebar.jsx";
 import Profile from "./pages/instructorPage/Profile.jsx";
@@ -101,7 +102,14 @@ const App = () => {
             </Layout>
           }
         />
-
+        <Route
+          path="/student-dashboard"
+          element={
+            <ProtectedRoute requiredRole="student">
+              <StudentDashboard />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/role" element={<RolePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />

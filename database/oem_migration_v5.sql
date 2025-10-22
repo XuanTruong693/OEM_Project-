@@ -402,6 +402,40 @@ JOIN exams e ON e.course_id = c.id
 LEFT JOIN submissions s ON s.exam_id = e.id
 GROUP BY e.id;
 
+-- Migrate existing verify_room_code data
+use oem_mini;
+ALTER TABLE users MODIFY COLUMN verify_room_code BOOLEAN DEFAULT FALSE;
+CREATE TABLE user_verified_rooms (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    exam_room_code VARCHAR(20) NOT NULL,
+    verified_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_uvr_user FOREIGN KEY (user_id)
+        REFERENCES users(id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_uvr_exam FOREIGN KEY (exam_room_code)
+        REFERENCES exams(exam_room_code)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    UNIQUE KEY uq_user_room (user_id, exam_room_code)
+);
+-- Migrate existing user avatars
+USE oem_mini;
+ALTER TABLE users
+ADD COLUMN avatar VARCHAR(255) NULL AFTER password_hash,
+ADD COLUMN gender ENUM('male', 'female', 'other') NULL AFTER avatar;
+
+-- View for instructor statistics
+CREATE OR REPLACE VIEW v_instructor_stats AS
+SELECT
+  c.instructor_id,
+  COUNT(DISTINCT e.id) AS total_exams,
+  COUNT(s.id) AS total_submissions,
+  COUNT(DISTINCT s.user_id) AS total_students
+FROM courses c
+LEFT JOIN exams e ON e.course_id = c.id
+LEFT JOIN submissions s ON s.exam_id = e.id
+GROUP BY c.instructor_id;
+
 -- ============================================================================
 -- ✅ END OF SCRIPT (OEM Mini v5 - Instructor Final Version)
 -- ============================================================================

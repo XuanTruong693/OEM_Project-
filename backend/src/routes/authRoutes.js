@@ -3,252 +3,174 @@ const { OAuth2Client } = require("google-auth-library");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const dotenv = require("dotenv");
-const User = require("../models/User");
-const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const { User, UserVerifiedRoom } = require("../models/User");
 dotenv.config();
-const router = express.Router();
 
-// 🔐 Hàm tạo token
-const generateToken = (user) => {
-  return jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {
+const router = express.Router();
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+// JWT generator
+const generateToken = (user) =>
+  jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {
     expiresIn: "1h",
   });
+
+// Helper: lấy exam theo roomId hoặc exam_room_code
+const getExamByRoom = async (roomId) => {
+  const Exam = require("../models/ExamRoom");
+  if (!roomId) return null;
+
+  // ✅ Fix: Kiểm tra nếu roomId là số thì lấy theo id, ngược lại lấy theo exam_room_code
+  if (/^\d+$/.test(roomId.toString())) {
+    return await Exam.findByPk(roomId);
+  } else {
+    return await Exam.findOne({ where: { exam_room_code: roomId } });
+  }
 };
-// 🌐 Đăng nhập với Google
+
+// --- Google login / create ---
 router.post("/google", async (req, res) => {
+  console.log("🟢 [BACKEND] Google login/register API hit!");
+  console.log("📩 Payload từ FE:", req.body);
+
   try {
     const { idToken, role, roomId } = req.body;
+    if (!idToken || !role)
+      return res
+        .status(400)
+        .json({ message: "Thiếu idToken hoặc role", status: "error" });
+    if (role === "student" && !roomId)
+      return res
+        .status(400)
+        .json({ message: "Học viên cần mã phòng thi", status: "error" });
 
-    if (!idToken || !role) {
-      return res.status(400).json({
-        message: "Thiếu thông tin (idToken hoặc role)",
-        status: "error",
-      });
-    }
-    console.log("🔍 CLIENT_ID BE:", process.env.GOOGLE_CLIENT_ID);
-    console.log("🔍 ID Token (audience):", jwt.decode(idToken)?.aud);
-
-    // ✅ Xác thực token với Google
     const ticket = await client.verifyIdToken({
       idToken,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
     const payload = ticket.getPayload();
-
     const email = payload.email?.toLowerCase().trim();
     const full_name = payload.name;
+    console.log(
+      "[Google Login] Verified email:",
+      email,
+      "full_name:",
+      full_name
+    );
+    if (role === "student") console.log("[Google Login] Room ID:", roomId);
+    if (!email || !full_name)
+      return res
+        .status(400)
+        .json({ message: "Google token không hợp lệ", status: "error" });
 
-    // ✅ Kiểm tra role hợp lệ
-    const validRoles = ["student", "instructor", "admin"];
-    if (!validRoles.includes(role)) {
-      return res.status(400).json({
-        message: "Vai trò không hợp lệ (phải chọn student hoặc instructor hoặc admin)",
-        status: "error",
-      });
-    }
-
-    // ✅ Kiểm tra student cần roomId
-    if (role === "student" && !roomId) {
-      return res.status(400).json({
-        message: "Học viên cần mã phòng thi để đăng nhập",
-        status: "error",
-      });
-    }
-
-    // ✅ Kiểm tra xem user đã tồn tại chưa
     let user = await User.findOne({ where: { email } });
 
     if (!user) {
-      // ✅ Nếu chưa, tạo mới user
       user = await User.create({
         full_name,
         email,
-        password_hash: await bcrypt.hash(Date.now().toString(), 10), // tạm thời sinh mật khẩu ngẫu nhiên
+        password_hash: await bcrypt.hash(Date.now().toString(), 10),
         role,
         created_at: new Date(),
       });
 
-      // ✅ Nếu là student, lưu exam_room_code vào verify_room_code (chỉ khi đăng ký lần đầu)
-      if (role === "student" && roomId) {
-        console.log("🔍 Setting verify_room_code for new Google student:", {
-          roomId,
-        });
-        // Tìm exam để lấy exam_room_code thực tế - roomId có thể là ID số hoặc exam_room_code
-        const Exam = require("../models/ExamRoom");
-        let exam;
-
-        // Thử tìm bằng ID trước, nếu không có thì tìm bằng exam_room_code
-        if (isNaN(roomId)) {
-          exam = await Exam.findOne({ where: { exam_room_code: roomId } });
-        } else {
-          exam = await Exam.findByPk(roomId);
-        }
-
-        if (exam) {
-          console.log("📋 Found exam for Google user:", exam.exam_room_code);
-          await user.update({ verify_room_code: exam.exam_room_code });
-        } else {
-          console.log("❌ Exam not found for Google user roomId:", roomId);
-          return res.status(400).json({
-            message: "Mã phòng thi không hợp lệ",
-            status: "error",
-          });
-        }
-      }
-    } else {
-      // ✅ Kiểm tra roomId có khớp với user không (nếu là student) - chỉ kiểm tra, không cập nhật
       if (role === "student") {
-        console.log("🔍 Verifying room code for existing Google student:", {
-          roomId,
-          userVerifyRoomCode: user.verify_room_code,
+        const exam = await getExamByRoom(roomId);
+        if (!exam)
+          return res
+            .status(400)
+            .json({ message: "Mã phòng thi không hợp lệ", status: "error" });
+
+        // ✅ Fix: đảm bảo lưu đúng exam_room_code
+        await UserVerifiedRoom.create({
+          user_id: user.id,
+          exam_room_code: exam.exam_room_code,
         });
+      }
+    } else if (role === "student") {
+      const exam = await getExamByRoom(roomId);
+      if (!exam)
+        return res
+          .status(400)
+          .json({ message: "Mã phòng thi không hợp lệ", status: "error" });
 
-        // Tìm exam để lấy exam_room_code - roomId có thể là ID số hoặc exam_room_code
-        const Exam = require("../models/ExamRoom");
-        let exam;
+      const verified = await UserVerifiedRoom.findOne({
+        where: { user_id: user.id, exam_room_code: exam.exam_room_code },
+      });
 
-        // Thử tìm bằng ID trước, nếu không có thì tìm bằng exam_room_code
-        if (isNaN(roomId)) {
-          exam = await Exam.findOne({ where: { exam_room_code: roomId } });
-        } else {
-          exam = await Exam.findByPk(roomId);
-        }
-
-        if (!exam) {
-          console.log("❌ Exam not found for Google user roomId:", roomId);
-          return res.status(400).json({
-            message: "Mã phòng thi không hợp lệ",
-            status: "error",
-          });
-        }
-
-        if (user.verify_room_code !== exam.exam_room_code) {
-          console.log("❌ Google user room code mismatch:", {
-            provided: exam.exam_room_code,
-            stored: user.verify_room_code,
-          });
-          return res.status(400).json({
-            message: "Mã phòng thi không khớp với tài khoản",
-            status: "error",
-          });
-        }
-
-        console.log("✅ Google user room code verified successfully");
+      // ✅ Fix: kiểm tra nếu chưa có thì thêm mới, tránh lỗi “không khớp tài khoản”
+      if (!verified) {
+        await UserVerifiedRoom.create({
+          user_id: user.id,
+          exam_room_code: exam.exam_room_code,
+        });
+        console.log("[Google Login] ➕ Tự động liên kết user với phòng thi.");
       }
     }
 
-    // ✅ Sinh token JWT
-    const token = jwt.sign(
-      { id: user.id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "1h" }
-    );
-
+    console.log(`[Google Login] ✅ Đăng nhập thành công cho ${email}`);
+    const token = generateToken(user);
     res.json({
       message: "Đăng nhập Google thành công",
       status: "success",
       token,
-      user: {
-        id: user.id,
-        full_name: user.full_name,
-        role: user.role,
-      },
+      user: { id: user.id, full_name: user.full_name, role: user.role },
     });
   } catch (err) {
-    console.error("❌ Lỗi Google Login:", err);
-    res.status(500).json({
-      message: "Lỗi xác thực Google hoặc server",
-      status: "error",
-    });
+    console.error("❌ Lỗi Google Login:", err.stack);
+    res
+      .status(500)
+      .json({ message: "Lỗi xác thực Google hoặc server", status: "error" });
   }
 });
 
-// 📝 Đăng ký thường
+// --- Register ---
 router.post("/register", async (req, res) => {
   try {
-    let { full_name, email, password, role, roomId } = req.body;
+    const { full_name, email, password, role, roomId } = req.body;
+    console.log("[Register] Payload:", req.body);
+    console.log("[Register] Creating user:", full_name, email);
+    if (role === "student") console.log("[Register] Verified Room:", roomId);
+    if (!full_name || !email || !password || !role)
+      return res
+        .status(400)
+        .json({ message: "Thiếu thông tin đăng ký", status: "error" });
 
-    if (!email || !password || !full_name || !role) {
-      return res.status(400).json({
-        message: "Thiếu thông tin đăng ký (full_name, email, password, role)",
-        status: "error",
-      });
-    }
+    if (role === "student" && !roomId)
+      return res
+        .status(400)
+        .json({ message: "Học viên cần mã phòng thi", status: "error" });
 
-    // Chuẩn hóa email (tránh trùng viết hoa/thường)
-    email = email.toLowerCase().trim();
-
-    // ✅ Kiểm tra role hợp lệ
-    const validRoles = ["student", "instructor"];
-    if (!validRoles.includes(role)) {
-      return res.status(400).json({
-        message: "Vai trò không hợp lệ (phải chọn student hoặc instructor)",
-        status: "error",
-      });
-    }
-
-    // ✅ Kiểm tra student cần roomId
-    if (role === "student" && !roomId) {
-      return res.status(400).json({
-        message: "Học viên cần mã phòng thi để đăng ký",
-        status: "error",
-      });
-    }
-
-    // Kiểm tra email đã tồn tại chưa
-    const existingUser = await User.findOne({ where: { email } });
-    if (existingUser) {
+    const existingUser = await User.findOne({
+      where: { email: email.toLowerCase().trim() },
+    });
+    if (existingUser)
       return res
         .status(400)
         .json({ message: "Email đã tồn tại", status: "error" });
-    }
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Tạo user mới
     const newUser = await User.create({
       full_name,
-      email,
+      email: email.toLowerCase().trim(),
       password_hash: hashedPassword,
       role,
       created_at: new Date(),
     });
 
-    // ✅ Nếu là student, lưu exam_room_code vào verify_room_code (chỉ khi đăng ký lần đầu)
-    if (role === "student" && roomId) {
-      console.log("🔍 Setting verify_room_code for new student:", {
-        roomId,
-        type: typeof roomId,
+    if (role === "student") {
+      const exam = await getExamByRoom(roomId);
+      if (!exam)
+        return res
+          .status(400)
+          .json({ message: "Mã phòng thi không hợp lệ", status: "error" });
+      await UserVerifiedRoom.create({
+        user_id: newUser.id,
+        exam_room_code: exam.exam_room_code,
       });
-      // Tìm exam để lấy exam_room_code thực tế - roomId có thể là ID số hoặc exam_room_code
-      const Exam = require("../models/ExamRoom");
-      let exam;
-
-      // Thử tìm bằng ID trước, nếu không có thì tìm bằng exam_room_code
-      if (isNaN(roomId)) {
-        exam = await Exam.findOne({ where: { exam_room_code: roomId } });
-      } else {
-        exam = await Exam.findByPk(roomId);
-      }
-
-      if (exam) {
-        console.log("📋 Found exam:", exam.exam_room_code);
-        // Cập nhật verify_room_code với exam_room_code thực tế
-        await newUser.update({ verify_room_code: exam.exam_room_code });
-        console.log("✅ Updated verify_room_code to:", exam.exam_room_code);
-      } else {
-        console.log("❌ Exam not found for roomId:", roomId);
-        return res.status(400).json({
-          message: "Mã phòng thi không hợp lệ",
-          status: "error",
-        });
-      }
     }
 
-    // Sinh JWT
     const token = generateToken(newUser);
-
     res.status(201).json({
       message: "Đăng ký thành công",
       status: "success",
@@ -264,118 +186,46 @@ router.post("/register", async (req, res) => {
     res.status(500).json({ message: "Lỗi server", status: "error" });
   }
 });
-// 🌐 Đăng nhập với Google (nếu user đã có)
-router.post("/google-login", async (req, res) => {
-  try {
-    const { idToken } = req.body;
 
-    if (!idToken) {
-      return res
-        .status(400)
-        .json({ message: "Thiếu idToken", status: "error" });
-    }
-
-    const ticket = await client.verifyIdToken({
-      idToken,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-
-    const payload = ticket.getPayload();
-    const email = payload.email?.toLowerCase().trim();
-
-    const user = await User.findOne({ where: { email } });
-
-    if (!user) {
-      return res.status(404).json({
-        message: "Tài khoản Google chưa được đăng ký",
-        status: "error",
-      });
-    }
-
-    const token = jwt.sign(
-      { id: user.id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "1h" }
-    );
-
-    res.json({
-      message: "Đăng nhập Google thành công",
-      status: "success",
-      token,
-      user: {
-        id: user.id,
-        full_name: user.full_name,
-        role: user.role,
-      },
-    });
-  } catch (err) {
-    console.error("❌ Lỗi Google Login:", err);
-    res.status(500).json({ message: "Lỗi xác thực Google", status: "error" });
-  }
-});
-// 🔑 Đăng nhập thường
+// --- Login thường ---
 router.post("/login", async (req, res) => {
   try {
     const { email, password, role, roomId } = req.body;
-    const user = await User.findOne({ where: { email } });
-
-    if (!user) {
+    console.log("[Login] Payload:", req.body);
+    const user = await User.findOne({
+      where: { email: email.toLowerCase().trim() },
+    });
+    if (!user)
       return res
         .status(404)
         .json({ message: "Không tìm thấy tài khoản", status: "error" });
-    }
 
     const isMatch = await bcrypt.compare(password, user.password_hash);
-    if (!isMatch) {
+    if (!isMatch)
       return res.status(400).json({ message: "Sai mật khẩu", status: "error" });
-    }
 
-    // ✅ Kiểm tra student có roomId không
-    if (role === "student" && !roomId) {
-      return res.status(400).json({
-        message: "Học viên cần mã phòng thi để đăng nhập",
-        status: "error",
-      });
-    }
-
-    // ✅ Kiểm tra roomId có khớp với user không (nếu là student) - chỉ kiểm tra, không cập nhật
     if (role === "student") {
-      console.log("🔍 Verifying room code for existing student:", {
-        roomId,
-        userVerifyRoomCode: user.verify_room_code,
+      if (!roomId)
+        return res
+          .status(400)
+          .json({ message: "Học viên cần mã phòng thi", status: "error" });
+      const exam = await getExamByRoom(roomId);
+      if (!exam)
+        return res
+          .status(400)
+          .json({ message: "Mã phòng thi không hợp lệ", status: "error" });
+      const verified = await UserVerifiedRoom.findOne({
+        where: { user_id: user.id, exam_room_code: exam.exam_room_code },
       });
 
-      // Tìm exam để lấy exam_room_code - roomId có thể là ID số hoặc exam_room_code
-      const Exam = require("../models/ExamRoom");
-      let exam;
-
-      // Thử tìm bằng ID trước, nếu không có thì tìm bằng exam_room_code
-      if (isNaN(roomId)) {
-        exam = await Exam.findOne({ where: { exam_room_code: roomId } });
-      } else {
-        exam = await Exam.findByPk(roomId);
-      }
-
-      if (!exam) {
-        console.log("❌ Exam not found for roomId:", roomId);
-        return res.status(400).json({
-          message: "Mã phòng thi không hợp lệ",
-          status: "error",
+      // ✅ Fix: nếu học viên chưa từng lưu mã phòng, tự động thêm
+      if (!verified) {
+        await UserVerifiedRoom.create({
+          user_id: user.id,
+          exam_room_code: exam.exam_room_code,
         });
+        console.log("[Login] ➕ Liên kết user với phòng thi mới.");
       }
-
-      if (user.verify_room_code !== exam.exam_room_code) {
-        console.log("❌ Room code mismatch:", {
-          provided: exam.exam_room_code,
-          stored: user.verify_room_code,
-        });
-        return res.status(400).json({
-          message: "Mã phòng thi không khớp với tài khoản",
-          status: "error",
-        });
-      }
-
-      console.log("✅ Room code verified successfully");
     }
 
     const token = generateToken(user);
@@ -383,11 +233,7 @@ router.post("/login", async (req, res) => {
       message: "Đăng nhập thành công",
       status: "success",
       token,
-      user: {
-        id: user.id,
-        full_name: user.full_name,
-        role: user.role,
-      },
+      user: { id: user.id, full_name: user.full_name, role: user.role },
     });
   } catch (err) {
     console.error("❌ Lỗi đăng nhập:", err);
@@ -395,54 +241,30 @@ router.post("/login", async (req, res) => {
   }
 });
 
-// 🏫 Xác minh mã phòng (Verify Room) - Database lookup
+// --- Verify Room ---
 router.get("/verify-room/:code", async (req, res) => {
   try {
     const { code } = req.params;
-    console.log("🔍 Verifying room code:", code);
-
-    // Tìm exam trong database theo exam_room_code
     const Exam = require("../models/ExamRoom");
-    const exam = await Exam.findOne({
-      where: { exam_room_code: code },
-    });
+    const exam = await Exam.findOne({ where: { exam_room_code: code } });
 
-    console.log(
-      "📋 Found exam:",
-      exam
-        ? {
-            id: exam.id,
-            exam_room_code: exam.exam_room_code,
-            title: exam.title,
-            status: exam.status,
-          }
-        : "Not found"
-    );
-
-    if (!exam) {
-      console.log("❌ Exam not found for code:", code);
+    if (!exam)
       return res.json({ valid: false, message: "Mã phòng không hợp lệ" });
-    }
-
-    // Kiểm tra trạng thái exam
-    if (exam.status !== "published") {
-      console.log("❌ Exam not published, status:", exam.status);
+    if (exam.status !== "published")
       return res.json({
         valid: false,
         message: "Phòng thi chưa được kích hoạt",
       });
-    }
 
-    console.log("✅ Room verification successful");
-    return res.json({
+    res.json({
       valid: true,
-      roomId: exam.id,
+      roomId: exam.exam_room_code, // ✅ Fix: gửi exam_room_code thay vì exam.id
       examCode: code,
       title: exam.title,
     });
-  } catch (error) {
-    console.error("❌ Lỗi verify room:", error);
-    return res.status(500).json({ valid: false, message: "Lỗi server" });
+  } catch (err) {
+    console.error("❌ Lỗi verify room:", err);
+    res.status(500).json({ valid: false, message: "Lỗi server" });
   }
 });
 

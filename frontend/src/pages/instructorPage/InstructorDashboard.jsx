@@ -100,20 +100,21 @@ const InstructorDashboard = () => {
   return (
     <div className="flex bg-gray-50 min-h-screen">
       <main className="flex-1 p-6">
+        {/* Header */}
         <div className="flex justify-end items-center mb-6">
           <div
             onClick={() => navigate("/profile")}
-            className="flex items-center gap-3 px-4 py-2"
+            className="flex items-center gap-3 px-4 py-2 cursor-pointer hover:bg-gray-100 rounded-lg transition"
           >
             <img
               src={userInfo.avatar}
               alt="User Avatar"
               title="Xem hồ sơ cá nhân"
-              className="w-10 h-10 rounded-full border border-gray-200 object-cover cursor-pointer"
+              className="w-10 h-10 rounded-full border border-gray-200 object-cover"
             />
-            <div className="flex items-center gap-2 cursor-pointer  px-3 py-1 rounded-lg transition">
-              <p className="text-gray-500 text-sm">Xin chào,</p>
-              <p className="font-semibold text-gray-700 ">
+            <div className="flex items-center gap-2">
+              <p className="text-gray-500 text-sm leading-tight">Xin chào,</p>
+              <p className="font-semibold text-[#606060]">
                 {userInfo.fullname}
               </p>
             </div>
@@ -154,6 +155,7 @@ const InstructorDashboard = () => {
             </a>
           </div>
 
+          {/* Tổng số bài kiểm tra */}
           <div className="bg-white rounded-xl shadow-sm p-6 flex flex-col justify-between">
             <div className="flex items-center gap-4">
               <div className="bg-red-500 p-3 rounded-full flex items-center justify-center">
