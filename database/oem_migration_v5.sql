@@ -403,7 +403,10 @@ LEFT JOIN submissions s ON s.exam_id = e.id
 GROUP BY e.id;
 
 -- Migrate existing verify_room_code data
+ALTER TABLE users DROP FOREIGN KEY fk_users_verify_room_code;
+ALTER TABLE users MODIFY COLUMN verify_room_code BOOLEAN DEFAULT FALSE;
 use oem_mini;
+
 ALTER TABLE users MODIFY COLUMN verify_room_code BOOLEAN DEFAULT FALSE;
 CREATE TABLE user_verified_rooms (
     id INT AUTO_INCREMENT PRIMARY KEY,
