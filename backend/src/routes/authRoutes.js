@@ -125,53 +125,84 @@ router.post("/google", async (req, res) => {
   }
 });
 
-// --- Register ---
+// --- Register thường ---
 router.post("/register", async (req, res) => {
   try {
     const { full_name, email, password, role, roomId } = req.body;
     console.log("[Register] Payload:", req.body);
     console.log("[Register] Creating user:", full_name, email);
     if (role === "student") console.log("[Register] Verified Room:", roomId);
-    if (!full_name || !email || !password || !role)
+
+    // ✅ Kiểm tra thông tin đầu vào
+    if (!full_name || !email || !password || !role) {
+      console.log("[Register] ❌ Thiếu thông tin đăng ký.");
       return res
         .status(400)
         .json({ message: "Thiếu thông tin đăng ký", status: "error" });
+    }
 
-    if (role === "student" && !roomId)
+    if (role === "student" && !roomId) {
+      console.log("[Register] ❌ Học viên chưa nhập mã phòng thi.");
       return res
         .status(400)
         .json({ message: "Học viên cần mã phòng thi", status: "error" });
+    }
 
+    // ✅ Kiểm tra định dạng email hợp lệ
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email))
+    if (!emailRegex.test(email)) {
+      console.log(`[Register] ❌ Email không hợp lệ: ${email}`);
       return res
         .status(400)
         .json({ message: "Định dạng email không hợp lệ", status: "error" });
+    }
 
+    // ✅ Kiểm tra domain email có thật (MX record)
     const domain = email.split("@")[1];
     try {
       const mxRecords = await dns.resolveMx(domain);
+
       if (!mxRecords || mxRecords.length === 0) {
+        console.log(
+          `[Register] ❌ Domain "${domain}" không tồn tại (MX trống).`
+        );
         return res.status(400).json({
-          message: "Tên miền email không tồn tại hoặc không thể gửi/nhận mail",
+          message: "Email không tồn tại hoặc không thể nhận thư.",
           status: "error",
         });
       }
+
+      console.log(
+        `[Register] ✅ Domain "${domain}" hợp lệ (MX records found).`
+      );
     } catch (dnsErr) {
+      console.log(
+        `[Register] ❌ Lỗi xác minh domain "${domain}":`,
+        dnsErr.message
+      );
+      console.log(
+        "[Register] Email đăng ký không tồn tại hoặc không thể xác minh!"
+      );
       return res.status(400).json({
-        message: "Tên miền email không hợp lệ hoặc không thể xác minh",
+        message:
+          "Không thể xác minh email này. Vui lòng nhập email thật hoặc kiểm tra lại chính tả.",
         status: "error",
       });
     }
 
+    // ✅ Kiểm tra email đã tồn tại trong DB chưa
     const existingUser = await User.findOne({
       where: { email: email.toLowerCase().trim() },
     });
-    if (existingUser)
+
+    if (existingUser) {
+      console.log(`[Register] ❌ Email đã tồn tại trong hệ thống: ${email}`);
       return res
         .status(400)
         .json({ message: "Email đã được đăng ký", status: "error" });
+    }
 
+    // ✅ Mã hóa mật khẩu & tạo user
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = await User.create({
       full_name,
@@ -181,19 +212,41 @@ router.post("/register", async (req, res) => {
       created_at: new Date(),
     });
 
+    console.log(`[Register] ✅ Tạo user mới thành công: ${email}`);
+
+    // ✅ Nếu là học viên → kiểm tra phòng thi & liên kết
     if (role === "student") {
-      const exam = await getExamByRoom(roomId);
-      if (!exam)
+      try {
+        const exam = await getExamByRoom(roomId);
+        if (!exam) {
+          console.log(`[Register] ❌ Mã phòng thi không hợp lệ: ${roomId}`);
+          return res
+            .status(400)
+            .json({ message: "Mã phòng thi không hợp lệ", status: "error" });
+        }
+
+        await UserVerifiedRoom.create({
+          user_id: newUser.id,
+          exam_room_code: exam.exam_room_code,
+        });
+        console.log(
+          `[Register] ✅ Đã liên kết học viên (ID: ${newUser.id}) với phòng thi: ${exam.exam_room_code}`
+        );
+      } catch (examErr) {
+        console.log(
+          `[Register] ⚠️ Lỗi khi xử lý mã phòng thi:`,
+          examErr.message
+        );
         return res
-          .status(400)
-          .json({ message: "Mã phòng thi không hợp lệ", status: "error" });
-      await UserVerifiedRoom.create({
-        user_id: newUser.id,
-        exam_room_code: exam.exam_room_code,
-      });
+          .status(500)
+          .json({ message: "Lỗi khi xác minh phòng thi", status: "error" });
+      }
     }
 
+    // ✅ Tạo JWT token & trả phản hồi
     const token = generateToken(newUser);
+    console.log(`[Register] 🎉 Đăng ký thành công cho user: ${email}`);
+
     res.status(201).json({
       message: "Đăng ký thành công",
       status: "success",
@@ -216,89 +269,127 @@ router.post("/login", async (req, res) => {
     const { email, password, role, roomId } = req.body;
     console.log("[Login] Payload:", req.body);
 
+    // ✅ 1. Kiểm tra thông tin đầu vào
     if (!email || !password) {
+      console.log("[Login] ❌ Thiếu email hoặc mật khẩu.");
       return res.status(400).json({
         message: "Vui lòng nhập đầy đủ email và mật khẩu",
         status: "error",
       });
     }
 
+    // ✅ 2. Kiểm tra định dạng email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
+      console.log(`[Login] ❌ Email không hợp lệ: ${email}`);
       return res
         .status(400)
         .json({ message: "Địa chỉ email không hợp lệ", status: "error" });
     }
 
+    // ✅ 3. Kiểm tra domain email có tồn tại không (MX check)
     const domain = email.split("@")[1];
     try {
       const mxRecords = await dns.resolveMx(domain);
       if (!mxRecords || mxRecords.length === 0) {
+        console.log(`[Login] ❌ Domain email "${domain}" không tồn tại.`);
         return res.status(400).json({
-          message: "Email này không tồn tại hoặc không thể nhận thư",
+          message: "Email này không tồn tại hoặc không thể nhận thư.",
           status: "error",
         });
       }
-    } catch {
+      console.log(`[Login] ✅ Domain "${domain}" hợp lệ (MX records found).`);
+    } catch (dnsErr) {
+      console.log(
+        `[Login] ❌ Lỗi xác minh domain "${domain}":`,
+        dnsErr.message
+      );
       return res.status(400).json({
-        message: "Không thể xác minh tên miền email, vui lòng kiểm tra lại",
+        message: "Không thể xác minh tên miền email, vui lòng kiểm tra lại.",
         status: "error",
       });
     }
 
-    // kiểm tra trong database
+    // ✅ 4. Kiểm tra tài khoản trong DB
     const user = await User.findOne({
       where: { email: email.toLowerCase().trim() },
     });
+
     if (!user) {
-      return res
-        .status(404)
-        .json({ message: "Không tìm thấy tài khoản", status: "error" });
+      console.log(`[Login] ❌ Không tìm thấy tài khoản với email: ${email}`);
+      return res.status(404).json({
+        message: "Không tìm thấy tài khoản",
+        status: "error",
+      });
     }
 
+    // ✅ 5. Kiểm tra mật khẩu
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
+      console.log(`[Login] ❌ Sai mật khẩu cho tài khoản: ${email}`);
       return res.status(400).json({
         message: "Mật khẩu không chính xác",
         status: "error",
       });
     }
 
+    // ✅ 6. Kiểm tra quyền và mã phòng thi (nếu là học viên)
     if (role === "student") {
-      if (!roomId)
+      if (!roomId) {
+        console.log("[Login] ❌ Học viên chưa nhập mã phòng thi.");
         return res
           .status(400)
           .json({ message: "Học viên cần mã phòng thi", status: "error" });
+      }
 
       const exam = await getExamByRoom(roomId);
-      if (!exam)
+      if (!exam) {
+        console.log(`[Login] ❌ Mã phòng thi không hợp lệ: ${roomId}`);
         return res
           .status(400)
           .json({ message: "Mã phòng thi không hợp lệ", status: "error" });
+      }
+
       const verified = await UserVerifiedRoom.findOne({
         where: { user_id: user.id, exam_room_code: exam.exam_room_code },
       });
 
-      // ✅ Fix: nếu học viên chưa từng lưu mã phòng, tự động thêm
       if (!verified) {
         await UserVerifiedRoom.create({
           user_id: user.id,
           exam_room_code: exam.exam_room_code,
         });
-        console.log("[Login] ➕ Liên kết user với phòng thi mới.");
+        console.log(
+          `[Login] ➕ Đã tự động liên kết user (ID: ${user.id}) với phòng thi: ${exam.exam_room_code}`
+        );
+      } else {
+        console.log(
+          `[Login] ✅ Học viên đã có liên kết phòng thi: ${exam.exam_room_code}`
+        );
       }
     }
 
+    // ✅ 7. Tạo JWT token và phản hồi
     const token = generateToken(user);
-    res.json({
+    console.log(`[Login] ✅ Đăng nhập thành công cho user: ${email}`);
+
+    return res.json({
       message: "Đăng nhập thành công",
       status: "success",
       token,
-      user: { id: user.id, full_name: user.full_name, role: user.role },
+      user: {
+        id: user.id,
+        full_name: user.full_name,
+        email: user.email,
+        role: user.role,
+      },
     });
   } catch (err) {
     console.error("❌ Lỗi đăng nhập:", err);
-    res.status(500).json({ message: "Lỗi server", status: "error" });
+    return res.status(500).json({
+      message: "Lỗi server",
+      status: "error",
+    });
   }
 });
 

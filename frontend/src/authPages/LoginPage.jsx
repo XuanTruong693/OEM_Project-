@@ -21,7 +21,9 @@ const LoginPage = () => {
       const token = localStorage.getItem("token");
       const userRole = localStorage.getItem("role");
       if (token && userRole) {
-        navigate(`/${userRole === "student" ? "student" : "instructor"}-dashboard`);
+        navigate(
+          `/${userRole === "student" ? "student" : "instructor"}-dashboard`
+        );
         return;
       }
     }
@@ -51,6 +53,7 @@ const LoginPage = () => {
   // --- Login thường ---
   const handleLogin = async (e) => {
     e.preventDefault();
+
     const newErrors = validate();
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -81,24 +84,46 @@ const LoginPage = () => {
         payload.roomId = roomId;
       }
 
-      console.log("[DEV] Login payload gửi backend:", payload);
+      console.log("[DEV] 🚀 Gửi request đăng nhập với payload:", payload);
+
       const res = await axiosClient.post("/auth/login", payload);
-      console.log("[DEV] ✅ Login thành công:", res.data);
+
+      console.log("[DEV] ✅ Đăng nhập thành công:", res.data);
 
       setSuccess("🎉 Đăng nhập thành công! Đang chuyển hướng...");
 
       setTimeout(() => {
         localStorage.setItem("token", res.data.token);
         localStorage.setItem("role", res.data.user.role);
-        localStorage.setItem("fullname", res.data.user.full_name || "Người dùng");
-        localStorage.setItem("avatar", res.data.user.avatar || "/icons/UI Image/default-avatar.png");
+        localStorage.setItem(
+          "fullname",
+          res.data.user.full_name || "Người dùng"
+        );
+        localStorage.setItem(
+          "avatar",
+          res.data.user.avatar || "/icons/UI Image/default-avatar.png"
+        );
 
         navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
       }, 1500);
     } catch (error) {
-      console.error("❌ Lỗi đăng nhập:", error?.response?.data || error);
+      console.error("❌ [Login Error] Chi tiết lỗi đầy đủ:", error);
+
+      // Log chi tiết hơn từng phần để biết nguyên nhân
+      if (error.response) {
+        console.error("📩 [Server Response]:", error.response.data);
+        console.error("🔢 [Status Code]:", error.response.status);
+        console.error("📡 [Headers]:", error.response.headers);
+      } else if (error.request) {
+        console.error("📭 [No Response từ Server]:", error.request);
+      } else {
+        console.error("⚠️ [Error Message]:", error.message);
+      }
+
       setErrors({
-        general: error.response?.data?.message || "Đăng nhập thất bại",
+        general:
+          error.response?.data?.message ||
+          "Đăng nhập thất bại, vui lòng thử lại.",
       });
       setSuccess("");
     } finally {
@@ -144,8 +169,14 @@ const LoginPage = () => {
       setTimeout(() => {
         localStorage.setItem("token", res.data.token);
         localStorage.setItem("role", res.data.user.role);
-        localStorage.setItem("fullname", res.data.user.full_name || "Người dùng");
-        localStorage.setItem("avatar", res.data.user.avatar || "/icons/UI Image/default-avatar.png");
+        localStorage.setItem(
+          "fullname",
+          res.data.user.full_name || "Người dùng"
+        );
+        localStorage.setItem(
+          "avatar",
+          res.data.user.avatar || "/icons/UI Image/default-avatar.png"
+        );
 
         navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
       }, 1500);

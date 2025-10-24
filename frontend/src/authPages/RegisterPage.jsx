@@ -80,8 +80,12 @@ const RegisterPage = () => {
         console.log("[DEV] Register payload:", payload);
       }
 
+      console.log("[DEV] 🚀 Gửi request đăng ký với payload:", payload);
+
       const res = await axiosClient.post("/auth/register", payload);
-      console.log("[DEV] Register success:", res.data);
+
+      console.log("[DEV] ✅ Đăng ký thành công:", res.data);
+
       setSuccess("🎉 Đăng ký thành công! Đang chuyển hướng...");
 
       setTimeout(() => {
@@ -90,9 +94,38 @@ const RegisterPage = () => {
         navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
       }, 1500);
     } catch (error) {
-      console.error("❌ Register error:", error);
+      console.error("❌ [Register Error] Chi tiết lỗi đầy đủ:", error);
+
+      if (error.response) {
+        const message = error.response.data?.message || "";
+
+        console.error("📩 [Server Response]:", error.response.data);
+        console.error("🔢 [Status Code]:", error.response.status);
+        console.error("📡 [Headers]:", error.response.headers);
+
+        // 🟠 Bổ sung log riêng cho email hoặc domain không tồn tại
+        if (
+          message.includes("Tên miền email không tồn tại") ||
+          message.includes("không hợp lệ") ||
+          message.includes("không thể xác minh") ||
+          message.includes("Email đăng ký không tồn tại")
+        ) {
+          console.warn(
+            `[Register] ⚠️ Email hoặc domain không tồn tại: ${payload.email}`
+          );
+        } else if (message.includes("Email đã được đăng ký")) {
+          console.warn(`[Register] ⚠️ Email đã tồn tại: ${payload.email}`);
+        }
+      } else if (error.request) {
+        console.error("📭 [No Response từ Server]:", error.request);
+      } else {
+        console.error("⚠️ [Error Message]:", error.message);
+      }
+
       setErrors({
-        general: error.response?.data?.message || "Đăng ký thất bại",
+        general:
+          error.response?.data?.message ||
+          "Đăng ký thất bại, vui lòng thử lại.",
       });
     } finally {
       setLoading(false);
