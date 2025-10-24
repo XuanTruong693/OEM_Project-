@@ -425,7 +425,7 @@ CREATE TABLE user_verified_rooms (
 USE oem_mini;
 ALTER TABLE users
 ADD COLUMN avatar VARCHAR(255) NULL AFTER password_hash,
-ADD COLUMN gender ENUM('male', 'female', 'other') NULL AFTER avatar;
+ADD COLUMN gender ENUM('male', 'female', 'other') NULL AFTER avatar,
 ADD COLUMN address VARCHAR(255) AFTER full_name,
 ADD COLUMN phone_number VARCHAR(20) AFTER address;
 
