@@ -35,8 +35,8 @@ const RegisterPage = () => {
     if (!form.lastName.trim()) newErrors.lastName = "Vui lòng nhập họ";
     if (!form.firstName.trim()) newErrors.firstName = "Vui lòng nhập tên";
     if (!form.email.trim()) newErrors.email = "Vui lòng nhập email";
-    else if (!/\S+@\S+\.\S+/.test(form.email))
-      newErrors.email = "Email không hợp lệ";
+    else if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(form.email))
+      newErrors.email = "Định dạng email không hợp lệ";
     if (!form.password.trim()) newErrors.password = "Vui lòng nhập mật khẩu";
     else if (form.password.length < 6)
       newErrors.password = "Mật khẩu phải ít nhất 6 ký tự";

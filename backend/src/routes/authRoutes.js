@@ -4,6 +4,7 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const dotenv = require("dotenv");
 const { User, UserVerifiedRoom } = require("../models/User");
+const dns = require("dns").promises;
 dotenv.config();
 
 const router = express.Router();
@@ -141,13 +142,35 @@ router.post("/register", async (req, res) => {
         .status(400)
         .json({ message: "Học viên cần mã phòng thi", status: "error" });
 
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email))
+      return res
+        .status(400)
+        .json({ message: "Định dạng email không hợp lệ", status: "error" });
+
+    const domain = email.split("@")[1];
+    try {
+      const mxRecords = await dns.resolveMx(domain);
+      if (!mxRecords || mxRecords.length === 0) {
+        return res.status(400).json({
+          message: "Tên miền email không tồn tại hoặc không thể gửi/nhận mail",
+          status: "error",
+        });
+      }
+    } catch (dnsErr) {
+      return res.status(400).json({
+        message: "Tên miền email không hợp lệ hoặc không thể xác minh",
+        status: "error",
+      });
+    }
+
     const existingUser = await User.findOne({
       where: { email: email.toLowerCase().trim() },
     });
     if (existingUser)
       return res
         .status(400)
-        .json({ message: "Email đã tồn tại", status: "error" });
+        .json({ message: "Email đã được đăng ký", status: "error" });
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = await User.create({
@@ -192,23 +215,61 @@ router.post("/login", async (req, res) => {
   try {
     const { email, password, role, roomId } = req.body;
     console.log("[Login] Payload:", req.body);
+
+    if (!email || !password) {
+      return res.status(400).json({
+        message: "Vui lòng nhập đầy đủ email và mật khẩu",
+        status: "error",
+      });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res
+        .status(400)
+        .json({ message: "Địa chỉ email không hợp lệ", status: "error" });
+    }
+
+    const domain = email.split("@")[1];
+    try {
+      const mxRecords = await dns.resolveMx(domain);
+      if (!mxRecords || mxRecords.length === 0) {
+        return res.status(400).json({
+          message: "Email này không tồn tại hoặc không thể nhận thư",
+          status: "error",
+        });
+      }
+    } catch {
+      return res.status(400).json({
+        message: "Không thể xác minh tên miền email, vui lòng kiểm tra lại",
+        status: "error",
+      });
+    }
+
+    // kiểm tra trong database
     const user = await User.findOne({
       where: { email: email.toLowerCase().trim() },
     });
-    if (!user)
+    if (!user) {
       return res
         .status(404)
         .json({ message: "Không tìm thấy tài khoản", status: "error" });
+    }
 
     const isMatch = await bcrypt.compare(password, user.password_hash);
-    if (!isMatch)
-      return res.status(400).json({ message: "Sai mật khẩu", status: "error" });
+    if (!isMatch) {
+      return res.status(400).json({
+        message: "Mật khẩu không chính xác",
+        status: "error",
+      });
+    }
 
     if (role === "student") {
       if (!roomId)
         return res
           .status(400)
           .json({ message: "Học viên cần mã phòng thi", status: "error" });
+
       const exam = await getExamByRoom(roomId);
       if (!exam)
         return res
