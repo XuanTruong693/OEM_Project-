@@ -5,15 +5,23 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    port: 4000, 
+    host: "0.0.0.0",
+    port: 4000,
+    strictPort: true,
+    cors: true,
+    allowedHosts: [
+      "localhost",
+      "127.0.0.1",
+      "",
+    ],
     proxy: {
       "/auth": {
-        target: "http://localhost:5000",
+        target: "http://localhost:5000 ",
         changeOrigin: true,
         secure: false,
       },
       "/exam_rooms": {
-        target: "http://localhost:5000",
+        target: "http://localhost:5000 ",
         changeOrigin: true,
         secure: false,
       },

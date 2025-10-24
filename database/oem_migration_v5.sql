@@ -403,7 +403,10 @@ LEFT JOIN submissions s ON s.exam_id = e.id
 GROUP BY e.id;
 
 -- Migrate existing verify_room_code data
+ALTER TABLE users DROP FOREIGN KEY fk_users_verify_room_code;
+ALTER TABLE users MODIFY COLUMN verify_room_code BOOLEAN DEFAULT FALSE;
 use oem_mini;
+
 ALTER TABLE users MODIFY COLUMN verify_room_code BOOLEAN DEFAULT FALSE;
 CREATE TABLE user_verified_rooms (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -422,7 +425,10 @@ CREATE TABLE user_verified_rooms (
 USE oem_mini;
 ALTER TABLE users
 ADD COLUMN avatar VARCHAR(255) NULL AFTER password_hash,
-ADD COLUMN gender ENUM('male', 'female', 'other') NULL AFTER avatar;
+ADD COLUMN gender ENUM('male', 'female', 'other') NULL AFTER avatar,
+ADD COLUMN address VARCHAR(255) AFTER full_name,
+ADD COLUMN phone_number VARCHAR(20) AFTER address;
+
 
 -- View for instructor statistics
 CREATE OR REPLACE VIEW v_instructor_stats AS
@@ -436,6 +442,6 @@ LEFT JOIN exams e ON e.course_id = c.id
 LEFT JOIN submissions s ON s.exam_id = e.id
 GROUP BY c.instructor_id;
 
--- ============================================================================
+-- =================================================================
 -- ✅ END OF SCRIPT (OEM Mini v5 - Instructor Final Version)
--- ============================================================================
+-- =================================================================
