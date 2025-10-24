@@ -16,6 +16,10 @@ const RegisterPage = () => {
   const [errors, setErrors] = useState({});
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+  const [otpStep, setOtpStep] = useState(false); // true when showing OTP verification
+  const [otpCode, setOtpCode] = useState("");
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(false);
   const role = localStorage.getItem("selectedRole") || "";
 
   // --- Kiểm tra role + roomId ---
@@ -30,6 +34,75 @@ const RegisterPage = () => {
   const handleChange = (e) =>
     setForm({ ...form, [e.target.name]: e.target.value });
 
+  // --- Send OTP ---
+  const handleSendOTP = async () => {
+    if (!form.email.trim()) {
+      setErrors({ email: "Vui lòng nhập email trước" });
+      return;
+    }
+
+    const emailRegex = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i;
+    if (!emailRegex.test(form.email)) {
+      setErrors({ email: "Định dạng email không hợp lệ" });
+      return;
+    }
+
+    setOtpLoading(true);
+    setErrors({});
+
+    try {
+      const res = await axiosClient.post("/auth/send-otp", {
+        email: form.email
+      });
+
+      console.log("[Send OTP] Response:", res.data);
+      setSuccess("Mã OTP đã được gửi đến email của bạn");
+      setOtpStep(true);
+    } catch (error) {
+      console.error("❌ Send OTP Error:", error);
+      setErrors({
+        general: error.response?.data?.message || "Lỗi khi gửi mã OTP"
+      });
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  // --- Verify OTP ---
+  const handleVerifyOTP = async () => {
+    if (!otpCode.trim()) {
+      setErrors({ otp: "Vui lòng nhập mã OTP" });
+      return;
+    }
+
+    if (otpCode.length !== 6) {
+      setErrors({ otp: "Mã OTP phải có 6 chữ số" });
+      return;
+    }
+
+    setOtpLoading(true);
+    setErrors({});
+
+    try {
+      const res = await axiosClient.post("/auth/verify-otp", {
+        email: form.email,
+        otp: otpCode
+      });
+
+      console.log("[Verify OTP] Response:", res.data);
+      setSuccess("Email đã được xác minh thành công!");
+      setEmailVerified(true);
+      setOtpStep(false);
+    } catch (error) {
+      console.error("❌ Verify OTP Error:", error);
+      setErrors({
+        otp: error.response?.data?.message || "Mã OTP không chính xác"
+      });
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
   const validate = () => {
     const newErrors = {};
     if (!form.lastName.trim()) newErrors.lastName = "Vui lòng nhập họ";
@@ -37,6 +110,8 @@ const RegisterPage = () => {
     if (!form.email.trim()) newErrors.email = "Vui lòng nhập email";
     else if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(form.email))
       newErrors.email = "Định dạng email không hợp lệ";
+    else if (!emailVerified) 
+      newErrors.email = "Email chưa được xác minh";
     if (!form.password.trim()) newErrors.password = "Vui lòng nhập mật khẩu";
     else if (form.password.length < 6)
       newErrors.password = "Mật khẩu phải ít nhất 6 ký tự";
@@ -221,7 +296,7 @@ const RegisterPage = () => {
                 placeholder="Họ"
                 value={form.lastName}
                 onChange={handleChange}
-                disabled={loading}
+                disabled={loading || otpStep}
               />
               <input
                 className="flex-1 p-3 border rounded-lg focus:ring-2 focus:ring-blue-400"
@@ -229,25 +304,108 @@ const RegisterPage = () => {
                 placeholder="Tên"
                 value={form.firstName}
                 onChange={handleChange}
-                disabled={loading}
+                disabled={loading || otpStep}
               />
             </div>
-            <input
-              type="email"
-              name="email"
-              placeholder="Email"
-              value={form.email}
-              onChange={handleChange}
-              disabled={loading}
-              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-400"
-            />
+            
+            {/* Email field with OTP verification */}
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  name="email"
+                  placeholder="Nhập email để đăng ký"
+                  value={form.email}
+                  onChange={handleChange}
+                  disabled={loading || emailVerified}
+                  className={`flex-1 p-3 border rounded-lg focus:ring-2 focus:ring-blue-400 ${
+                    emailVerified ? 'bg-green-50 border-green-300' : ''
+                  }`}
+                />
+                {!emailVerified && !otpStep && form.email.trim() && (
+                  <button
+                    type="button"
+                    onClick={handleSendOTP}
+                    disabled={otpLoading}
+                    className="px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold disabled:bg-gray-400"
+                  >
+                    {otpLoading ? (
+                      <LoadingSpinner size="sm" text="Gửi..." />
+                    ) : (
+                      "Gửi OTP"
+                    )}
+                  </button>
+                )}
+                {emailVerified && (
+                  <div className="px-4 py-3 bg-green-100 text-green-800 rounded-lg font-semibold flex items-center">
+                    ✓ Đã xác minh
+                  </div>
+                )}
+              </div>
+              {errors.email && (
+                <p className="text-red-500 text-sm">{errors.email}</p>
+              )}
+              {!emailVerified && !otpStep && (
+                <p className="text-sm text-gray-400">
+                  📧 Nhập email và nhấn "Gửi OTP" để nhận mã xác minh
+                </p>
+              )}
+            </div>
+
+            {/* OTP Verification Step */}
+            {otpStep && (
+              <div className="space-y-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <h4 className="font-semibold text-blue-800">Xác minh email</h4>
+                <p className="text-sm text-blue-700">
+                  Chúng tôi đã gửi mã OTP 6 chữ số đến email <strong>{form.email}</strong>
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Nhập mã OTP"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    disabled={otpLoading}
+                    className="flex-1 p-3 border rounded-lg focus:ring-2 focus:ring-blue-400 text-center text-lg font-mono"
+                    maxLength={6}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleVerifyOTP}
+                    disabled={otpLoading || otpCode.length !== 6}
+                    className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold disabled:bg-gray-400"
+                  >
+                    {otpLoading ? (
+                      <LoadingSpinner size="sm" text="Xác minh..." />
+                    ) : (
+                      "Xác minh"
+                    )}
+                  </button>
+                </div>
+                {errors.otp && (
+                  <p className="text-red-500 text-sm">{errors.otp}</p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOtpStep(false);
+                    setOtpCode("");
+                    setErrors({});
+                  }}
+                  className="text-sm text-blue-600 hover:text-blue-800 underline"
+                >
+                  Quay lại nhập email
+                </button>
+              </div>
+            )}
+
             <input
               type="password"
               name="password"
               placeholder="Mật khẩu"
               value={form.password}
               onChange={handleChange}
-              disabled={loading}
+              disabled={loading || otpStep}
               className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-400"
             />
             <input
@@ -256,14 +414,14 @@ const RegisterPage = () => {
               placeholder="Nhập lại mật khẩu"
               value={form.confirmPassword}
               onChange={handleChange}
-              disabled={loading}
+              disabled={loading || otpStep}
               className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-400"
             />
 
             <button
               type="submit"
-              disabled={loading}
-              className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold flex items-center justify-center"
+              disabled={loading || !emailVerified}
+              className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold flex items-center justify-center disabled:bg-gray-400"
             >
               {loading ? (
                 <LoadingSpinner size="sm" text="Đang xử lý..." />
