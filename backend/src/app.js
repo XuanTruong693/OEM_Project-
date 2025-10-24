@@ -7,7 +7,28 @@ const examRoomRoutes = require("./routes/examRoomRoutes");
 const instructorRoutes = require("./routes/instructorRoutes");
 const app = express();
 
-app.use(cors());
+
+const allowedOrigins = [
+  "http://localhost:4000", 
+  "",
+  ""
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.warn("❌ Blocked CORS from:", origin);
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    credentials: true, 
+  })
+);
+
 app.use(express.json());
 
 // ✅ Log debug chỉ khi chạy dev
