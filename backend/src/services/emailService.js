@@ -2,7 +2,6 @@ const nodemailer = require('nodemailer');
 
 // Cấu hình email transporter
 const createTransporter = () => {
-  // Sử dụng Gmail SMTP với thông tin thực tế
   return nodemailer.createTransport({
     service: 'gmail',
     auth: {

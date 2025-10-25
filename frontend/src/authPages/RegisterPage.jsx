@@ -31,19 +31,60 @@ const RegisterPage = () => {
     }
   }, [role, navigate]);
 
-  const handleChange = (e) =>
-    setForm({ ...form, [e.target.name]: e.target.value });
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm({ ...form, [name]: value });
+    
+    // Clear error when user starts typing
+    if (errors[name]) {
+      setErrors({ ...errors, [name]: "" });
+    }
+    
+    // Real-time validation for lastName and firstName
+    if (name === 'lastName' || name === 'firstName') {
+      const trimmedValue = value.trim();
+      if (trimmedValue && !/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔưăâêô\s]+$/.test(trimmedValue)) {
+        setErrors({ 
+          ...errors, 
+          [name]: `${name === 'lastName' ? 'Họ' : 'Tên'} chỉ được chứa chữ cái, không được có số hoặc ký tự đặc biệt` 
+        });
+      }
+    }
+  };
 
   // --- Send OTP ---
   const handleSendOTP = async () => {
-    if (!form.email.trim()) {
-      setErrors({ email: "Vui lòng nhập email trước" });
-      return;
+    // Kiểm tra validation cho Họ và Tên trước khi gửi OTP
+    const newErrors = {};
+    
+    // Validation cho Họ
+    if (!form.lastName.trim()) {
+      newErrors.lastName = "Vui lòng nhập họ";
+    } else if (!/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔưăâêô\s]+$/.test(form.lastName.trim())) {
+      newErrors.lastName = "Họ chỉ được chứa chữ cái, không được có số hoặc ký tự đặc biệt";
     }
-
-    const emailRegex = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i;
-    if (!emailRegex.test(form.email)) {
-      setErrors({ email: "Định dạng email không hợp lệ" });
+    
+    // Validation cho Tên
+    if (!form.firstName.trim()) {
+      newErrors.firstName = "Vui lòng nhập tên";
+    } else if (!/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔưăâêô\s]+$/.test(form.firstName.trim())) {
+      newErrors.firstName = "Tên chỉ được chứa chữ cái, không được có số hoặc ký tự đặc biệt";
+    }
+    
+    // Validation cho Email
+    if (!form.email.trim()) {
+      newErrors.email = "Vui lòng nhập email";
+    } else {
+      const emailRegex = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i;
+      if (!emailRegex.test(form.email)) {
+        newErrors.email = "Định dạng email không hợp lệ";
+      }
+    }
+    
+    // Nếu có lỗi validation, hiển thị lỗi và không gửi OTP
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      setSuccess("");
       return;
     }
 
@@ -105,8 +146,21 @@ const RegisterPage = () => {
 
   const validate = () => {
     const newErrors = {};
-    if (!form.lastName.trim()) newErrors.lastName = "Vui lòng nhập họ";
-    if (!form.firstName.trim()) newErrors.firstName = "Vui lòng nhập tên";
+    
+    // Validation cho Họ - chỉ cho phép chữ cái và khoảng trắng
+    if (!form.lastName.trim()) {
+      newErrors.lastName = "Vui lòng nhập họ";
+    } else if (!/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔưăâêô\s]+$/.test(form.lastName.trim())) {
+      newErrors.lastName = "Họ chỉ được chứa chữ cái, không được có số hoặc ký tự đặc biệt";
+    }
+    
+    // Validation cho Tên - chỉ cho phép chữ cái và khoảng trắng
+    if (!form.firstName.trim()) {
+      newErrors.firstName = "Vui lòng nhập tên";
+    } else if (!/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔưăâêô\s]+$/.test(form.firstName.trim())) {
+      newErrors.firstName = "Tên chỉ được chứa chữ cái, không được có số hoặc ký tự đặc biệt";
+    }
+    
     if (!form.email.trim()) newErrors.email = "Vui lòng nhập email";
     else if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(form.email))
       newErrors.email = "Định dạng email không hợp lệ";
@@ -290,22 +344,36 @@ const RegisterPage = () => {
 
           <form className="space-y-4" onSubmit={handleRegister}>
             <div className="flex flex-col sm:flex-row gap-3">
-              <input
-                className="flex-1 p-3 border rounded-lg focus:ring-2 focus:ring-blue-400"
-                name="lastName"
-                placeholder="Họ"
-                value={form.lastName}
-                onChange={handleChange}
-                disabled={loading || otpStep}
-              />
-              <input
-                className="flex-1 p-3 border rounded-lg focus:ring-2 focus:ring-blue-400"
-                name="firstName"
-                placeholder="Tên"
-                value={form.firstName}
-                onChange={handleChange}
-                disabled={loading || otpStep}
-              />
+              <div className="flex-1">
+                <input
+                  className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-400 ${
+                    errors.lastName ? 'border-red-500' : ''
+                  }`}
+                  name="lastName"
+                  placeholder="Họ"
+                  value={form.lastName}
+                  onChange={handleChange}
+                  disabled={loading || otpStep}
+                />
+                {errors.lastName && (
+                  <p className="text-red-500 text-sm mt-1">{errors.lastName}</p>
+                )}
+              </div>
+              <div className="flex-1">
+                <input
+                  className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-400 ${
+                    errors.firstName ? 'border-red-500' : ''
+                  }`}
+                  name="firstName"
+                  placeholder="Tên"
+                  value={form.firstName}
+                  onChange={handleChange}
+                  disabled={loading || otpStep}
+                />
+                {errors.firstName && (
+                  <p className="text-red-500 text-sm mt-1">{errors.firstName}</p>
+                )}
+              </div>
             </div>
             
             {/* Email field with OTP verification */}
@@ -322,7 +390,7 @@ const RegisterPage = () => {
                     emailVerified ? 'bg-green-50 border-green-300' : ''
                   }`}
                 />
-                {!emailVerified && !otpStep && form.email.trim() && (
+                {!emailVerified && !otpStep && form.email.trim() && form.lastName.trim() && form.firstName.trim() && (
                   <button
                     type="button"
                     onClick={handleSendOTP}
@@ -347,7 +415,6 @@ const RegisterPage = () => {
               )}
               {!emailVerified && !otpStep && (
                 <p className="text-sm text-gray-400">
-                  
                 </p>
               )}
             </div>
