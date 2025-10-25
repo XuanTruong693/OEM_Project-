@@ -43,4 +43,11 @@ git add .
 git commit -m "Mô tả thay đổi, ví dụ: Update LandingPage CSS"
 git push
 
+### khi bị lỗi tiếng việt khi đăng ký tài khoản admin, chạy lệnh terminal sau:
+### ⚙️ Cấu hình terminal hiển thị tiếng Việt
+Nếu chạy `npm run taoTK` mà thấy ký tự bị lỗi (VD: Hß╗ì...), hãy làm theo:
+```bash
+chcp 65001
+[Console]::InputEncoding  = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 

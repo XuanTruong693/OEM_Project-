@@ -36,7 +36,6 @@ const getExamByRoom = async (roomId) => {
   const Exam = require("../models/ExamRoom");
   if (!roomId) return null;
 
-  // ✅ Fix: Kiểm tra nếu roomId là số thì lấy theo id, ngược lại lấy theo exam_room_code
   if (/^\d+$/.test(roomId.toString())) {
     return await Exam.findByPk(roomId);
   } else {
@@ -57,7 +56,6 @@ router.post("/send-otp", async (req, res) => {
       });
     }
 
-    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({
@@ -66,7 +64,6 @@ router.post("/send-otp", async (req, res) => {
       });
     }
 
-    // Check if email already exists
     const existingUser = await User.findOne({
       where: { email: email.toLowerCase().trim() },
     });
@@ -78,7 +75,6 @@ router.post("/send-otp", async (req, res) => {
       });
     }
 
-    // Generate and store OTP
     const otp = generateOTP();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
@@ -88,7 +84,6 @@ router.post("/send-otp", async (req, res) => {
       attempts: 0,
     });
 
-    // Send OTP email
     const emailResult = await sendOTPEmail(email, otp);
 
     if (!emailResult.success) {
@@ -103,7 +98,6 @@ router.post("/send-otp", async (req, res) => {
     }
 
     console.log(`[Send OTP] ✅ OTP đã gửi đến ${email}`);
-
     res.json({
       message: "Mã OTP đã được gửi đến email của bạn",
       status: "success",
@@ -140,7 +134,6 @@ router.post("/verify-otp", async (req, res) => {
       });
     }
 
-    // Check if OTP has expired
     if (new Date() > otpData.expiresAt) {
       otpStorage.delete(emailKey);
       return res.status(400).json({
@@ -149,7 +142,6 @@ router.post("/verify-otp", async (req, res) => {
       });
     }
 
-    // Check attempts limit
     if (otpData.attempts >= 3) {
       otpStorage.delete(emailKey);
       return res.status(400).json({
@@ -158,23 +150,19 @@ router.post("/verify-otp", async (req, res) => {
       });
     }
 
-    // Verify OTP
     if (otpData.otp !== otp) {
       otpData.attempts++;
       otpStorage.set(emailKey, otpData);
-
       return res.status(400).json({
         message: "Mã OTP không chính xác",
         status: "error",
       });
     }
 
-    // OTP is correct - mark email as verified
     otpData.verified = true;
     otpStorage.set(emailKey, otpData);
 
     console.log(`[Verify OTP] ✅ Email ${email} đã được xác minh`);
-
     res.json({
       message: "Email đã được xác minh thành công",
       status: "success",
@@ -241,7 +229,6 @@ router.post("/google", async (req, res) => {
             .status(400)
             .json({ message: "Mã phòng thi không hợp lệ", status: "error" });
 
-        // ✅ Fix: đảm bảo lưu đúng exam_room_code
         await UserVerifiedRoom.create({
           user_id: user.id,
           exam_room_code: exam.exam_room_code,
@@ -258,7 +245,6 @@ router.post("/google", async (req, res) => {
         where: { user_id: user.id, exam_room_code: exam.exam_room_code },
       });
 
-      // ✅ Fix: kiểm tra nếu chưa có thì thêm mới, tránh lỗi “không khớp tài khoản”
       if (!verified) {
         await UserVerifiedRoom.create({
           user_id: user.id,
@@ -292,7 +278,6 @@ router.post("/register", async (req, res) => {
     console.log("[Register] Creating user:", full_name, email);
     if (role === "student") console.log("[Register] Verified Room:", roomId);
 
-    // ✅ Kiểm tra thông tin đầu vào
     if (!full_name || !email || !password || !role) {
       console.log("[Register] ❌ Thiếu thông tin đăng ký.");
       return res
@@ -307,7 +292,6 @@ router.post("/register", async (req, res) => {
         .json({ message: "Học viên cần mã phòng thi", status: "error" });
     }
 
-    // ✅ Kiểm tra định dạng email hợp lệ
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       console.log(`[Register] ❌ Email không hợp lệ: ${email}`);
@@ -316,11 +300,9 @@ router.post("/register", async (req, res) => {
         .json({ message: "Định dạng email không hợp lệ", status: "error" });
     }
 
-    // ✅ Kiểm tra domain email có thật (MX record)
     const domain = email.split("@")[1];
     try {
       const mxRecords = await dns.resolveMx(domain);
-
       if (!mxRecords || mxRecords.length === 0) {
         console.log(
           `[Register] ❌ Domain "${domain}" không tồn tại (MX trống).`
@@ -330,7 +312,6 @@ router.post("/register", async (req, res) => {
           status: "error",
         });
       }
-
       console.log(
         `[Register] ✅ Domain "${domain}" hợp lệ (MX records found).`
       );
@@ -339,9 +320,6 @@ router.post("/register", async (req, res) => {
         `[Register] ❌ Lỗi xác minh domain "${domain}":`,
         dnsErr.message
       );
-      console.log(
-        "[Register] Email đăng ký không tồn tại hoặc không thể xác minh!"
-      );
       return res.status(400).json({
         message:
           "Không thể xác minh email này. Vui lòng nhập email thật hoặc kiểm tra lại chính tả.",
@@ -349,7 +327,6 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    // ✅ Kiểm tra email đã tồn tại trong DB chưa
     const existingUser = await User.findOne({
       where: { email: email.toLowerCase().trim() },
     });
@@ -361,7 +338,6 @@ router.post("/register", async (req, res) => {
         .json({ message: "Email đã được đăng ký", status: "error" });
     }
 
-    // ✅ Kiểm tra email đã được xác minh OTP chưa
     const emailKey = email.toLowerCase().trim();
     const otpData = otpStorage.get(emailKey);
 
@@ -374,7 +350,6 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    // ✅ Mã hóa mật khẩu & tạo user
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = await User.create({
       full_name,
@@ -386,7 +361,6 @@ router.post("/register", async (req, res) => {
 
     console.log(`[Register] ✅ Tạo user mới thành công: ${email}`);
 
-    // ✅ Nếu là học viên → kiểm tra phòng thi & liên kết
     if (role === "student") {
       try {
         const exam = await getExamByRoom(roomId);
@@ -415,11 +389,9 @@ router.post("/register", async (req, res) => {
       }
     }
 
-    // ✅ Xóa OTP data sau khi đăng ký thành công
     otpStorage.delete(emailKey);
     console.log(`[Register] 🗑️ Đã xóa OTP data cho email: ${email}`);
 
-    // ✅ Tạo JWT token & trả phản hồi
     const token = generateToken(newUser);
     console.log(`[Register] 🎉 Đăng ký thành công cho user: ${email}`);
 
@@ -445,7 +417,6 @@ router.post("/login", async (req, res) => {
     const { email, password, role, roomId } = req.body;
     console.log("[Login] Payload:", req.body);
 
-    // ✅ 1. Kiểm tra thông tin đầu vào
     if (!email || !password) {
       console.log("[Login] ❌ Thiếu email hoặc mật khẩu.");
       return res.status(400).json({
@@ -454,7 +425,6 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    // ✅ 2. Kiểm tra định dạng email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       console.log(`[Login] ❌ Email không hợp lệ: ${email}`);
@@ -463,7 +433,6 @@ router.post("/login", async (req, res) => {
         .json({ message: "Địa chỉ email không hợp lệ", status: "error" });
     }
 
-    // ✅ 3. Kiểm tra domain email có tồn tại không (MX check)
     const domain = email.split("@")[1];
     try {
       const mxRecords = await dns.resolveMx(domain);
@@ -486,7 +455,6 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    // ✅ 4. Kiểm tra tài khoản trong DB
     const user = await User.findOne({
       where: { email: email.toLowerCase().trim() },
     });
@@ -499,7 +467,6 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    // ✅ 5. Kiểm tra mật khẩu
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
       console.log(`[Login] ❌ Sai mật khẩu cho tài khoản: ${email}`);
@@ -509,7 +476,6 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    // ✅ 6. Kiểm tra quyền và mã phòng thi (nếu là học viên)
     if (role === "student") {
       if (!roomId) {
         console.log("[Login] ❌ Học viên chưa nhập mã phòng thi.");
@@ -545,11 +511,10 @@ router.post("/login", async (req, res) => {
       }
     }
 
-    // ✅ 7. Tạo JWT token và phản hồi
     const token = generateToken(user);
     console.log(`[Login] ✅ Đăng nhập thành công cho user: ${email}`);
 
-    return res.json({
+    let response = {
       message: "Đăng nhập thành công",
       status: "success",
       token,
@@ -559,7 +524,13 @@ router.post("/login", async (req, res) => {
         email: user.email,
         role: user.role,
       },
-    });
+    };
+
+    if (user.role === "admin") {
+      response.redirect = "/admin/dashboard";
+    }
+
+    res.json(response);
   } catch (err) {
     console.error("❌ Lỗi đăng nhập:", err);
     return res.status(500).json({
@@ -586,7 +557,7 @@ router.get("/verify-room/:code", async (req, res) => {
 
     res.json({
       valid: true,
-      roomId: exam.exam_room_code, // ✅ Fix: gửi exam_room_code thay vì exam.id
+      roomId: exam.exam_room_code,
       examCode: code,
       title: exam.title,
     });
@@ -596,7 +567,7 @@ router.get("/verify-room/:code", async (req, res) => {
   }
 });
 
-// kiểm tra email có tồn tại trước khi gửi OTP
+// --- Check email existence before sending OTP ---
 router.post("/check-email", async (req, res) => {
   try {
     const { email } = req.body;
@@ -605,18 +576,14 @@ router.post("/check-email", async (req, res) => {
     const user = await User.findOne({
       where: { email: email.toLowerCase().trim() },
     });
-    if (!user) {
-      return res.json({ exists: false });
-    }
-
-    return res.json({ exists: true });
+    res.json({ exists: !!user });
   } catch (err) {
     console.error("check-email error:", err);
-    return res.status(500).json({ message: "Lỗi server" });
+    res.status(500).json({ message: "Lỗi server" });
   }
 });
 
-// Gửi OTP cho quên mật khẩu
+// --- Send OTP for forgot password ---
 router.post("/forgot-send-otp", async (req, res) => {
   try {
     const { email } = req.body;
@@ -625,7 +592,6 @@ router.post("/forgot-send-otp", async (req, res) => {
     }
 
     const cleanEmail = email.toLowerCase().trim();
-
     const otp = Math.floor(100000 + Math.random() * 900000)
       .toString()
       .padStart(6, "0");
@@ -635,15 +601,13 @@ router.post("/forgot-send-otp", async (req, res) => {
       expiresAt: Date.now() + 5 * 60 * 1000,
     });
 
-    // Gửi OTP qua email
     const result = await sendOTPEmail(cleanEmail, otp);
 
     if (result.success) {
       console.log(`✅ OTP ${otp} đã gửi đến ${cleanEmail}`);
       return res.json({ success: true, message: "OTP đã được gửi!" });
-    } else {
-      return res.status(500).json({ message: "Gửi email thất bại" });
     }
+    return res.status(500).json({ message: "Gửi email thất bại" });
   } catch (err) {
     console.error("❌ forgot-send-otp error:", err);
     return res.status(500).json({ message: "Lỗi server khi gửi OTP" });
