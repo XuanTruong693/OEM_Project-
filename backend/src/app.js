@@ -5,6 +5,7 @@ const sequelize = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
 const examRoomRoutes = require("./routes/examRoomRoutes");
 const instructorRoutes = require("./routes/instructorRoutes");
+const adminRoutes = require("./routes/adminRoutes");
 const app = express();
 
 
@@ -44,7 +45,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/exam_rooms", examRoomRoutes);
 app.use("/api/instructor", instructorRoutes);
 app.use("/api/instructor", require("./routes/instructorRoutes"));
-
+app.use("/api/admin", adminRoutes);
 
 // ✅ Route test
 app.get("/", (req, res) => {

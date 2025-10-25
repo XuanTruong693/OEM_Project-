@@ -543,8 +543,8 @@ const generateOTP = () => {
       // ✅ 7. Tạo JWT token và phản hồi
       const token = generateToken(user);
       console.log(`[Login] ✅ Đăng nhập thành công cho user: ${email}`);
-
-      return res.json({
+      // Tạo response object cơ bản
+      const response = {
         message: "Đăng nhập thành công",
         status: "success",
         token,
@@ -554,7 +554,15 @@ const generateOTP = () => {
           email: user.email,
           role: user.role,
         },
-      });
+      };
+
+    // Thêm redirect cho admin 
+    if (user.role === 'admin') {
+      response.redirect = '/admin/dashboard';
+    }
+
+    res.json(response);
+
     } catch (err) {
       console.error("❌ Lỗi đăng nhập:", err);
       return res.status(500).json({

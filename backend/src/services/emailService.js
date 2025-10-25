@@ -70,6 +70,59 @@ const sendOTPEmail = async (email, otp) => {
   }
 };
 
+// ==========================
+// 📩 GUI EMAIL XAC MINH TAI KHOAN ADMIN (CLI TOOL)
+// ==========================
+const sendAdminOTPVerificationEmail = async (adminEmail, otpCode, fullName = 'Admin') => {
+  try {
+    console.log(`📧 [Admin Email Service] Dang gui ma OTP xac minh den ${adminEmail}`);
+    const transporter = createTransporter();
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER || 'truongkt693@gmail.com',
+      to: adminEmail,
+      subject: 'Ma OTP xac minh tai khoan Quan tri - OEM System',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #2c5364 0%, #203a43 50%, #0f2027 100%); padding: 25px; text-align: center; border-radius: 10px 10px 0 0;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px;">OEM Mini System</h1>
+            <p style="color: #dcdcdc; font-size: 14px;">Xac minh tai khoan Quan tri</p>
+          </div>
+          <div style="background: #f8f9fa; padding: 25px; border-radius: 0 0 10px 10px;">
+            <p style="color: #333;">Xin chao <strong>${fullName}</strong>,</p>
+            <p style="color: #333;">
+              Ban dang thuc hien xac minh email de tao tai khoan Quan tri (Admin).<br>
+              Vui long su dung ma OTP duoi day de hoan tat buoc xac minh:
+            </p>
+            <div style="background: #fff; border: 2px dashed #203a43; border-radius: 10px; padding: 15px; margin: 20px 0; text-align: center;">
+              <h2 style="color: #203a43; font-family: 'Courier New', monospace; letter-spacing: 4px; font-size: 32px; margin: 0;">
+                ${otpCode}
+              </h2>
+            </div>
+            <p style="color: #555; font-size: 14px;">
+              ⏰ Ma OTP co hieu luc trong <strong>5 phut</strong> ke tu luc duoc gui.<br>
+              Neu ban khong yeu cau, vui long bo qua email nay.
+            </p>
+            <p style="color: #444; font-size: 14px; margin-top: 30px;">
+              Tran trong,<br>
+              <strong>DOI NGU PHAT TRIEN OEM SYSTEM</strong>
+            </p>
+          </div>
+        </div>
+      `
+    };
+
+    const result = await transporter.sendMail(mailOptions);
+    console.log(`✅ [Admin Email Service] Gui ma OTP thanh cong den ${adminEmail} | MessageID: ${result.messageId}`);
+    return { success: true, messageId: result.messageId };
+
+  } catch (error) {
+    console.error('❌ [Admin Email Service] Loi khi gui ma OTP:', error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+
 // Test email configuration
 const testEmailConfig = async () => {
   try {
@@ -86,5 +139,7 @@ const testEmailConfig = async () => {
 
 module.exports = {
   sendOTPEmail,
+  sendAdminOTPVerificationEmail, // 🆕
   testEmailConfig
 };
+
