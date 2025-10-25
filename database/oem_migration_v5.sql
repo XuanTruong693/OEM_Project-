@@ -445,3 +445,225 @@ GROUP BY c.instructor_id;
 -- =================================================================
 -- ✅ END OF SCRIPT (OEM Mini v5 - Instructor Final Version)
 -- =================================================================
+
+-- =================================================================
+-- ✅Update database to Sprint 2
+-- =================================================================
+USE oem_mini;
+-- (1) Enrollments
+CREATE TABLE IF NOT EXISTS enrollments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    course_id INT NOT NULL,
+    enrolled_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    status ENUM('active','cancelled') DEFAULT 'active',
+    UNIQUE KEY uq_enrollment_user_course (user_id, course_id),
+    INDEX idx_enrollments_user (user_id),
+    INDEX idx_enrollments_course (course_id),
+    CONSTRAINT fk_enrollments_user FOREIGN KEY (user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_enrollments_course FOREIGN KEY (course_id) REFERENCES courses(id) ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- (2) Import Jobs
+CREATE TABLE IF NOT EXISTS import_jobs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    job_uuid VARCHAR(64) NOT NULL UNIQUE,
+    exam_id INT NOT NULL,
+    created_by INT NULL,
+    status ENUM('preview','processing','completed','failed') DEFAULT 'preview',
+    preview_json LONGTEXT NULL,
+    result_summary JSON NULL,
+    error_text TEXT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_import_jobs_exam (exam_id),
+    INDEX idx_import_jobs_user (created_by),
+    CONSTRAINT fk_import_jobs_exam FOREIGN KEY (exam_id) REFERENCES exams(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_import_jobs_user FOREIGN KEY (created_by) REFERENCES users(id) ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- (3) Import Rows
+CREATE TABLE IF NOT EXISTS `import_rows` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `job_id` INT NOT NULL,
+  `row_number` INT NOT NULL,
+  `row_data` LONGTEXT NOT NULL,
+  `errors` LONGTEXT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_import_rows_job` (`job_id`),
+  CONSTRAINT `fk_import_rows_job` FOREIGN KEY (`job_id`) REFERENCES `import_jobs` (`id`) ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- (4) Refresh Tokens
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    token VARCHAR(500) NOT NULL,
+    revoked BOOLEAN DEFAULT FALSE,
+    expires_at DATETIME NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_refresh_tokens_user (user_id),
+    UNIQUE KEY uq_refresh_token_token (token),
+    CONSTRAINT fk_refresh_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- (5) Submissions update
+ALTER TABLE submissions
+  ADD COLUMN IF NOT EXISTS status ENUM('pending','graded','confirmed') DEFAULT 'pending',
+  ADD COLUMN IF NOT EXISTS total_score FLOAT DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  ADD COLUMN IF NOT EXISTS updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  ADD INDEX IF NOT EXISTS idx_submissions_status (status);
+
+-- (6) Student answers update
+ALTER TABLE student_answers
+  ADD COLUMN IF NOT EXISTS score FLOAT DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS graded_at DATETIME NULL,
+  ADD INDEX IF NOT EXISTS idx_student_answers_graded_at (graded_at);
+
+-- (7) Exam questions update
+ALTER TABLE exam_questions
+  MODIFY COLUMN type ENUM('MCQ','Essay','Unknown') DEFAULT 'Unknown',
+  ADD COLUMN IF NOT EXISTS points FLOAT DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  ADD COLUMN IF NOT EXISTS updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  ADD INDEX IF NOT EXISTS idx_exam_questions_type (type);
+
+-- (8) Exams update
+ALTER TABLE exams
+  ADD COLUMN IF NOT EXISTS exam_room_code VARCHAR(64) NULL AFTER id,
+  ADD COLUMN IF NOT EXISTS status ENUM('draft','published','archived') DEFAULT 'draft' AFTER exam_room_code,
+  ADD COLUMN IF NOT EXISTS created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  ADD COLUMN IF NOT EXISTS updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  ADD COLUMN IF NOT EXISTS deleted_at DATETIME NULL,
+  ADD UNIQUE INDEX IF NOT EXISTS uq_exams_room_code (exam_room_code);
+
+-- (10) AI Logs
+ALTER TABLE ai_logs
+  ADD COLUMN IF NOT EXISTS request_payload LONGTEXT NULL,
+  ADD COLUMN IF NOT EXISTS response_payload LONGTEXT NULL,
+  ADD COLUMN IF NOT EXISTS error_text TEXT NULL,
+  ADD COLUMN IF NOT EXISTS created_at DATETIME DEFAULT CURRENT_TIMESTAMP;
+
+-- (11) Soft delete
+ALTER TABLE courses ADD COLUMN IF NOT EXISTS deleted_at DATETIME NULL;
+
+-- =====================================================
+-- 2️⃣ TRIGGERS
+-- =====================================================
+
+DELIMITER $$
+
+-- Trigger: update submission total score after each student answer update
+DROP TRIGGER IF EXISTS trg_update_submission_score $$
+CREATE TRIGGER trg_update_submission_score
+AFTER UPDATE ON student_answers
+FOR EACH ROW
+BEGIN
+  DECLARE total FLOAT;
+  SELECT SUM(score) INTO total FROM student_answers WHERE submission_id = NEW.submission_id;
+  UPDATE submissions SET total_score = total WHERE id = NEW.submission_id;
+END$$
+
+-- Trigger: mark submission as graded when all answers are graded
+DROP TRIGGER IF EXISTS trg_check_submission_status $$
+CREATE TRIGGER trg_check_submission_status
+AFTER UPDATE ON student_answers
+FOR EACH ROW
+BEGIN
+  DECLARE ungraded INT;
+  SELECT COUNT(*) INTO ungraded FROM student_answers WHERE submission_id = NEW.submission_id AND graded_at IS NULL;
+  IF ungraded = 0 THEN
+    UPDATE submissions SET status = 'graded' WHERE id = NEW.submission_id;
+  END IF;
+END$$
+
+DELIMITER ;
+
+-- =====================================================
+-- 3️⃣ STORED PROCEDURES
+-- =====================================================
+
+DELIMITER $$
+
+-- Procedure: finalize_submission (calculate total score + mark graded)
+DROP PROCEDURE IF EXISTS finalize_submission $$
+CREATE PROCEDURE finalize_submission(IN submissionId INT)
+BEGIN
+  DECLARE total FLOAT;
+  SELECT SUM(score) INTO total FROM student_answers WHERE submission_id = submissionId;
+  UPDATE submissions SET total_score = total, status = 'graded', updated_at = NOW() WHERE id = submissionId;
+END$$
+
+-- Procedure: import_exam_from_job (insert validated questions)
+DROP PROCEDURE IF EXISTS import_exam_from_job $$
+CREATE PROCEDURE import_exam_from_job(IN jobId INT)
+BEGIN
+  DECLARE done INT DEFAULT 0;
+  DECLARE q JSON;
+  DECLARE cur CURSOR FOR SELECT row_data FROM import_rows WHERE job_id = jobId;
+  DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
+  
+  OPEN cur;
+  read_loop: LOOP
+    FETCH cur INTO q;
+    IF done THEN LEAVE read_loop; END IF;
+    INSERT INTO exam_questions (exam_id, question_text, type, points, created_at)
+    VALUES (
+      (SELECT exam_id FROM import_jobs WHERE id = jobId),
+      JSON_UNQUOTE(JSON_EXTRACT(q, '$.question_text')),
+      JSON_UNQUOTE(JSON_EXTRACT(q, '$.type')),
+      COALESCE(JSON_UNQUOTE(JSON_EXTRACT(q, '$.points')), 1),
+      NOW()
+    );
+  END LOOP;
+  CLOSE cur;
+  UPDATE import_jobs SET status = 'completed', updated_at = NOW() WHERE id = jobId;
+END$$
+
+DELIMITER ;
+
+-- =====================================================
+-- 4️⃣ VIEWS
+-- =====================================================
+
+-- View: v_exam_overview (exam info + total submissions)
+CREATE OR REPLACE VIEW v_exam_overview AS
+SELECT 
+  e.id AS exam_id,
+  e.title AS exam_title,
+  e.status,
+  e.exam_room_code,
+  COUNT(s.id) AS total_submissions,
+  AVG(s.total_score) AS avg_score,
+  MAX(s.updated_at) AS last_activity
+FROM exams e
+LEFT JOIN submissions s ON e.id = s.exam_id
+GROUP BY e.id, e.title, e.status, e.exam_room_code;
+
+-- View: v_student_result_overview (student + exam + score)
+CREATE OR REPLACE VIEW v_student_result_overview AS
+SELECT 
+  u.id AS student_id,
+  u.full_name,
+  e.title AS exam_title,
+  s.id AS submission_id,
+  s.total_score,
+  s.status,
+  s.updated_at AS graded_at
+FROM submissions s
+JOIN users u ON s.user_id = u.id
+JOIN exams e ON s.exam_id = e.id;
+
+-- View: v_ai_logs_trace (for debugging AI)
+CREATE OR REPLACE VIEW v_ai_logs_trace AS
+SELECT 
+  id AS log_id,
+  request_payload,
+  response_payload,
+  error_text,
+  created_at
+FROM ai_logs
+ORDER BY created_at DESC;
+
+SELECT '✅ OEM Mini Sprint 2 — Schema, Triggers, Procedures, and Views updated successfully.' AS message;
