@@ -347,7 +347,7 @@ const RegisterPage = () => {
               )}
               {!emailVerified && !otpStep && (
                 <p className="text-sm text-gray-400">
-                  📧 Nhập email và nhấn "Gửi OTP" để nhận mã xác minh
+                  
                 </p>
               )}
             </div>
