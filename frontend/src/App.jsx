@@ -19,6 +19,9 @@ import LoginPage from "./authPages/LoginPage.jsx";
 import RegisterPage from "./authPages/RegisterPage.jsx";
 import RolePage from "./authPages/RolePage.jsx";
 import VerifyRoom from "./authPages/VerifyRoom.jsx";
+import ForgotPassword from "./authPages/ForgotPassword.jsx";
+import VerifyEmail from "./authPages/VerifyEmail.jsx";
+import ResetPassword from "./authPages/ResetPassword.jsx";
 
 import InstructorDashboard from "./pages/instructorPage/InstructorDashboard.jsx";
 import AssignExam from "./pages/instructorPage/AssignExam.jsx";
@@ -114,6 +117,9 @@ const App = () => {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/verify-room" element={<VerifyRoom />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
         {/* <Route
           path="/student-dashboard"

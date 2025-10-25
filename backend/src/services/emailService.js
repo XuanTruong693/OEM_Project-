@@ -1,13 +1,13 @@
-const nodemailer = require('nodemailer');
+const nodemailer = require("nodemailer");
 
 // Cấu hình email transporter
 const createTransporter = () => {
   return nodemailer.createTransport({
-    service: 'gmail',
+    service: "gmail",
     auth: {
-      user: process.env.EMAIL_USER || 'truongkt693@gmail.com',
-      pass: process.env.EMAIL_PASS || 'tqdb bzaa cqzd iuwf'
-    }
+      user: process.env.EMAIL_USER || "truongkt693@gmail.com",
+      pass: process.env.EMAIL_PASS || "tqdb bzaa cqzd iuwf",
+    },
   });
 };
 
@@ -16,11 +16,11 @@ const sendOTPEmail = async (email, otp) => {
   try {
     console.log(`📧 [Email Service] Đang gửi OTP ${otp} đến ${email}`);
     const transporter = createTransporter();
-    
+
     const mailOptions = {
-      from: process.env.EMAIL_USER || 'truongkt693@gmail.com',
+      from: process.env.EMAIL_USER || "truongkt693@gmail.com",
       to: email,
-      subject: 'Mã OTP xác minh email - OEM Mini Examitation',
+      subject: "Mã OTP xác minh email - OEM Mini Examitation",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
@@ -57,15 +57,17 @@ const sendOTPEmail = async (email, otp) => {
             </p>
           </div>
         </div>
-      `
+      `,
     };
 
     const result = await transporter.sendMail(mailOptions);
-    console.log(`📧 [Email Service] OTP đã gửi thành công đến ${email}:`, result.messageId);
+    console.log(
+      `📧 [Email Service] OTP đã gửi thành công đến ${email}:`,
+      result.messageId
+    );
     return { success: true, messageId: result.messageId };
-    
   } catch (error) {
-    console.error('❌ [Email Service] Lỗi gửi email:', error);
+    console.error("❌ [Email Service] Lỗi gửi email:", error);
     return { success: false, error: error.message };
   }
 };
@@ -75,16 +77,18 @@ const testEmailConfig = async () => {
   try {
     const transporter = createTransporter();
     await transporter.verify();
-    console.log('✅ [Email Service] Cấu hình email hợp lệ - truongkt693@gmail.com');
+    console.log(
+      "✅ [Email Service] Cấu hình email hợp lệ - truongkt693@gmail.com"
+    );
     return true;
   } catch (error) {
-    console.error('❌ [Email Service] Lỗi cấu hình email:', error.message);
-    console.log('📖 Kiểm tra lại EMAIL_USER và EMAIL_PASS');
+    console.error("❌ [Email Service] Lỗi cấu hình email:", error.message);
+    console.log("📖 Kiểm tra lại EMAIL_USER và EMAIL_PASS");
     return false;
   }
 };
 
 module.exports = {
   sendOTPEmail,
-  testEmailConfig
+  testEmailConfig,
 };
