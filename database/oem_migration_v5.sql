@@ -491,8 +491,14 @@ CREATE TABLE IF NOT EXISTS `import_rows` (
   `errors` LONGTEXT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   INDEX `idx_import_rows_job` (`job_id`),
-  CONSTRAINT `fk_import_rows_job` FOREIGN KEY (`job_id`) REFERENCES `import_jobs` (`id`) ON UPDATE CASCADE ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  CONSTRAINT `fk_import_rows_job`
+    FOREIGN KEY (`job_id`)
+    REFERENCES `import_jobs` (`id`)
+    ON UPDATE CASCADE
+    ON DELETE CASCADE
+) ENGINE=InnoDB
+DEFAULT CHARSET=utf8mb4
+COLLATE=utf8mb4_unicode_ci;
 
 -- (4) Refresh Tokens
 CREATE TABLE IF NOT EXISTS refresh_tokens (
