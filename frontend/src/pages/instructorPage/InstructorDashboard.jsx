@@ -3,6 +3,7 @@ import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { FiLogOut } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import axiosClient from "../../api/axiosClient";
 
 const InstructorDashboard = () => {
   const navigate = useNavigate();
@@ -45,26 +46,65 @@ const InstructorDashboard = () => {
 
   // 🧭 Fetch user info
   useEffect(() => {
+    // Prefer avatar stored in localStorage (updated by Profile page upload)
+    const localAvatar = localStorage.getItem("avatar");
+    const localFullname = localStorage.getItem("fullname");
+    if (localAvatar || localFullname) {
+      setUserInfo((prev) => ({
+        ...prev,
+        fullname: localFullname || prev.fullname,
+        avatar: localAvatar || prev.avatar,
+      }));
+    }
+
+    // Try to load the canonical profile endpoint which returns the avatar/fullname
     const fetchUser = async () => {
       try {
-        const token = localStorage.getItem("token");
-        const res = await axios.get(
-          "http://localhost:5000/api/instructor/user/info",
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-        if (res.data) {
-          setUserInfo({
-            fullname: res.data.full_name || "Giảng viên",
-            avatar: res.data.avatar || "/icons/UI Image/default-avatar.png",
-          });
+        const res = await axiosClient.get('/profile');
+        const user = res.data && res.data.data;
+        if (user) {
+          const avatarUrl = user.avatar || localAvatar || "/icons/UI Image/default-avatar.png";
+          const fullname = user.full_name || localFullname || "Giảng viên";
+          try {
+            if (avatarUrl) localStorage.setItem('avatar', avatarUrl);
+            if (fullname) localStorage.setItem('fullname', fullname);
+          } catch (e) {}
+          setUserInfo({ fullname, avatar: avatarUrl });
+          return;
         }
       } catch (err) {
-        console.error("❌ Failed to fetch user info:", err);
+        // If profile endpoint fails, silently fallback to localStorage — keep console for debug
+        console.warn('Failed to load /api/profile for header avatar:', err?.response || err?.message || err);
       }
     };
     fetchUser();
+
+    // Listen for storage changes (avatar updated in Profile page)
+    const onStorage = (e) => {
+      if (e.key === 'avatar' || e.key === 'fullname') {
+        setUserInfo((prev) => ({
+          ...prev,
+          avatar: localStorage.getItem('avatar') || prev.avatar,
+          fullname: localStorage.getItem('fullname') || prev.fullname,
+        }));
+      }
+    };
+
+    // Also listen for an in-tab custom event dispatched by the Profile page
+    const onProfileUpdated = () => {
+      setUserInfo((prev) => ({
+        ...prev,
+        avatar: localStorage.getItem('avatar') || prev.avatar,
+        fullname: localStorage.getItem('fullname') || prev.fullname,
+      }));
+    };
+
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('profileUpdated', onProfileUpdated);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('profileUpdated', onProfileUpdated);
+    };
   }, []);
 
   // 🧭 Fetch monthly chart data

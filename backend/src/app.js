@@ -5,6 +5,7 @@ const sequelize = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
 const examRoomRoutes = require("./routes/examRoomRoutes");
 const instructorRoutes = require("./routes/instructorRoutes");
+const profileRoutes = require("./routes/profileRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const examBankRoutes = require("./routes/examBankRoutes");
 const app = express();
@@ -38,6 +39,7 @@ if (process.env.NODE_ENV === "development") {
   console.log("📦 examRoomRoutes:", typeof examRoomRoutes);
   console.log("📦 authRoutes value:", authRoutes);
   console.log("📦 examRoomRoutes value:", examRoomRoutes);
+  console.log("📦 profileRoutes mounted at /api/profile");
 }
 
 // ✅ Mount routes
@@ -45,9 +47,10 @@ app.use("/api/auth", authRoutes);
 app.use("/api/exam_rooms", examRoomRoutes);
 app.use("/api/instructor", instructorRoutes);
 app.use("/api/instructor", require("./routes/instructorRoutes"));
+app.use("/api/profile", profileRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/exam-bank", examBankRoutes);
-// app.use("/api/profile", profileRouter);
+
 // ✅ Route test
 app.get("/", (req, res) => {
   res.send("✅ Backend OEM API is running...");
