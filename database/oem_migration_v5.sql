@@ -673,3 +673,73 @@ FROM ai_logs
 ORDER BY created_at DESC;
 
 SELECT '✅ OEM Mini Sprint 2 — Schema, Triggers, Procedures, and Views updated successfully.' AS message;
+=======================
+USE oem_mini;
+
+-- (1) Cho phép exam_id có thể NULL để chứa câu hỏi ngân hàng (bank question)
+SET @col_nullable := (
+  SELECT IS_NULLABLE
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'exam_questions'
+    AND COLUMN_NAME = 'exam_id'
+);
+IF @col_nullable = 'NO' THEN
+  ALTER TABLE exam_questions MODIFY COLUMN exam_id INT NULL;
+END IF;
+
+-- (2) Thêm cột created_by nếu chưa tồn tại
+SET @col_exists := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'exam_questions'
+    AND COLUMN_NAME = 'created_by'
+);
+IF @col_exists = 0 THEN
+  ALTER TABLE exam_questions 
+    ADD COLUMN created_by INT NULL AFTER exam_id,
+    ADD INDEX idx_exam_questions_created_by (created_by);
+END IF;
+
+-- (3) Thêm cột is_bank_question nếu chưa tồn tại
+SET @col_exists2 := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'exam_questions'
+    AND COLUMN_NAME = 'is_bank_question'
+);
+IF @col_exists2 = 0 THEN
+  ALTER TABLE exam_questions 
+    ADD COLUMN is_bank_question BOOLEAN DEFAULT FALSE AFTER exam_id,
+    ADD INDEX idx_exam_questions_is_bank (is_bank_question);
+END IF;
+
+-- (4) Xóa FK trùng và thêm lại FK exam_id (cho phép NULL)
+SET @fk_exists := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS
+  WHERE CONSTRAINT_SCHEMA = DATABASE()
+    AND CONSTRAINT_NAME = 'fk_exam_questions_exam'
+);
+IF @fk_exists > 0 THEN
+  ALTER TABLE exam_questions DROP FOREIGN KEY fk_exam_questions_exam;
+END IF;
+
+ALTER TABLE exam_questions
+  ADD CONSTRAINT fk_exam_questions_exam
+    FOREIGN KEY (exam_id) REFERENCES exams(id)
+    ON UPDATE CASCADE ON DELETE CASCADE;
+
+-- (5) Thêm FK cho created_by nếu chưa có
+SET @fk_created_by := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS
+  WHERE CONSTRAINT_SCHEMA = DATABASE()
+    AND CONSTRAINT_NAME = 'fk_exam_questions_created_by'
+);
+IF @fk_created_by = 0 THEN
+  ALTER TABLE exam_questions
+    ADD CONSTRAINT fk_exam_questions_created_by
+      FOREIGN KEY (created_by) REFERENCES users(id)
+      ON UPDATE CASCADE ON DELETE SET NULL;
+END IF;
+
+SELECT '✅ Exam Bank columns & constraints updated successfully.' AS message;

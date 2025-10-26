@@ -6,8 +6,9 @@ const authRoutes = require("./routes/authRoutes");
 const examRoomRoutes = require("./routes/examRoomRoutes");
 const instructorRoutes = require("./routes/instructorRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const examBankRoutes = require("./routes/examBankRoutes");
 const app = express();
-
+// const profileRouter = require("./routes/profile");
 
 const allowedOrigins = [
   "http://localhost:4000",
@@ -45,7 +46,8 @@ app.use("/api/exam_rooms", examRoomRoutes);
 app.use("/api/instructor", instructorRoutes);
 app.use("/api/instructor", require("./routes/instructorRoutes"));
 app.use("/api/admin", adminRoutes);
-
+app.use("/api/exam-bank", examBankRoutes);
+// app.use("/api/profile", profileRouter);
 // ✅ Route test
 app.get("/", (req, res) => {
   res.send("✅ Backend OEM API is running...");

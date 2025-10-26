@@ -44,9 +44,34 @@ const Profile = () => {
     setFormData({ ...formData, [name]: value });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("Profile data:", formData);
+
+    const formDataToSend = new FormData();
+    formDataToSend.append("email", formData.email);
+    formDataToSend.append("firstName", formData.firstName);
+    formDataToSend.append("lastName", formData.lastName);
+    formDataToSend.append("phone", formData.phone);
+    formDataToSend.append("address", formData.address);
+
+    if (document.getElementById("avatar").files[0]) {
+      formDataToSend.append(
+        "avatar",
+        document.getElementById("avatar").files[0]
+      );
+    }
+
+    try {
+      const res = await fetch("http://localhost:5000/api/profile/update", {
+        method: "PUT",
+        body: formDataToSend,
+      });
+
+      const data = await res.json();
+      alert(data.message);
+    } catch (error) {
+      console.error("Error updating profile:", error);
+    }
   };
 
   return (
