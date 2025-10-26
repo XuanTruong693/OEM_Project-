@@ -260,7 +260,7 @@ const LoginPage = () => {
               <div className="text-right mt-1">
                 <span
                   className="text-blue-500 text-xs cursor-pointer hover:underline"
-                  onClick={() => navigate("/quen-mat-khau")}
+                  onClick={() => navigate("/forgot-password")}
                 >
                   Quên mật khẩu?
                 </span>

@@ -1,26 +1,26 @@
-const nodemailer = require('nodemailer');
+const nodemailer = require("nodemailer");
 
 // Cấu hình email transporter
 const createTransporter = () => {
   return nodemailer.createTransport({
-    service: 'gmail',
+    service: "gmail",
     auth: {
-      user: process.env.EMAIL_USER || 'truongkt693@gmail.com',
-      pass: process.env.EMAIL_PASS || 'tqdb bzaa cqzd iuwf'
-    }
+      user: process.env.EMAIL_USER || "truongkt693@gmail.com",
+      pass: process.env.EMAIL_PASS || "tqdb bzaa cqzd iuwf",
+    },
   });
 };
 
-// Gửi OTP email
+// Gửi OTP email cho người dùng thông thường
 const sendOTPEmail = async (email, otp) => {
   try {
     console.log(`📧 [Email Service] Đang gửi OTP ${otp} đến ${email}`);
     const transporter = createTransporter();
-    
+
     const mailOptions = {
-      from: process.env.EMAIL_USER || 'truongkt693@gmail.com',
+      from: process.env.EMAIL_USER || "truongkt693@gmail.com",
       to: email,
-      subject: 'Mã OTP xác minh email - OEM Mini Examitation',
+      subject: "Mã OTP xác minh email - OEM Mini Examination",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
@@ -57,42 +57,48 @@ const sendOTPEmail = async (email, otp) => {
             </p>
           </div>
         </div>
-      `
+      `,
     };
 
     const result = await transporter.sendMail(mailOptions);
-    console.log(`📧 [Email Service] OTP đã gửi thành công đến ${email}:`, result.messageId);
+    console.log(
+      `📧 [Email Service] OTP đã gửi thành công đến ${email}:`,
+      result.messageId
+    );
     return { success: true, messageId: result.messageId };
-    
   } catch (error) {
-    console.error('❌ [Email Service] Lỗi gửi email:', error);
+    console.error("❌ [Email Service] Lỗi gửi email:", error);
     return { success: false, error: error.message };
   }
 };
 
-// ==========================
-// 📩 GUI EMAIL XAC MINH TAI KHOAN ADMIN (CLI TOOL)
-// ==========================
-const sendAdminOTPVerificationEmail = async (adminEmail, otpCode, fullName = 'Admin') => {
+// Gửi OTP email cho tài khoản Admin
+const sendAdminOTPVerificationEmail = async (
+  adminEmail,
+  otpCode,
+  fullName = "Admin"
+) => {
   try {
-    console.log(`📧 [Admin Email Service] Dang gui ma OTP xac minh den ${adminEmail}`);
+    console.log(
+      `📧 [Admin Email Service] Đang gửi mã OTP xác minh đến ${adminEmail}`
+    );
     const transporter = createTransporter();
 
     const mailOptions = {
-      from: process.env.EMAIL_USER || 'truongkt693@gmail.com',
+      from: process.env.EMAIL_USER || "truongkt693@gmail.com",
       to: adminEmail,
-      subject: 'Ma OTP xac minh tai khoan Quan tri - OEM System',
+      subject: "Mã OTP xác minh tài khoản Quản trị - OEM System",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background: linear-gradient(135deg, #2c5364 0%, #203a43 50%, #0f2027 100%); padding: 25px; text-align: center; border-radius: 10px 10px 0 0;">
             <h1 style="color: #ffffff; margin: 0; font-size: 24px;">OEM Mini System</h1>
-            <p style="color: #dcdcdc; font-size: 14px;">Xac minh tai khoan Quan tri</p>
+            <p style="color: #dcdcdc; font-size: 14px;">Xác minh tài khoản Quản trị</p>
           </div>
           <div style="background: #f8f9fa; padding: 25px; border-radius: 0 0 10px 10px;">
-            <p style="color: #333;">Xin chao <strong>${fullName}</strong>,</p>
+            <p style="color: #333;">Xin chào <strong>${fullName}</strong>,</p>
             <p style="color: #333;">
-              Ban dang thuc hien xac minh email de tao tai khoan Quan tri (Admin).<br>
-              Vui long su dung ma OTP duoi day de hoan tat buoc xac minh:
+              Bạn đang thực hiện xác minh email để tạo tài khoản Quản trị (Admin).<br>
+              Vui lòng sử dụng mã OTP dưới đây để hoàn tất bước xác minh:
             </p>
             <div style="background: #fff; border: 2px dashed #203a43; border-radius: 10px; padding: 15px; margin: 20px 0; text-align: center;">
               <h2 style="color: #203a43; font-family: 'Courier New', monospace; letter-spacing: 4px; font-size: 32px; margin: 0;">
@@ -100,46 +106,50 @@ const sendAdminOTPVerificationEmail = async (adminEmail, otpCode, fullName = 'Ad
               </h2>
             </div>
             <p style="color: #555; font-size: 14px;">
-              ⏰ Ma OTP co hieu luc trong <strong>5 phut</strong> ke tu luc duoc gui.<br>
-              Neu ban khong yeu cau, vui long bo qua email nay.
+              ⏰ Mã OTP có hiệu lực trong <strong>5 phút</strong> kể từ lúc được gửi.<br>
+              Nếu bạn không yêu cầu, vui lòng bỏ qua email này.
             </p>
             <p style="color: #444; font-size: 14px; margin-top: 30px;">
-              Tran trong,<br>
-              <strong>DOI NGU PHAT TRIEN OEM SYSTEM</strong>
+              Trân trọng,<br>
+              <strong>ĐỘI NGŨ PHÁT TRIỂN OEM SYSTEM</strong>
             </p>
           </div>
         </div>
-      `
+      `,
     };
 
     const result = await transporter.sendMail(mailOptions);
-    console.log(`✅ [Admin Email Service] Gui ma OTP thanh cong den ${adminEmail} | MessageID: ${result.messageId}`);
+    console.log(
+      `✅ [Admin Email Service] Gửi mã OTP thành công đến ${adminEmail} | MessageID: ${result.messageId}`
+    );
     return { success: true, messageId: result.messageId };
-
   } catch (error) {
-    console.error('❌ [Admin Email Service] Loi khi gui ma OTP:', error.message);
+    console.error(
+      "❌ [Admin Email Service] Lỗi khi gửi mã OTP:",
+      error.message
+    );
     return { success: false, error: error.message };
   }
 };
-
 
 // Test email configuration
 const testEmailConfig = async () => {
   try {
     const transporter = createTransporter();
     await transporter.verify();
-    console.log('✅ [Email Service] Cấu hình email hợp lệ - truongkt693@gmail.com');
+    console.log(
+      "✅ [Email Service] Cấu hình email hợp lệ - truongkt693@gmail.com"
+    );
     return true;
   } catch (error) {
-    console.error('❌ [Email Service] Lỗi cấu hình email:', error.message);
-    console.log('📖 Kiểm tra lại EMAIL_USER và EMAIL_PASS');
+    console.error("❌ [Email Service] Lỗi cấu hình email:", error.message);
+    console.log("📖 Kiểm tra lại EMAIL_USER và EMAIL_PASS");
     return false;
   }
 };
 
 module.exports = {
   sendOTPEmail,
-  sendAdminOTPVerificationEmail, // 🆕
-  testEmailConfig
+  sendAdminOTPVerificationEmail,
+  testEmailConfig,
 };
-
