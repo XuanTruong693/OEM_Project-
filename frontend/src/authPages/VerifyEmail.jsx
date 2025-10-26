@@ -19,15 +19,16 @@ const VerifyEmail = () => {
     }
   }, [timer]);
 
-  // ✅ Xử lý nhập từng ký tự
   const handleChange = (e, index) => {
-    const value = e.target.value.replace(/\D/g, ""); // chỉ cho phép số
+    const value = e.target.value.replace(/\D/g, "").slice(0, 1);
     const newOtp = [...otp];
     newOtp[index] = value;
     setOtp(newOtp);
 
     if (value && index < otp.length - 1) {
-      inputsRef.current[index + 1].focus();
+      setTimeout(() => {
+        inputsRef.current[index + 1]?.focus();
+      }, 0);
     }
   };
 
@@ -47,7 +48,6 @@ const VerifyEmail = () => {
     }
   };
 
-  // ✅ Gửi xác minh OTP
   const handleVerify = async (e) => {
     e.preventDefault();
     const code = otp.join("");
@@ -65,7 +65,7 @@ const VerifyEmail = () => {
       if (res.data.status === "success") {
         setMessage("✅ Xác minh thành công!");
         setTimeout(
-          () => navigate("/reset-password", { state: { email } }),
+          () => navigate("/reset-password", { state: { email, otp: code } }),
           1000
         );
       } else {
@@ -98,11 +98,11 @@ const VerifyEmail = () => {
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
       <div className="bg-white shadow-lg rounded-2xl p-8 w-full max-w-md text-center">
         <h2 className="text-3xl font-bold text-gray-800 mb-2">
-          You’ve Got Email
+          Kiểm tra Email của bạn
         </h2>
         <p className="text-gray-500 mb-6">
-          We’ve sent the OTP verification code to your email address.
-          <br /> Please check your email and enter the code below.
+          Mã xác thực OTP đã được gửi đến email
+          <br /> Vui lòng nhập mã bên dưới để tiếp tục.
         </p>
 
         <div className="flex justify-center gap-3 mb-6">
@@ -135,7 +135,7 @@ const VerifyEmail = () => {
           onClick={handleVerify}
           className="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 transition-colors"
         >
-          Confirm
+          Xác nhận
         </button>
 
         {message && <p className="text-sm text-gray-700 mt-4">{message}</p>}
@@ -144,7 +144,7 @@ const VerifyEmail = () => {
           onClick={() => navigate("/login")}
           className="text-indigo-600 text-sm mt-4 hover:underline"
         >
-          Back to Sign In
+          Quay lại Đăng Nhập
         </button>
       </div>
     </div>

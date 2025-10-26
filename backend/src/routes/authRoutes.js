@@ -614,4 +614,67 @@ router.post("/forgot-send-otp", async (req, res) => {
   }
 });
 
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { email, newPassword, otp } = req.body;
+
+    if (!email || !newPassword || !otp) {
+      return res.status(400).json({
+        message: "Thiếu thông tin: email, mật khẩu mới hoặc mã OTP.",
+        status: "error",
+      });
+    }
+
+    const emailKey = email.toLowerCase().trim();
+    const otpData = otpStorage.get(emailKey);
+
+    if (!otpData) {
+      return res.status(400).json({
+        message: "Mã OTP không tồn tại hoặc đã hết hạn.",
+        status: "error",
+      });
+    }
+
+    if (Date.now() > otpData.expiresAt) {
+      otpStorage.delete(emailKey);
+      return res.status(400).json({
+        message: "Mã OTP đã hết hạn.",
+        status: "error",
+      });
+    }
+
+    if (otpData.otp !== otp) {
+      return res.status(400).json({
+        message: "Mã OTP không chính xác.",
+        status: "error",
+      });
+    }
+
+    const user = await User.findOne({ where: { email: emailKey } });
+    if (!user) {
+      return res.status(404).json({
+        message: "Không tìm thấy tài khoản.",
+        status: "error",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await user.update({ password_hash: hashedPassword });
+
+    otpStorage.delete(emailKey);
+    console.log(`[Reset Password] Mật khẩu đã được đặt lại cho ${emailKey}`);
+
+    res.json({
+      message: "Đặt lại mật khẩu thành công.",
+      status: "success",
+    });
+  } catch (err) {
+    console.error("Lỗi đặt lại mật khẩu:", err);
+    res.status(500).json({
+      message: "Lỗi server khi đặt lại mật khẩu.",
+      status: "error",
+    });
+  }
+});
+
 module.exports = router;
