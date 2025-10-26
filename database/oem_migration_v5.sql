@@ -743,3 +743,7 @@ IF @fk_created_by = 0 THEN
 END IF;
 
 SELECT '✅ Exam Bank columns & constraints updated successfully.' AS message;
+--thêm 2 cột avatar vào bảng users
+ALTER TABLE oem_mini.users
+  ADD COLUMN avatar_blob LONGBLOB NULL, 
+  ADD COLUMN avatar_mimetype VARCHAR(100) NULL;
