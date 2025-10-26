@@ -21,9 +21,12 @@ const LoginPage = () => {
       const token = localStorage.getItem("token");
       const userRole = localStorage.getItem("role");
       if (token && userRole) {
-        navigate(
-          `/${userRole === "student" ? "student" : "instructor"}-dashboard`
-        );
+        const dashboardPath = userRole === "student" 
+          ? "/student-dashboard" 
+          : userRole === "admin" 
+          ? "/admin-dashboard" 
+          : "/instructor-dashboard";
+        navigate(dashboardPath);
         return;
       }
     }
@@ -104,7 +107,13 @@ const LoginPage = () => {
           res.data.user.avatar || "/icons/UI Image/default-avatar.png"
         );
 
-        navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
+        const userRole = res.data.user.role;
+        const dashboardPath = userRole === "student" 
+          ? "/student-dashboard" 
+          : userRole === "admin" 
+          ? "/admin-dashboard" 
+          : "/instructor-dashboard";
+        navigate(dashboardPath);
       }, 1500);
     } catch (error) {
       console.error("❌ [Login Error] Chi tiết lỗi đầy đủ:", error);
@@ -178,7 +187,13 @@ const LoginPage = () => {
           res.data.user.avatar || "/icons/UI Image/default-avatar.png"
         );
 
-        navigate(`/${role === "student" ? "student" : "instructor"}-dashboard`);
+        const userRole = res.data.user.role;
+        const dashboardPath = userRole === "student" 
+          ? "/student-dashboard" 
+          : userRole === "admin" 
+          ? "/admin-dashboard" 
+          : "/instructor-dashboard";
+        navigate(dashboardPath);
       }, 1500);
     } catch (error) {
       console.error("❌ Lỗi Google login:", error?.response?.data || error);

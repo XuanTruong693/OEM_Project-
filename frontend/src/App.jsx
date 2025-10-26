@@ -33,6 +33,8 @@ import StudentDashboard from "./pages/studentPage/StudentDashboard.jsx";
 import InstructorSidebar from "./components/instructor/InstructorSidebar.jsx";
 import Profile from "./pages/instructorPage/Profile.jsx";
 
+import AdminDashboard from './pages/adminPage/AdminDashboard.jsx';
+
 function ProtectedRoute({ children, requiredRole }) {
   const location = useLocation();
   const role = localStorage.getItem("role");
@@ -110,6 +112,14 @@ const App = () => {
           element={
             <ProtectedRoute requiredRole="student">
               <StudentDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin-dashboard"
+          element={
+            <ProtectedRoute requiredRole="admin">
+              <AdminDashboard />
             </ProtectedRoute>
           }
         />

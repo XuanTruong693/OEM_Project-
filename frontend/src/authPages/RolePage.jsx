@@ -18,7 +18,7 @@ export default function RolePage() {
 
   const handleSelectRole = async (role) => {
   setLoading(true);
-  const selectedRole = role === "instructor" ? "instructor" : "student";
+  const selectedRole = role;
 
   try {
     // Xóa tất cả dữ liệu cũ khi chọn role mới

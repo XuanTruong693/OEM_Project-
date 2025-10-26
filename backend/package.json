@@ -8,6 +8,7 @@
     "test": "tests"
   },
   "scripts": {
+    "start": "node src/app.js",
     "server": "node src/app.js",
     "dev": "nodemon src/app.js",
     "taoTK": "node scripts/createAdmin.js"
