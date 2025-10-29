@@ -450,6 +450,11 @@ GROUP BY c.instructor_id;
 -- ✅Update database to Sprint 2
 -- =================================================================
 USE oem_mini;
+
+-- =====================================================
+-- 1️⃣ TABLES
+-- =====================================================
+
 -- (1) Enrollments
 CREATE TABLE IF NOT EXISTS enrollments (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -483,22 +488,19 @@ CREATE TABLE IF NOT EXISTS import_jobs (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- (3) Import Rows
-CREATE TABLE IF NOT EXISTS `import_rows` (
-  `id` INT AUTO_INCREMENT PRIMARY KEY,
-  `job_id` INT NOT NULL,
-  `row_number` INT NOT NULL,
-  `row_data` LONGTEXT NOT NULL,
-  `errors` LONGTEXT NULL,
-  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-  INDEX `idx_import_rows_job` (`job_id`),
-  CONSTRAINT `fk_import_rows_job`
-    FOREIGN KEY (`job_id`)
-    REFERENCES `import_jobs` (`id`)
-    ON UPDATE CASCADE
-    ON DELETE CASCADE
-) ENGINE=InnoDB
-DEFAULT CHARSET=utf8mb4
-COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS import_rows (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    job_id INT NOT NULL,
+    row_number INT NOT NULL,
+    row_data LONGTEXT NOT NULL,
+    errors LONGTEXT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_import_rows_job (job_id),
+    CONSTRAINT fk_import_rows_job FOREIGN KEY (job_id)
+        REFERENCES import_jobs (id)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- (4) Refresh Tokens
 CREATE TABLE IF NOT EXISTS refresh_tokens (
@@ -513,54 +515,47 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     CONSTRAINT fk_refresh_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- (5) Submissions update
-ALTER TABLE submissions
-  ADD COLUMN IF NOT EXISTS status ENUM('pending','graded','confirmed') DEFAULT 'pending',
-  ADD COLUMN IF NOT EXISTS total_score FLOAT DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  ADD COLUMN IF NOT EXISTS updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  ADD INDEX IF NOT EXISTS idx_submissions_status (status);
+-- (5) Submissions (thêm cột nếu chưa có)
+CALL add_column_if_missing('submissions', 'status', "ENUM('pending','graded','confirmed') DEFAULT 'pending'");
+CALL add_column_if_missing('submissions', 'total_score', 'FLOAT DEFAULT 0');
+CALL add_column_if_missing('submissions', 'created_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP');
+CALL add_column_if_missing('submissions', 'updated_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
+CREATE INDEX IF NOT EXISTS idx_submissions_status ON submissions (status);
 
--- (6) Student answers update
-ALTER TABLE student_answers
-  ADD COLUMN IF NOT EXISTS score FLOAT DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS graded_at DATETIME NULL,
-  ADD INDEX IF NOT EXISTS idx_student_answers_graded_at (graded_at);
+-- (6) Student Answers
+CALL add_column_if_missing('student_answers', 'score', 'FLOAT DEFAULT 0');
+CALL add_column_if_missing('student_answers', 'graded_at', 'DATETIME NULL');
+CREATE INDEX IF NOT EXISTS idx_student_answers_graded_at ON student_answers (graded_at);
 
--- (7) Exam questions update
-ALTER TABLE exam_questions
-  MODIFY COLUMN type ENUM('MCQ','Essay','Unknown') DEFAULT 'Unknown',
-  ADD COLUMN IF NOT EXISTS points FLOAT DEFAULT 1,
-  ADD COLUMN IF NOT EXISTS created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  ADD COLUMN IF NOT EXISTS updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  ADD INDEX IF NOT EXISTS idx_exam_questions_type (type);
+-- (7) Exam Questions
+ALTER TABLE exam_questions MODIFY COLUMN type ENUM('MCQ','Essay','Unknown') DEFAULT 'Unknown';
+CALL add_column_if_missing('exam_questions', 'points', 'FLOAT DEFAULT 1');
+CALL add_column_if_missing('exam_questions', 'created_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP');
+CALL add_column_if_missing('exam_questions', 'updated_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
+CREATE INDEX IF NOT EXISTS idx_exam_questions_type ON exam_questions (type);
 
--- (8) Exams update
-ALTER TABLE exams
-  ADD COLUMN IF NOT EXISTS exam_room_code VARCHAR(64) NULL AFTER id,
-  ADD COLUMN IF NOT EXISTS status ENUM('draft','published','archived') DEFAULT 'draft' AFTER exam_room_code,
-  ADD COLUMN IF NOT EXISTS created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  ADD COLUMN IF NOT EXISTS updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  ADD COLUMN IF NOT EXISTS deleted_at DATETIME NULL,
-  ADD UNIQUE INDEX IF NOT EXISTS uq_exams_room_code (exam_room_code);
+-- (8) Exams
+CALL add_column_if_missing('exams', 'exam_room_code', 'VARCHAR(64) NULL');
+CALL add_column_if_missing('exams', 'status', "ENUM('draft','published','archived') DEFAULT 'draft'");
+CALL add_column_if_missing('exams', 'created_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP');
+CALL add_column_if_missing('exams', 'updated_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
+CALL add_column_if_missing('exams', 'deleted_at', 'DATETIME NULL');
+CREATE UNIQUE INDEX IF NOT EXISTS uq_exams_room_code ON exams (exam_room_code);
 
--- (10) AI Logs
-ALTER TABLE ai_logs
-  ADD COLUMN IF NOT EXISTS request_payload LONGTEXT NULL,
-  ADD COLUMN IF NOT EXISTS response_payload LONGTEXT NULL,
-  ADD COLUMN IF NOT EXISTS error_text TEXT NULL,
-  ADD COLUMN IF NOT EXISTS created_at DATETIME DEFAULT CURRENT_TIMESTAMP;
+-- (9) AI Logs
+CALL add_column_if_missing('ai_logs', 'request_payload', 'LONGTEXT NULL');
+CALL add_column_if_missing('ai_logs', 'response_payload', 'LONGTEXT NULL');
+CALL add_column_if_missing('ai_logs', 'error_text', 'TEXT NULL');
+CALL add_column_if_missing('ai_logs', 'created_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP');
 
--- (11) Soft delete
-ALTER TABLE courses ADD COLUMN IF NOT EXISTS deleted_at DATETIME NULL;
+-- (10) Soft delete courses
+CALL add_column_if_missing('courses', 'deleted_at', 'DATETIME NULL');
 
 -- =====================================================
 -- 2️⃣ TRIGGERS
 -- =====================================================
-
 DELIMITER $$
 
--- Trigger: update submission total score after each student answer update
 DROP TRIGGER IF EXISTS trg_update_submission_score $$
 CREATE TRIGGER trg_update_submission_score
 AFTER UPDATE ON student_answers
@@ -571,7 +566,6 @@ BEGIN
   UPDATE submissions SET total_score = total WHERE id = NEW.submission_id;
 END$$
 
--- Trigger: mark submission as graded when all answers are graded
 DROP TRIGGER IF EXISTS trg_check_submission_status $$
 CREATE TRIGGER trg_check_submission_status
 AFTER UPDATE ON student_answers
@@ -587,12 +581,26 @@ END$$
 DELIMITER ;
 
 -- =====================================================
--- 3️⃣ STORED PROCEDURES
+-- 3️⃣ PROCEDURES
 -- =====================================================
-
 DELIMITER $$
 
--- Procedure: finalize_submission (calculate total score + mark graded)
+-- Helper: safely add a column if missing
+DROP PROCEDURE IF EXISTS add_column_if_missing $$
+CREATE PROCEDURE add_column_if_missing(IN tbl VARCHAR(64), IN col VARCHAR(64), IN coldef TEXT)
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = tbl AND COLUMN_NAME = col
+  ) THEN
+    SET @ddl = CONCAT('ALTER TABLE ', tbl, ' ADD COLUMN ', col, ' ', coldef);
+    PREPARE stmt FROM @ddl;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+  END IF;
+END$$
+
+-- finalize_submission
 DROP PROCEDURE IF EXISTS finalize_submission $$
 CREATE PROCEDURE finalize_submission(IN submissionId INT)
 BEGIN
@@ -601,7 +609,7 @@ BEGIN
   UPDATE submissions SET total_score = total, status = 'graded', updated_at = NOW() WHERE id = submissionId;
 END$$
 
--- Procedure: import_exam_from_job (insert validated questions)
+-- import_exam_from_job
 DROP PROCEDURE IF EXISTS import_exam_from_job $$
 CREATE PROCEDURE import_exam_from_job(IN jobId INT)
 BEGIN
@@ -632,8 +640,6 @@ DELIMITER ;
 -- =====================================================
 -- 4️⃣ VIEWS
 -- =====================================================
-
--- View: v_exam_overview (exam info + total submissions)
 CREATE OR REPLACE VIEW v_exam_overview AS
 SELECT 
   e.id AS exam_id,
@@ -647,7 +653,6 @@ FROM exams e
 LEFT JOIN submissions s ON e.id = s.exam_id
 GROUP BY e.id, e.title, e.status, e.exam_room_code;
 
--- View: v_student_result_overview (student + exam + score)
 CREATE OR REPLACE VIEW v_student_result_overview AS
 SELECT 
   u.id AS student_id,
@@ -661,7 +666,6 @@ FROM submissions s
 JOIN users u ON s.user_id = u.id
 JOIN exams e ON s.exam_id = e.id;
 
--- View: v_ai_logs_trace (for debugging AI)
 CREATE OR REPLACE VIEW v_ai_logs_trace AS
 SELECT 
   id AS log_id,
@@ -672,77 +676,8 @@ SELECT
 FROM ai_logs
 ORDER BY created_at DESC;
 
-SELECT '✅ OEM Mini Sprint 2 — Schema, Triggers, Procedures, and Views updated successfully.' AS message;
-=======================
-USE oem_mini;
+SELECT '✅ OEM Mini schema successfully updated (no warnings, MySQL-safe)' AS message;
 
--- (1) Cho phép exam_id có thể NULL để chứa câu hỏi ngân hàng (bank question)
-SET @col_nullable := (
-  SELECT IS_NULLABLE
-  FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE()
-    AND TABLE_NAME = 'exam_questions'
-    AND COLUMN_NAME = 'exam_id'
-);
-IF @col_nullable = 'NO' THEN
-  ALTER TABLE exam_questions MODIFY COLUMN exam_id INT NULL;
-END IF;
-
--- (2) Thêm cột created_by nếu chưa tồn tại
-SET @col_exists := (
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE()
-    AND TABLE_NAME = 'exam_questions'
-    AND COLUMN_NAME = 'created_by'
-);
-IF @col_exists = 0 THEN
-  ALTER TABLE exam_questions 
-    ADD COLUMN created_by INT NULL AFTER exam_id,
-    ADD INDEX idx_exam_questions_created_by (created_by);
-END IF;
-
--- (3) Thêm cột is_bank_question nếu chưa tồn tại
-SET @col_exists2 := (
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE()
-    AND TABLE_NAME = 'exam_questions'
-    AND COLUMN_NAME = 'is_bank_question'
-);
-IF @col_exists2 = 0 THEN
-  ALTER TABLE exam_questions 
-    ADD COLUMN is_bank_question BOOLEAN DEFAULT FALSE AFTER exam_id,
-    ADD INDEX idx_exam_questions_is_bank (is_bank_question);
-END IF;
-
--- (4) Xóa FK trùng và thêm lại FK exam_id (cho phép NULL)
-SET @fk_exists := (
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS
-  WHERE CONSTRAINT_SCHEMA = DATABASE()
-    AND CONSTRAINT_NAME = 'fk_exam_questions_exam'
-);
-IF @fk_exists > 0 THEN
-  ALTER TABLE exam_questions DROP FOREIGN KEY fk_exam_questions_exam;
-END IF;
-
-ALTER TABLE exam_questions
-  ADD CONSTRAINT fk_exam_questions_exam
-    FOREIGN KEY (exam_id) REFERENCES exams(id)
-    ON UPDATE CASCADE ON DELETE CASCADE;
-
--- (5) Thêm FK cho created_by nếu chưa có
-SET @fk_created_by := (
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS
-  WHERE CONSTRAINT_SCHEMA = DATABASE()
-    AND CONSTRAINT_NAME = 'fk_exam_questions_created_by'
-);
-IF @fk_created_by = 0 THEN
-  ALTER TABLE exam_questions
-    ADD CONSTRAINT fk_exam_questions_created_by
-      FOREIGN KEY (created_by) REFERENCES users(id)
-      ON UPDATE CASCADE ON DELETE SET NULL;
-END IF;
-
-SELECT '✅ Exam Bank columns & constraints updated successfully.' AS message;
 --thêm 2 cột avatar vào bảng users
 ALTER TABLE oem_mini.users
   ADD COLUMN avatar_blob LONGBLOB NULL, 
