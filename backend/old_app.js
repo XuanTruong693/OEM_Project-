@@ -3,10 +3,10 @@ const app = express();
 const sequelize = require('./src/config/db');
 const authRoutes = require('./src/routes/authRoutes');
 const examRoomRoutes = require('./src/routes/examRoomRoutes');
-console.log("📦 authRoutes:", typeof authRoutes);
-console.log("📦 examRoomRoutes:", typeof examRoomRoutes);
-console.log("📦 authRoutes value:", authRoutes);
-console.log("📦 examRoomRoutes value:", examRoomRoutes);
+// console.log("📦 authRoutes:", typeof authRoutes);
+// console.log("📦 examRoomRoutes:", typeof examRoomRoutes);
+// console.log("📦 authRoutes value:", authRoutes);
+// console.log("📦 examRoomRoutes value:", examRoomRoutes);
 
 app.use(express.json());
 

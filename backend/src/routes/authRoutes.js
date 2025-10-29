@@ -179,7 +179,7 @@ router.post("/verify-otp", async (req, res) => {
 // --- Google login / create ---
 router.post("/google", async (req, res) => {
   console.log("🟢 [BACKEND] Google login/register API hit!");
-  console.log("📩 Payload từ FE:", req.body);
+  // console.log("📩 Payload từ FE:", req.body);
 
   try {
     const { idToken, role, roomId } = req.body;

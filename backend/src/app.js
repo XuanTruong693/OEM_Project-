@@ -35,11 +35,11 @@ app.use(express.json());
 
 // ✅ Log debug chỉ khi chạy dev
 if (process.env.NODE_ENV === "development") {
-  console.log("📦 authRoutes:", typeof authRoutes);
-  console.log("📦 examRoomRoutes:", typeof examRoomRoutes);
-  console.log("📦 authRoutes value:", authRoutes);
-  console.log("📦 examRoomRoutes value:", examRoomRoutes);
-  console.log("📦 profileRoutes mounted at /api/profile");
+  // console.log("📦 authRoutes:", typeof authRoutes);
+  // console.log("📦 examRoomRoutes:", typeof examRoomRoutes);
+  // console.log("📦 authRoutes value:", authRoutes);
+  // console.log("📦 examRoomRoutes value:", examRoomRoutes);
+  // console.log("📦 profileRoutes mounted at /api/profile");
 }
 
 // ✅ Mount routes

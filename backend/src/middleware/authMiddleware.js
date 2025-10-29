@@ -4,8 +4,8 @@ require("dotenv").config();
 // ✅ Middleware xác thực token
 const verifyToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  console.log("🧾 Token received:", authHeader);
-  console.log("🧾 Token received:", req.headers.authorization);
+  // console.log("🧾 Token received:", authHeader);
+  // console.log("🧾 Token received:", req.headers.authorization);
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({ message: "Không có token" });
   }
@@ -13,10 +13,8 @@ const verifyToken = (req, res, next) => {
   const token = authHeader.split(" ")[1];
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    // ⚠️ Đảm bảo token chứa "id" (chứ không phải "userId")
     req.user = {
-      id: decoded.id, // <-- QUAN TRỌNG: sử dụng 'id' thay vì 'userId'
+      id: decoded.id,
       email: decoded.email,
       role: decoded.role,
     };
