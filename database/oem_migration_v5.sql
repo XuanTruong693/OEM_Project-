@@ -785,5 +785,18 @@ FROM exam_questions q
 JOIN exams e ON q.exam_id = e.id;
 -- kiểm tra view
 SELECT * FROM v_exam_questions_detail WHERE created_by = ? AND exam_id = ?;
+
+-- xóa bảng courses k cần nữa
+USE oem_mini;
+SET FOREIGN_KEY_CHECKS = 0;
+ALTER TABLE enrollments
+DROP FOREIGN KEY fk_enrollments_course;
+ALTER TABLE exams
+DROP FOREIGN KEY fk_exams_course;
+ALTER TABLE exams
+DROP COLUMN course_id;
+DROP TABLE IF EXISTS courses;
+SET FOREIGN_KEY_CHECKS = 1;
+SELECT '✅ Đã xóa khóa ngoại, cột course_id trong exams và các bảng courses, enrollments thành công.' AS message;
 -- =================================================================
 -- ✅ END OF SCRIPT (OEM Mini v5.1 - Sprint 2 Update)
