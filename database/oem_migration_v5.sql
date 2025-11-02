@@ -682,3 +682,108 @@ SELECT '✅ OEM Mini schema successfully updated (no warnings, MySQL-safe)' AS m
 ALTER TABLE oem_mini.users
   ADD COLUMN avatar_blob LONGBLOB NULL, 
   ADD COLUMN avatar_mimetype VARCHAR(100) NULL;
+----- sửa bổ sung id_instructor
+USE oem_mini;
+ALTER TABLE exams
+    DROP FOREIGN KEY fk_exams_course,
+    DROP COLUMN course_id,
+    ADD COLUMN instructor_id INT NOT NULL AFTER id,
+    ADD CONSTRAINT fk_exams_instructor
+        FOREIGN KEY (instructor_id) REFERENCES users(id)
+        ON UPDATE CASCADE ON DELETE CASCADE;
+-- nếu lỗi khóa ngoại thì chạy lệnh sau trước
+SET SQL_SAFE_UPDATES = 0;
+
+UPDATE exams SET instructor_id = 18;
+
+SET SQL_SAFE_UPDATES = 1;
+-- chạy để kiểm tra tồn tại
+SELECT id, title, instructor_id FROM exams;
+-- sửa bổ sung id_instructor khóa ngoại
+ALTER TABLE exams
+ADD CONSTRAINT fk_exams_instructor
+FOREIGN KEY (instructor_id) REFERENCES users(id)
+ON UPDATE CASCADE ON DELETE CASCADE;
+-- bổ sung id_exam vào bảng exam_questions
+
+USE oem_mini;
+
+-- 1️⃣ Tạm tắt kiểm tra khóa ngoại
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- 2️⃣ Kiểm tra xem cột exam_id đã tồn tại chưa
+SET @col_exists := (
+  SELECT COUNT(*) 
+  FROM INFORMATION_SCHEMA.COLUMNS 
+  WHERE TABLE_SCHEMA = 'oem_mini' 
+    AND TABLE_NAME = 'exam_questions' 
+    AND COLUMN_NAME = 'exam_id'
+);
+
+-- 3️⃣ Nếu chưa có cột thì thêm mới
+SET @sql := IF(@col_exists = 0, 
+  'ALTER TABLE exam_questions ADD COLUMN exam_id INT NULL AFTER id;', 
+  'SELECT "Column exam_id already exists";'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- 4️⃣ Cập nhật exam_id hợp lệ (giả sử đề thi có id = 2)
+UPDATE exam_questions 
+SET exam_id = 2 
+WHERE exam_id IS NULL 
+   OR exam_id NOT IN (SELECT id FROM exams);
+
+-- 5️⃣ Xóa khóa ngoại cũ nếu có
+SET @fk_name := (
+  SELECT CONSTRAINT_NAME
+  FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+  WHERE TABLE_SCHEMA = 'oem_mini'
+    AND TABLE_NAME = 'exam_questions'
+    AND COLUMN_NAME = 'exam_id'
+    AND REFERENCED_TABLE_NAME = 'exams'
+  LIMIT 1
+);
+SET @sql := IF(@fk_name IS NOT NULL, 
+  CONCAT('ALTER TABLE exam_questions DROP FOREIGN KEY ', @fk_name, ';'), 
+  'SELECT "No old FK found";'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- 6️⃣ Tạo lại khóa ngoại mới đúng chuẩn
+ALTER TABLE exam_questions
+ADD CONSTRAINT fk_exam_questions_exam
+FOREIGN KEY (exam_id) REFERENCES exams(id)
+ON UPDATE CASCADE ON DELETE CASCADE;
+
+-- 7️⃣ Bật lại kiểm tra khóa ngoại
+SET FOREIGN_KEY_CHECKS = 1;
+
+-- 8️⃣ Kiểm tra kết quả
+SELECT 
+  CONSTRAINT_NAME, TABLE_NAME, COLUMN_NAME, 
+  REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+WHERE TABLE_SCHEMA = 'oem_mini' 
+  AND TABLE_NAME = 'exam_questions' 
+  AND REFERENCED_TABLE_NAME = 'exams';
+--- view instructor exam bank quản lý đề thi
+CREATE OR REPLACE VIEW v_exam_questions_detail AS
+SELECT 
+  q.id AS question_id,
+  e.id AS exam_id,
+  e.title AS exam_title,
+  q.question_text,
+  q.type,
+  q.model_answer,
+  q.points,
+  q.created_by
+FROM exam_questions q
+JOIN exams e ON q.exam_id = e.id;
+-- kiểm tra view
+SELECT * FROM v_exam_questions_detail WHERE created_by = ? AND exam_id = ?;
+-- =================================================================
+-- ✅ END OF SCRIPT (OEM Mini v5.1 - Sprint 2 Update)
