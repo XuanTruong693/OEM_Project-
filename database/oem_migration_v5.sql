@@ -676,9 +676,6 @@ ORDER BY created_at DESC;
 
 SELECT '✅ OEM Mini schema successfully updated (no warnings, MySQL-safe)' AS message;
 
--- thêm 2 cột avatar vào bảng users
-
-  
 ----- sửa bổ sung id_instructor
 USE oem_mini;
 ALTER TABLE exams
