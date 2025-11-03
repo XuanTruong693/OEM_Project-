@@ -1,8 +1,8 @@
-const express = require('express');
+const express = require("express");
 const app = express();
-const sequelize = require('./src/config/db');
-const authRoutes = require('./src/routes/authRoutes');
-const examRoomRoutes = require('./src/routes/examRoomRoutes');
+const sequelize = require("./src/config/db");
+const authRoutes = require("./src/routes/authRoutes");
+const examRoomRoutes = require("./src/routes/examRoomRoutes");
 // console.log("📦 authRoutes:", typeof authRoutes);
 // console.log("📦 examRoomRoutes:", typeof examRoomRoutes);
 // console.log("📦 authRoutes value:", authRoutes);
@@ -10,19 +10,20 @@ const examRoomRoutes = require('./src/routes/examRoomRoutes');
 
 app.use(express.json());
 
-app.use('/auth', authRoutes);
-app.use('/exam_rooms', examRoomRoutes);
+app.use("/auth", authRoutes);
+app.use("/exam_rooms", examRoomRoutes);
 
-sequelize.authenticate()
+sequelize
+  .authenticate()
   .then(() => {
-    console.log('✅ DB connected');
+    console.log("✅ DB connected");
     return sequelize.sync();
   })
   .then(() => {
-    console.log('✅ Models synchronized');
+    console.log("✅ Models synchronized");
   })
-  .catch(err => {
-    console.error('❌ DB sync error:', err);
+  .catch((err) => {
+    console.error("❌ DB sync error:", err);
   });
 
 module.exports = app;

@@ -15,13 +15,19 @@ USE oem_mini;
 
 -- 1) users
 CREATE TABLE users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     full_name VARCHAR(100) NOT NULL,
     email VARCHAR(120) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
+    avatar VARCHAR(255) NULL,
+    avatar_blob LONGBLOB NULL,
+    avatar_mimetype VARCHAR(100) NULL,
+    gender ENUM('male','female','other') NULL,
+    address VARCHAR(255) NULL,
+    phone_number VARCHAR(20) NULL,
     role ENUM('admin','instructor','student') NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    verify_room_code VARCHAR(20) NULL,
+    verify_room_code BOOLEAN DEFAULT FALSE,
     INDEX idx_users_role (role)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -421,14 +427,6 @@ CREATE TABLE user_verified_rooms (
         ON UPDATE CASCADE ON DELETE CASCADE,
     UNIQUE KEY uq_user_room (user_id, exam_room_code)
 );
--- Migrate existing user avatars
-USE oem_mini;
-ALTER TABLE users
-ADD COLUMN avatar VARCHAR(255) NULL AFTER password_hash,
-ADD COLUMN gender ENUM('male', 'female', 'other') NULL AFTER avatar,
-ADD COLUMN address VARCHAR(255) AFTER full_name,
-ADD COLUMN phone_number VARCHAR(20) AFTER address;
-
 
 -- View for instructor statistics
 CREATE OR REPLACE VIEW v_instructor_stats AS
@@ -491,7 +489,7 @@ CREATE TABLE IF NOT EXISTS import_jobs (
 CREATE TABLE IF NOT EXISTS import_rows (
     id INT AUTO_INCREMENT PRIMARY KEY,
     job_id INT NOT NULL,
-    row_number INT NOT NULL,
+    `row_number` INT NOT NULL,
     row_data LONGTEXT NOT NULL,
     errors LONGTEXT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -678,10 +676,9 @@ ORDER BY created_at DESC;
 
 SELECT '✅ OEM Mini schema successfully updated (no warnings, MySQL-safe)' AS message;
 
---thêm 2 cột avatar vào bảng users
-ALTER TABLE oem_mini.users
-  ADD COLUMN avatar_blob LONGBLOB NULL, 
-  ADD COLUMN avatar_mimetype VARCHAR(100) NULL;
+-- thêm 2 cột avatar vào bảng users
+
+  
 ----- sửa bổ sung id_instructor
 USE oem_mini;
 ALTER TABLE exams

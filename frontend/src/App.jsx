@@ -33,7 +33,7 @@ import StudentDashboard from "./pages/studentPage/StudentDashboard.jsx";
 import InstructorSidebar from "./components/instructor/InstructorSidebar.jsx";
 import Profile from "./pages/instructorPage/Profile.jsx";
 
-import AdminDashboard from './pages/adminPage/AdminDashboard.jsx';
+import AdminDashboard from "./pages/adminPage/AdminDashboard.jsx";
 
 function ProtectedRoute({ children, requiredRole }) {
   const location = useLocation();
