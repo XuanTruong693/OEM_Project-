@@ -16,14 +16,14 @@ router.get(
 
       const [results] = await sequelize.query(
         `
-        SELECT
+        SELECT 
           COUNT(DISTINCT e.id) AS total_exams_created,
           COUNT(DISTINCT s.id) AS total_tests_submitted,
-          COUNT(DISTINCT s.user_id) AS total_students_participated
-        FROM courses c
-        LEFT JOIN exams e ON e.course_id = c.id
+          COUNT(DISTINCT s.user_id) AS total_students_participated,
+          AVG(s.total_score) AS avg_score
+        FROM exams e
         LEFT JOIN submissions s ON s.exam_id = e.id
-        WHERE c.instructor_id = ?;
+        WHERE e.instructor_id = ?;
         `,
         { replacements: [instructorId], type: sequelize.QueryTypes.SELECT }
       );
@@ -52,18 +52,18 @@ router.get(
         SELECT 
           MONTH(e.created_at) AS month,
           COUNT(DISTINCT e.id) AS exams_created,
-          COUNT(DISTINCT s.user_id) AS students_participated
-        FROM courses c
-        LEFT JOIN exams e ON e.course_id = c.id
+          COUNT(DISTINCT s.user_id) AS students_participated,
+          COUNT(DISTINCT s.id) AS total_submissions,
+          AVG(s.total_score) AS avg_score
+        FROM exams e
         LEFT JOIN submissions s ON s.exam_id = e.id
-        WHERE c.instructor_id = ?
+        WHERE e.instructor_id = ?
         GROUP BY MONTH(e.created_at)
         ORDER BY month;
         `,
         { replacements: [instructorId], type: sequelize.QueryTypes.SELECT }
       );
 
-      // Bổ sung các tháng không có dữ liệu
       const fullMonths = Array.from({ length: 12 }, (_, i) => {
         const m = i + 1;
         return (
@@ -71,6 +71,8 @@ router.get(
             month: m,
             exams_created: 0,
             students_participated: 0,
+            total_submissions: 0,
+            avg_score: 0,
           }
         );
       });
@@ -82,6 +84,7 @@ router.get(
     }
   }
 );
+
 
 // =======================================
 // 👤 3️⃣ API: Lấy thông tin user theo ID

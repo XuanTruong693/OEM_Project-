@@ -122,3 +122,97 @@ DELETE FROM exams WHERE id = 1;
 SELECT COUNT(*) AS remaining_questions FROM exam_questions WHERE exam_id = 1;
 SELECT COUNT(*) AS remaining_submissions FROM submissions WHERE exam_id = 1;
 SELECT COUNT(*) AS remaining_results FROM results WHERE exam_id = 1;
+---- xóa các view liên quan đến bảng recourse trc đó
+USE oem_mini;
+
+DROP VIEW IF EXISTS 
+v_exam_overview,
+v_instructor_assigned_exams,
+v_instructor_exam_bank,
+v_instructor_stats,
+v_student_results;
+-- update lại các view
+
+USE oem_mini;
+CREATE OR REPLACE VIEW v_exam_overview AS
+SELECT 
+    e.id AS exam_id,
+    e.title AS exam_title,
+    e.status AS exam_status,
+    e.instructor_id AS instructor_id,
+    u.full_name AS instructor_name,
+    COUNT(DISTINCT q.id) AS total_questions,
+    COUNT(DISTINCT sub.user_id) AS total_students,
+    COUNT(DISTINCT sub.id) AS total_submissions,
+    MAX(sub.submitted_at) AS last_submission_time
+FROM exams e
+LEFT JOIN users u ON u.id = e.instructor_id
+LEFT JOIN exam_questions q ON q.exam_id = e.id
+LEFT JOIN submissions sub ON sub.exam_id = e.id
+GROUP BY e.id, e.title, e.status, e.instructor_id, u.full_name;
+
+USE oem_mini;
+
+CREATE OR REPLACE VIEW v_instructor_exam_bank AS
+SELECT 
+    e.id AS exam_id,
+    e.title AS exam_title,
+    e.status AS exam_status,
+    e.instructor_id,
+    u.full_name AS instructor_name,
+    COUNT(DISTINCT q.id) AS total_questions,
+    COUNT(DISTINCT sub.user_id) AS total_students,
+    MAX(sub.submitted_at) AS last_submission_time
+FROM exams e
+LEFT JOIN users u ON u.id = e.instructor_id
+LEFT JOIN exam_questions q ON q.exam_id = e.id
+LEFT JOIN submissions sub ON sub.exam_id = e.id
+GROUP BY e.id, e.title, e.status, e.instructor_id, u.full_name;
+
+CREATE OR REPLACE VIEW v_instructor_assigned_exams AS
+SELECT 
+    e.id AS exam_id,
+    e.title AS exam_title,
+    e.status AS exam_status,
+    e.instructor_id,
+    u.full_name AS instructor_name,
+    COUNT(DISTINCT sub.user_id) AS total_students,
+    COUNT(DISTINCT sub.id) AS total_submissions,
+    MAX(sub.submitted_at) AS last_submission_time
+FROM exams e
+LEFT JOIN users u ON u.id = e.instructor_id
+LEFT JOIN submissions sub ON sub.exam_id = e.id
+WHERE e.status IN ('active', 'open', 'ongoing')
+GROUP BY e.id, e.title, e.status, e.instructor_id, u.full_name;
+
+CREATE OR REPLACE VIEW v_instructor_stats AS
+SELECT 
+    u.id AS instructor_id,
+    u.full_name AS instructor_name,
+    COUNT(DISTINCT e.id) AS total_exams,
+    COUNT(DISTINCT sub.user_id) AS total_students,
+    COUNT(DISTINCT sub.id) AS total_submissions,
+    AVG(sub.total_score) AS avg_score
+FROM users u
+LEFT JOIN exams e ON e.instructor_id = u.id
+LEFT JOIN submissions sub ON sub.exam_id = e.id
+WHERE u.role = 'instructor'
+GROUP BY u.id, u.full_name;
+
+CREATE OR REPLACE VIEW v_student_results AS
+SELECT 
+    s.id AS submission_id,
+    s.exam_id,
+    e.title AS exam_title,
+    s.user_id AS student_id,
+    u.full_name AS student_name,
+    s.total_score,
+    s.ai_score,
+    s.suggested_total_score,
+    s.instructor_confirmed,
+    s.status,
+    s.submitted_at
+FROM submissions s
+JOIN exams e ON e.id = s.exam_id
+JOIN users u ON u.id = s.user_id
+ORDER BY s.submitted_at DESC;
