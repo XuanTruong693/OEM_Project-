@@ -53,9 +53,9 @@ const importExamQuestions = async (req, res) => {
       if (!match) {
         await transaction.rollback();
         return res.status(400).json({
-          message: `Không xác định được điểm cho câu hỏi dòng ${
+          message: `Cannot determine the score for the question at row ${
             q.row || i + 1
-          }. Vui lòng thêm điểm ở dạng "(0.5đ)" hoặc "(0,5đ)" trong câu hỏi.`,
+          }. Please add the score in the format "(0.5đ)" or "(0,5đ)" within the question.`,
           status: "error",
         });
       }
@@ -64,7 +64,7 @@ const importExamQuestions = async (req, res) => {
       if (isNaN(point) || point <= 0) {
         await transaction.rollback();
         return res.status(400).json({
-          message: `Điểm không hợp lệ ở dòng ${q.row || i + 1}.`,
+          message: `Invalid score at row ${q.row || i + 1}.`,
           status: "error",
         });
       }
@@ -78,11 +78,11 @@ const importExamQuestions = async (req, res) => {
       }
     }
 
-    // ✅ Giới hạn số câu hỏi
+    // Giới hạn số câu hỏi
     if (mcqCount > 50) {
       await transaction.rollback();
       return res.status(400).json({
-        message: `Số lượng câu trắc nghiệm vượt quá giới hạn (tối đa 50, hiện tại ${mcqCount}).`,
+        message: `The number of multiple-choice questions exceeds the limit (maximum 50, currently ${mcqCount}).`,
         status: "error",
       });
     }
@@ -90,7 +90,7 @@ const importExamQuestions = async (req, res) => {
     if (essayCount > 10) {
       await transaction.rollback();
       return res.status(400).json({
-        message: `Số lượng câu tự luận vượt quá giới hạn (tối đa 10, hiện tại ${essayCount}).`,
+        message: `The number of essay questions exceeds the limit (maximum 10, currently ${essayCount}).`,
         status: "error",
       });
     }
@@ -100,7 +100,7 @@ const importExamQuestions = async (req, res) => {
     if (totalPoints !== 10) {
       await transaction.rollback();
       return res.status(400).json({
-        message: `Tổng điểm của đề thi hiện tại là ${totalPoints} điểm — yêu cầu tổng điểm phải đúng 10.`,
+        message: `The current total score of the exam is ${totalPoints} points — the total score must be exactly 10.`,
         status: "error",
       });
     }
@@ -131,7 +131,7 @@ const importExamQuestions = async (req, res) => {
       examId = Array.isArray(rows) ? rows[0]?.id : rows?.id;
     }
 
-    if (!examId) throw new Error("Không thể tạo bản ghi exam mới");
+    if (!examId) throw new Error("Cannot create a new exam record.");
 
     let importedCount = 0;
     const errors = [];

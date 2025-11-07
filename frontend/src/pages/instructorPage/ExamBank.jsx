@@ -281,6 +281,14 @@ const ExamBank = () => {
     if (fileInput) fileInput.value = "";
   };
 
+  const renderQuestionText = (q) => {
+    const scorePattern = /\((\d+(?:[.,]\d+)?)đ\)/i;
+    const match = q.question_text.match(scorePattern);
+    const point = match ? match[1].replace(",", ".") : q.points || "?";
+    const textWithoutPoint = q.question_text.replace(scorePattern, "").trim();
+    return `${textWithoutPoint} (${point}đ)`;
+  };
+
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       {/* Header */}
@@ -488,7 +496,7 @@ const ExamBank = () => {
                     </div>
 
                     <p className="font-medium text-gray-800 mb-2">
-                      {q.question_text}
+                      {renderQuestionText(q)}
                     </p>
 
                     {/* MCQ Options */}
