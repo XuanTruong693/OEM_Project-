@@ -3,7 +3,9 @@ const sequelize = require("../config/db");
 const importExamQuestions = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
-    const { preview, summary, exam_title } = req.body;
+    const { preview, summary, exam_title, duration } = req.body;
+    console.log("🕒 duration =", duration);
+
     const instructorId = req.user.id;
 
     if (!exam_title || exam_title.trim().length === 0) {
@@ -20,14 +22,19 @@ const importExamQuestions = async (req, res) => {
         .json({ message: "No questions to import", status: "error" });
     }
 
+    const safeDuration = duration || 60;
+
+    console.log("DEBUG:", { exam_title, instructorId, duration });
     const [_, metadata] = await sequelize.query(
-      `INSERT INTO exams (title, instructor_id, status, created_at) 
-       VALUES (?, ?, 'draft', NOW())`,
-      { replacements: [exam_title.trim(), instructorId], transaction }
+      `INSERT INTO exams (title, instructor_id, duration, status, created_at)
+   VALUES (?, ?, ?, 'draft', NOW())`,
+      {
+        replacements: [exam_title.trim(), instructorId, safeDuration],
+        transaction,
+      }
     );
 
     const examId = metadata?.insertId;
-
     if (!examId) throw new Error("Không thể tạo bản ghi exam mới");
 
     let importedCount = 0;

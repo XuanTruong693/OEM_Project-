@@ -18,6 +18,7 @@ const ExamBank = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [jobId, setJobId] = useState(null);
+  const [duration, setDuration] = useState("");
 
   // Handle file selection
   const handleFileChange = (e) => {
@@ -238,6 +239,7 @@ const ExamBank = () => {
           preview: previewData.preview,
           summary: previewData.summary,
           exam_title: examTitle,
+          duration: parseInt(duration, 10) || 60,
         },
         {
           headers: { Authorization: `Bearer ${token}` },

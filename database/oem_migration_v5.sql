@@ -33,10 +33,10 @@ CREATE TABLE users (
 
 -- 2) courses
 CREATE TABLE courses (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     title VARCHAR(100) NOT NULL,
     description TEXT NULL,
-    instructor_id INT NOT NULL,
+    instructor_id INT UNSIGNED NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_courses_instructor (instructor_id),
     CONSTRAINT fk_courses_instructor
@@ -44,27 +44,33 @@ CREATE TABLE courses (
         ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+
 -- 3) exams
 CREATE TABLE exams (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    course_id INT NOT NULL,
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    course_id INT UNSIGNED NULL,                
+    instructor_id INT UNSIGNED NULL,            
     title VARCHAR(100) NOT NULL,
     duration INT NOT NULL CHECK (duration > 0),
-    exam_room_code VARCHAR(20) NULL,
+    exam_room_code VARCHAR(64) NULL,
     status ENUM('draft','published','archived') DEFAULT 'draft',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_exams_room_code (exam_room_code),
     INDEX idx_exams_course (course_id),
+    INDEX idx_exams_instructor (instructor_id),
     CONSTRAINT fk_exams_course
         FOREIGN KEY (course_id) REFERENCES courses(id)
-        ON UPDATE CASCADE ON DELETE CASCADE
+        ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT fk_exams_instructor
+        FOREIGN KEY (instructor_id) REFERENCES users(id)
+        ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 4) exam_questions
 CREATE TABLE exam_questions (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    exam_id INT NOT NULL,
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    exam_id INT UNSIGNED NOT NULL,
     question_text TEXT NOT NULL,
     type ENUM('MCQ','Essay') NOT NULL,
     model_answer TEXT NULL,
@@ -79,8 +85,8 @@ CREATE TABLE exam_questions (
 
 -- 5) exam_options
 CREATE TABLE exam_options (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    question_id INT NOT NULL,
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    question_id INT UNSIGNED NOT NULL,
     option_text TEXT NOT NULL,
     is_correct BOOLEAN DEFAULT FALSE,
     INDEX idx_exam_options_question (question_id),
@@ -91,14 +97,14 @@ CREATE TABLE exam_options (
 
 -- 6) student_answers
 CREATE TABLE student_answers (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    student_id INT NOT NULL,
-    question_id INT NOT NULL,
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    student_id INT UNSIGNED NOT NULL,
+    question_id INT UNSIGNED NOT NULL,
     answer_text TEXT NULL,
-    selected_option_id INT NULL,
+    selected_option_id INT UNSIGNED NULL,
     score FLOAT DEFAULT 0 CHECK (score >= 0),
     status ENUM('pending','graded','confirmed') DEFAULT 'pending',
-    submission_id INT NULL,
+    submission_id INT UNSIGNED NULL,
     INDEX idx_student_answers_student (student_id),
     INDEX idx_student_answers_question (question_id),
     INDEX idx_student_answers_submission (submission_id),
@@ -116,9 +122,9 @@ CREATE TABLE student_answers (
 
 -- 7) submissions
 CREATE TABLE submissions (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    exam_id INT NOT NULL,
-    user_id INT NOT NULL,
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    exam_id INT UNSIGNED NOT NULL,
+    user_id INT UNSIGNED NOT NULL,
     submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     total_score FLOAT DEFAULT 0 CHECK (total_score >= 0),
     ai_score FLOAT NULL,
@@ -139,7 +145,7 @@ CREATE TABLE submissions (
 CREATE TABLE results (
     id INT AUTO_INCREMENT PRIMARY KEY,
     exam_id INT NOT NULL,
-    student_id INT NOT NULL,
+    student_id INT UNSIGNED NOT NULL,
     total_score FLOAT DEFAULT 0 CHECK (total_score >= 0),
     status ENUM('pending','graded','confirmed') DEFAULT 'pending',
     INDEX idx_results_exam (exam_id),
@@ -154,9 +160,9 @@ CREATE TABLE results (
 
 -- 9) ai_logs
 CREATE TABLE ai_logs (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    question_id INT NOT NULL,
-    student_id INT NOT NULL,
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    question_id INT UNSIGNED NOT NULL,
+    student_id INT UNSIGNED NOT NULL,
     student_answer TEXT NOT NULL,
     model_answer TEXT NOT NULL,
     similarity_score FLOAT NULL,
@@ -172,11 +178,16 @@ CREATE TABLE ai_logs (
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- FK verify_room_code
-ALTER TABLE users
-ADD CONSTRAINT fk_users_verify_room_code
-FOREIGN KEY (verify_room_code) REFERENCES exams(exam_room_code)
-ON UPDATE CASCADE ON DELETE SET NULL;
+-- 10) user_verified_rooms 
+CREATE TABLE user_verified_rooms (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    exam_room_code VARCHAR(64) NOT NULL,
+    verified_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_uvr_user FOREIGN KEY (user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_uvr_exam FOREIGN KEY (exam_room_code) REFERENCES exams(exam_room_code) ON UPDATE CASCADE ON DELETE CASCADE,
+    UNIQUE KEY uq_user_room (user_id, exam_room_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
 -- TRIGGER
@@ -411,12 +422,12 @@ GROUP BY e.id;
 -- Migrate existing verify_room_code data
 ALTER TABLE users DROP FOREIGN KEY fk_users_verify_room_code;
 ALTER TABLE users MODIFY COLUMN verify_room_code BOOLEAN DEFAULT FALSE;
-use oem_mini;
 
+use oem_mini;
 ALTER TABLE users MODIFY COLUMN verify_room_code BOOLEAN DEFAULT FALSE;
 CREATE TABLE user_verified_rooms (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
+    user_id INT UNSIGNED NOT NULL,
     exam_room_code VARCHAR(20) NOT NULL,
     verified_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_uvr_user FOREIGN KEY (user_id)
@@ -681,7 +692,7 @@ USE oem_mini;
 ALTER TABLE exams
     DROP FOREIGN KEY fk_exams_course,
     DROP COLUMN course_id,
-    ADD COLUMN instructor_id INT NOT NULL AFTER id,
+    ADD COLUMN instructor_id INT UNSIGNED NOT NULL AFTER id,
     ADD CONSTRAINT fk_exams_instructor
         FOREIGN KEY (instructor_id) REFERENCES users(id)
         ON UPDATE CASCADE ON DELETE CASCADE;
