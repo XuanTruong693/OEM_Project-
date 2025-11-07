@@ -23,6 +23,7 @@ const importExamQuestions = async (req, res) => {
     }
 
     const safeDuration = duration || 60;
+
     const [[createdByCol], [isBankCol]] = await Promise.all([
       sequelize.query(`SHOW COLUMNS FROM exam_questions LIKE 'created_by'`, {
         transaction,
@@ -32,11 +33,83 @@ const importExamQuestions = async (req, res) => {
         { transaction }
       ),
     ]);
+
     const hasCreatedBy = Array.isArray(createdByCol) && createdByCol.length > 0;
     const hasIsBank = Array.isArray(isBankCol) && isBankCol.length > 0;
 
-    console.log("DEBUG:", { exam_title, instructorId, duration });
-    // MySQL returns insertId on the FIRST tuple for INSERT queries
+    // ✅ Bắt đầu kiểm tra tổng điểm
+    let totalMCQ = 0;
+    let totalEssay = 0;
+    let mcqCount = 0;
+    let essayCount = 0;
+    const scorePattern = /\((\d+(?:[.,]\d+)?)đ\)/i; // (0.5đ) hoặc (0,5đ)
+
+    // Duyệt để tính tổng điểm
+    for (let i = 0; i < preview.length; i++) {
+      const q = preview[i];
+      if (!q.question_text) continue;
+
+      const match = q.question_text.match(scorePattern);
+      if (!match) {
+        await transaction.rollback();
+        return res.status(400).json({
+          message: `Không xác định được điểm cho câu hỏi dòng ${
+            q.row || i + 1
+          }. Vui lòng thêm điểm ở dạng "(0.5đ)" hoặc "(0,5đ)" trong câu hỏi.`,
+          status: "error",
+        });
+      }
+
+      const point = parseFloat(match[1].replace(",", "."));
+      if (isNaN(point) || point <= 0) {
+        await transaction.rollback();
+        return res.status(400).json({
+          message: `Điểm không hợp lệ ở dòng ${q.row || i + 1}.`,
+          status: "error",
+        });
+      }
+
+      if (q.type === "MCQ") {
+        totalMCQ += point;
+        mcqCount++;
+      } else if (q.type === "Essay") {
+        totalEssay += point;
+        essayCount++;
+      }
+    }
+
+    // ✅ Giới hạn số câu hỏi
+    if (mcqCount > 50) {
+      await transaction.rollback();
+      return res.status(400).json({
+        message: `Số lượng câu trắc nghiệm vượt quá giới hạn (tối đa 50, hiện tại ${mcqCount}).`,
+        status: "error",
+      });
+    }
+
+    if (essayCount > 10) {
+      await transaction.rollback();
+      return res.status(400).json({
+        message: `Số lượng câu tự luận vượt quá giới hạn (tối đa 10, hiện tại ${essayCount}).`,
+        status: "error",
+      });
+    }
+
+    // ✅ Tổng điểm phải đúng 10
+    const totalPoints = parseFloat((totalMCQ + totalEssay).toFixed(2));
+    if (totalPoints !== 10) {
+      await transaction.rollback();
+      return res.status(400).json({
+        message: `Tổng điểm của đề thi hiện tại là ${totalPoints} điểm — yêu cầu tổng điểm phải đúng 10.`,
+        status: "error",
+      });
+    }
+
+    console.log(
+      `✅ Tổng điểm hợp lệ: MCQ=${totalMCQ}, Essay=${totalEssay}, Tổng=${totalPoints}`
+    );
+
+    // ✅ Lưu exam vào DB
     const [insertRes] = await sequelize.query(
       `INSERT INTO exams (title, instructor_id, duration, status, created_at)
        VALUES (?, ?, ?, 'draft', NOW())`,
@@ -50,17 +123,12 @@ const importExamQuestions = async (req, res) => {
       insertRes && typeof insertRes === "object"
         ? insertRes.insertId
         : insertRes;
-        
+
     if (!examId) {
-      try {
-        const [rows] = await sequelize.query(`SELECT LAST_INSERT_ID() AS id`, {
-          transaction,
-        });
-        const lastId = Array.isArray(rows) ? rows[0]?.id : rows?.id;
-        examId = lastId || examId;
-      } catch (e) {
-        // ignore, handled below
-      }
+      const [rows] = await sequelize.query(`SELECT LAST_INSERT_ID() AS id`, {
+        transaction,
+      });
+      examId = Array.isArray(rows) ? rows[0]?.id : rows?.id;
     }
 
     if (!examId) throw new Error("Không thể tạo bản ghi exam mới");
@@ -68,10 +136,10 @@ const importExamQuestions = async (req, res) => {
     let importedCount = 0;
     const errors = [];
 
+    // ✅ Import từng câu hỏi
     for (let i = 0; i < preview.length; i++) {
       const q = preview[i];
       try {
-        // Skip nếu dòng có lỗi validation FE
         if (q.errors && q.errors.length > 0) {
           errors.push(`Row ${q.row}: ${q.errors.join(", ")}`);
           continue;
@@ -81,6 +149,10 @@ const importExamQuestions = async (req, res) => {
           errors.push(`Row ${q.row}: Missing question text`);
           continue;
         }
+
+        // Lấy điểm từng câu hỏi
+        const match = q.question_text.match(scorePattern);
+        const qPoints = match ? parseFloat(match[1].replace(",", ".")) : 0;
 
         if (q.type === "MCQ") {
           if (!q.options || q.options.length < 2) {
@@ -98,9 +170,14 @@ const importExamQuestions = async (req, res) => {
             [insertQRes] = await sequelize.query(
               `INSERT INTO exam_questions 
                 (exam_id, question_text, type, points, created_by, is_bank_question, created_at) 
-               VALUES (?, ?, 'MCQ', 1, ?, TRUE, NOW())`,
+               VALUES (?, ?, 'MCQ', ?, ?, TRUE, NOW())`,
               {
-                replacements: [examId, q.question_text.trim(), instructorId],
+                replacements: [
+                  examId,
+                  q.question_text.trim(),
+                  qPoints,
+                  instructorId,
+                ],
                 transaction,
               }
             );
@@ -108,9 +185,14 @@ const importExamQuestions = async (req, res) => {
             [insertQRes] = await sequelize.query(
               `INSERT INTO exam_questions 
                 (exam_id, question_text, type, points, created_by, created_at) 
-               VALUES (?, ?, 'MCQ', 1, ?, NOW())`,
+               VALUES (?, ?, 'MCQ', ?, ?, NOW())`,
               {
-                replacements: [examId, q.question_text.trim(), instructorId],
+                replacements: [
+                  examId,
+                  q.question_text.trim(),
+                  qPoints,
+                  instructorId,
+                ],
                 transaction,
               }
             );
@@ -118,9 +200,9 @@ const importExamQuestions = async (req, res) => {
             [insertQRes] = await sequelize.query(
               `INSERT INTO exam_questions 
                 (exam_id, question_text, type, points, created_at) 
-               VALUES (?, ?, 'MCQ', 1, NOW())`,
+               VALUES (?, ?, 'MCQ', ?, NOW())`,
               {
-                replacements: [examId, q.question_text.trim()],
+                replacements: [examId, q.question_text.trim(), qPoints],
                 transaction,
               }
             );
@@ -162,11 +244,12 @@ const importExamQuestions = async (req, res) => {
             [insertQRes] = await sequelize.query(
               `INSERT INTO exam_questions 
                 (exam_id, question_text, type, points, model_answer, created_by, is_bank_question, created_at) 
-               VALUES (?, ?, 'Essay', 2, ?, ?, TRUE, NOW())`,
+               VALUES (?, ?, 'Essay', ?, ?, ?, TRUE, NOW())`,
               {
                 replacements: [
                   examId,
                   q.question_text.trim(),
+                  qPoints,
                   q.model_answer.trim(),
                   instructorId,
                 ],
@@ -177,11 +260,12 @@ const importExamQuestions = async (req, res) => {
             [insertQRes] = await sequelize.query(
               `INSERT INTO exam_questions 
                 (exam_id, question_text, type, points, model_answer, created_by, created_at) 
-               VALUES (?, ?, 'Essay', 2, ?, ?, NOW())`,
+               VALUES (?, ?, 'Essay', ?, ?, ?, NOW())`,
               {
                 replacements: [
                   examId,
                   q.question_text.trim(),
+                  qPoints,
                   q.model_answer.trim(),
                   instructorId,
                 ],
@@ -192,24 +276,18 @@ const importExamQuestions = async (req, res) => {
             [insertQRes] = await sequelize.query(
               `INSERT INTO exam_questions 
                 (exam_id, question_text, type, points, model_answer, created_at) 
-               VALUES (?, ?, 'Essay', 2, ?, NOW())`,
+               VALUES (?, ?, 'Essay', ?, ?, NOW())`,
               {
                 replacements: [
                   examId,
                   q.question_text.trim(),
+                  qPoints,
                   q.model_answer.trim(),
                 ],
                 transaction,
               }
             );
           }
-
-          const questionId =
-            insertQRes && insertQRes.insertId
-              ? insertQRes.insertId
-              : insertQRes;
-
-          if (!questionId) throw new Error("Failed to insert Essay question");
 
           importedCount++;
         } else {
@@ -233,9 +311,10 @@ const importExamQuestions = async (req, res) => {
     await transaction.commit();
 
     return res.status(200).json({
-      message: `Successfully imported ${importedCount} questions.`,
+      message: `✅ Imported ${importedCount} questions successfully.`,
       exam_id: examId,
       imported: importedCount,
+      total_points: totalPoints,
       summary,
       status: "success",
     });
