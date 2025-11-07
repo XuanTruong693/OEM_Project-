@@ -23,18 +23,46 @@ const importExamQuestions = async (req, res) => {
     }
 
     const safeDuration = duration || 60;
+    const [[createdByCol], [isBankCol]] = await Promise.all([
+      sequelize.query(`SHOW COLUMNS FROM exam_questions LIKE 'created_by'`, {
+        transaction,
+      }),
+      sequelize.query(
+        `SHOW COLUMNS FROM exam_questions LIKE 'is_bank_question'`,
+        { transaction }
+      ),
+    ]);
+    const hasCreatedBy = Array.isArray(createdByCol) && createdByCol.length > 0;
+    const hasIsBank = Array.isArray(isBankCol) && isBankCol.length > 0;
 
     console.log("DEBUG:", { exam_title, instructorId, duration });
-    const [_, metadata] = await sequelize.query(
+    // MySQL returns insertId on the FIRST tuple for INSERT queries
+    const [insertRes] = await sequelize.query(
       `INSERT INTO exams (title, instructor_id, duration, status, created_at)
-   VALUES (?, ?, ?, 'draft', NOW())`,
+       VALUES (?, ?, ?, 'draft', NOW())`,
       {
         replacements: [exam_title.trim(), instructorId, safeDuration],
         transaction,
       }
     );
 
-    const examId = metadata?.insertId;
+    let examId =
+      insertRes && typeof insertRes === "object"
+        ? insertRes.insertId
+        : insertRes;
+        
+    if (!examId) {
+      try {
+        const [rows] = await sequelize.query(`SELECT LAST_INSERT_ID() AS id`, {
+          transaction,
+        });
+        const lastId = Array.isArray(rows) ? rows[0]?.id : rows?.id;
+        examId = lastId || examId;
+      } catch (e) {
+        // ignore, handled below
+      }
+    }
+
     if (!examId) throw new Error("Không thể tạo bản ghi exam mới");
 
     let importedCount = 0;
@@ -65,15 +93,38 @@ const importExamQuestions = async (req, res) => {
             continue;
           }
 
-          const [insertQRes] = await sequelize.query(
-            `INSERT INTO exam_questions 
-              (exam_id, question_text, type, points, created_by, is_bank_question, created_at) 
-             VALUES (?, ?, 'MCQ', 1, ?, TRUE, NOW())`,
-            {
-              replacements: [examId, q.question_text.trim(), instructorId],
-              transaction,
-            }
-          );
+          let insertQRes;
+          if (hasCreatedBy && hasIsBank) {
+            [insertQRes] = await sequelize.query(
+              `INSERT INTO exam_questions 
+                (exam_id, question_text, type, points, created_by, is_bank_question, created_at) 
+               VALUES (?, ?, 'MCQ', 1, ?, TRUE, NOW())`,
+              {
+                replacements: [examId, q.question_text.trim(), instructorId],
+                transaction,
+              }
+            );
+          } else if (hasCreatedBy) {
+            [insertQRes] = await sequelize.query(
+              `INSERT INTO exam_questions 
+                (exam_id, question_text, type, points, created_by, created_at) 
+               VALUES (?, ?, 'MCQ', 1, ?, NOW())`,
+              {
+                replacements: [examId, q.question_text.trim(), instructorId],
+                transaction,
+              }
+            );
+          } else {
+            [insertQRes] = await sequelize.query(
+              `INSERT INTO exam_questions 
+                (exam_id, question_text, type, points, created_at) 
+               VALUES (?, ?, 'MCQ', 1, NOW())`,
+              {
+                replacements: [examId, q.question_text.trim()],
+                transaction,
+              }
+            );
+          }
 
           const questionId =
             insertQRes && insertQRes.insertId
@@ -106,20 +157,52 @@ const importExamQuestions = async (req, res) => {
             continue;
           }
 
-          const [insertQRes] = await sequelize.query(
-            `INSERT INTO exam_questions 
-              (exam_id, question_text, type, points, model_answer, created_by, is_bank_question, created_at) 
-             VALUES (?, ?, 'Essay', 2, ?, ?, TRUE, NOW())`,
-            {
-              replacements: [
-                examId,
-                q.question_text.trim(),
-                q.model_answer.trim(),
-                instructorId,
-              ],
-              transaction,
-            }
-          );
+          let insertQRes;
+          if (hasCreatedBy && hasIsBank) {
+            [insertQRes] = await sequelize.query(
+              `INSERT INTO exam_questions 
+                (exam_id, question_text, type, points, model_answer, created_by, is_bank_question, created_at) 
+               VALUES (?, ?, 'Essay', 2, ?, ?, TRUE, NOW())`,
+              {
+                replacements: [
+                  examId,
+                  q.question_text.trim(),
+                  q.model_answer.trim(),
+                  instructorId,
+                ],
+                transaction,
+              }
+            );
+          } else if (hasCreatedBy) {
+            [insertQRes] = await sequelize.query(
+              `INSERT INTO exam_questions 
+                (exam_id, question_text, type, points, model_answer, created_by, created_at) 
+               VALUES (?, ?, 'Essay', 2, ?, ?, NOW())`,
+              {
+                replacements: [
+                  examId,
+                  q.question_text.trim(),
+                  q.model_answer.trim(),
+                  instructorId,
+                ],
+                transaction,
+              }
+            );
+          } else {
+            [insertQRes] = await sequelize.query(
+              `INSERT INTO exam_questions 
+                (exam_id, question_text, type, points, model_answer, created_at) 
+               VALUES (?, ?, 'Essay', 2, ?, NOW())`,
+              {
+                replacements: [
+                  examId,
+                  q.question_text.trim(),
+                  q.model_answer.trim(),
+                ],
+                transaction,
+              }
+            );
+          }
 
           const questionId =
             insertQRes && insertQRes.insertId

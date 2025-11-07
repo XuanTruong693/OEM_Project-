@@ -19,6 +19,7 @@ const ExamBank = () => {
   const [error, setError] = useState(null);
   const [jobId, setJobId] = useState(null);
   const [duration, setDuration] = useState("");
+  const [message, setMessage] = useState("");
 
   // Handle file selection
   const handleFileChange = (e) => {
@@ -247,10 +248,10 @@ const ExamBank = () => {
       );
 
       if (response.data.status === "success") {
-        alert(
+        setMessage(
           `✅ Import thành công! Đã thêm ${previewData.summary.total} câu hỏi vào ngân hàng.\nExam ID: ${response.data.exam_id}`
         );
-
+        setTimeout(() => setMessage(""), 10000);
         setPreviewData(null);
         setUploadedFile(null);
         setExamTitle("");
@@ -391,6 +392,10 @@ const ExamBank = () => {
               <FiX className="w-5 h-5" />
               Reset
             </button>
+          )}
+          {/* Thông báo thành công */}
+          {message && (
+            <span className="text-green-400 font-semibold ml-2">{message}</span>
           )}
         </div>
 
