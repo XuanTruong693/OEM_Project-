@@ -6,12 +6,13 @@ const getProfile = async (req, res) => {
 		const userId = req.user && req.user.id;
 		if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
+		// NOTE: DB column là phone_number (không phải phone)
 		const user = await User.findByPk(userId, {
 			attributes: [
 				"id",
 				"full_name",
 				"email",
-				"phone",
+				"phone_number",
 				"address",
 				"avatar",
 				"gender",
@@ -58,7 +59,7 @@ const updateProfile = async (req, res) => {
 
 		// Update only provided fields
 		if (typeof full_name !== "undefined") user.full_name = full_name;
-		if (typeof phone !== "undefined") user.phone = phone;
+		if (typeof phone !== "undefined") user.phone_number = phone;
 		if (typeof address !== "undefined") user.address = address;
 		if (typeof avatar !== "undefined") user.avatar = avatar;
 		if (typeof gender !== "undefined") user.gender = gender;

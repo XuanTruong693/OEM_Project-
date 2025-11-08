@@ -26,6 +26,7 @@ import ResetPassword from "./authPages/ResetPassword.jsx";
 import InstructorDashboard from "./pages/instructorPage/InstructorDashboard.jsx";
 import AssignExam from "./pages/instructorPage/AssignExam.jsx";
 import ExamBank from "./pages/instructorPage/ExamBank.jsx";
+import ExamList from "./pages/instructorPage/ExamList.jsx";
 import Result from "./pages/instructorPage/Result.jsx";
 import Setting from "./pages/instructorPage/Setting.jsx";
 import StudentDashboard from "./pages/studentPage/StudentDashboard.jsx";
@@ -152,6 +153,7 @@ const App = () => {
             element={<InstructorDashboard />}
           />
           <Route path="/exam-bank" element={<ExamBank />} />
+          <Route path="/exam-list" element={<ExamList />} />
           <Route path="/assign-exam" element={<AssignExam />} />
           <Route path="/result" element={<Result />} />
           <Route path="/setting" element={<Setting />} />

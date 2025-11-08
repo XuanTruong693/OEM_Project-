@@ -305,6 +305,11 @@ const LoginPage = () => {
               <GoogleLogin
                 onSuccess={handleGoogleLoginSuccess}
                 onError={handleGoogleLoginError}
+                useOneTap
+                theme="outline"
+                shape="rectangular"
+                text="signin_with"
+                locale="vi"
               />
             </div>
           </form>

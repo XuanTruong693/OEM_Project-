@@ -3,6 +3,21 @@
 > Dành cho nhóm dự án **OEM Mini (Online Examination Management System)**  
 > Hướng dẫn cài đặt và kết nối MySQL database cho toàn bộ thành viên trong team.
 
+## 🚀 Quick Setup (v5 - Latest)
+
+### 🎯 Setup Cơ bản (Recommended):
+1. Mở `database/oem_migration_v5.sql` trong MySQL Workbench
+2. **Copy từ dòng 1 đến marker "STOP HERE FOR BASIC SETUP"** (~180 dòng)
+3. Execute trong MySQL Workbench
+4. Đăng nhập với `instructor@oem.com` / `123456`
+
+### 🔧 Setup Đầy đủ:
+```bash
+mysql -u root -p < database/oem_migration_v5.sql
+```
+
+**File đã tích hợp setup cơ bản ở đầu để dễ dàng test nhanh!**
+
 ---
 
 ## ⚙️ 1️⃣ Yêu cầu môi trường

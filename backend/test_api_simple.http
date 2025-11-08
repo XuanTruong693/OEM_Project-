@@ -1,0 +1,95 @@
+### Test API sau khi setup database
+
+# 1. Test kết nối database
+GET http://localhost:5000/
+
+### 
+
+# 2. Test đăng nhập instructor
+POST http://localhost:5000/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "instructor@oem.com",
+  "password": "123456"
+}
+
+### 
+
+# 3. Test lấy danh sách đề thi (cần token từ bước 2)
+GET http://localhost:5000/api/exams
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### 
+
+# 4. Test thống kê dashboard
+GET http://localhost:5000/api/exams/dashboard-stats
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### 
+
+# 5. Test tạo đề thi mới
+POST http://localhost:5000/api/exams
+Authorization: Bearer YOUR_TOKEN_HERE
+Content-Type: application/json
+
+{
+  "title": "Đề thi test API",
+  "duration": 60,
+  "status": "draft",
+  "questions": [
+    {
+      "question_text": "Câu hỏi test 1",
+      "type": "MCQ",
+      "points": 1,
+      "options": [
+        {"option_text": "Đáp án A", "is_correct": false},
+        {"option_text": "Đáp án B", "is_correct": true},
+        {"option_text": "Đáp án C", "is_correct": false}
+      ]
+    },
+    {
+      "question_text": "Câu hỏi tự luận test",
+      "type": "Essay", 
+      "model_answer": "Đây là đáp án mẫu",
+      "points": 5
+    }
+  ]
+}
+
+### 
+
+# 6. Test nhập từ Excel (mock data)
+POST http://localhost:5000/api/exam-bank/import-commit
+Authorization: Bearer YOUR_TOKEN_HERE
+Content-Type: application/json
+
+{
+  "exam_title": "Đề thi từ Excel Test",
+  "preview": [
+    {
+      "row": 1,
+      "question_text": "2 + 2 = ?",
+      "type": "MCQ",
+      "options": [
+        {"option_text": "3", "is_correct": false},
+        {"option_text": "4", "is_correct": true},
+        {"option_text": "5", "is_correct": false}
+      ],
+      "errors": []
+    },
+    {
+      "row": 2, 
+      "question_text": "Giải thích khái niệm OOP",
+      "type": "Essay",
+      "model_answer": "OOP là lập trình hướng đối tượng...",
+      "errors": []
+    }
+  ],
+  "summary": {
+    "total": 2,
+    "mcq": 1,
+    "essay": 1,
+    "errors": 0
+  }
+}

@@ -140,35 +140,72 @@ const ExamBank = () => {
 
           questions.push(questionData);
         } else if (currentSection === "Essay") {
-          // Essay: Look for "Câu hỏi:" and "Câu trả lời:" in the text
-          const fullText = row
+          // Essay: linh hoạt nhiều định dạng.
+          // Chấp nhận:
+          //  1. "Câu hỏi: ... Câu trả lời: ..."
+          //  2. "Câu 5: ... Câu trả lời: ..." (không có chữ "Câu hỏi:")
+          //  3. "... ? Câu trả lời: ..." (chỉ có phần trả lời được đánh dấu)
+          //  4. Có thể chứa (1đ) / (1.5đ) trong câu hỏi.
+          const fullTextRaw = row
             .map((cell) => cell?.toString().trim() || "")
+            .filter(Boolean)
             .join(" ");
+          const fullText = fullTextRaw.trim();
 
-          // Try to find question and answer pattern
-          const questionMatch = fullText.match(/Câu hỏi:\s*([^\n]+)/i);
-          const answerMatch = fullText.match(/Câu trả lời:\s*([^\n]+)/i);
+          if (!fullText) {
+            rowIndex++;
+            continue;
+          }
 
-          if (questionMatch || answerMatch) {
+          // Bắt phần trả lời (cho phép có khoảng trắng/khác biệt dấu):
+          const answerMatch = fullText.match(/C[âa]u\s*tr[ảa]\s*l[ờo]i\s*[:：]\s*(.+)$/i);
+          // Bắt phần câu hỏi nếu có nhãn
+          let questionMatch = fullText.match(/C[âa]u\s*h[ỏo]i\s*[:：]\s*([^\n]+)/i);
+
+          let questionText = "";
+          let answerText = answerMatch ? answerMatch[1].trim() : "";
+
+          if (questionMatch) {
+            questionText = questionMatch[1].trim();
+          } else if (answerMatch) {
+            // Không có "Câu hỏi:" nhưng có "Câu trả lời:" -> lấy phần trước cụm trả lời.
+            questionText = fullText.split(/C[âa]u\s*tr[ảa]\s*l[ờo]i\s*[:：]/i)[0]
+              .replace(/^Câu\s*\d+\s*[:.-]?\s*/i, "") // bỏ "Câu 5:" nếu có
+              .replace(/Câu\s*hỏi\s*[:.-]?\s*/i, "")
+              .trim();
+          }
+
+          // Nếu vẫn rỗng thử heuristic: cắt trước dấu hỏi cuối cùng nếu có.
+          if (!questionText && /\?/u.test(fullText) && answerMatch) {
+            const pos = fullText.lastIndexOf("?");
+            if (pos !== -1) {
+              questionText = fullText.substring(0, pos + 1)
+                .replace(/Câu\s*\d+\s*[:.-]?\s*/i, "")
+                .trim();
+            }
+          }
+
+          // Dọn dấu điểm số (1đ) (1.5đ) ra khỏi question nếu ở cuối.
+            questionText = questionText
+              .replace(/\(\s*\d+(?:\.\d+)?\s*[đd]\s*\)\s*$/i, '')
+              .replace(/[\s\-–—]*C[âa]u\s*tr[ảa]\s*l[ờo]i\s*[:：].*$/i, '')
+              .trim();
+
+          if (questionText || answerText) {
             const questionData = {
               row: rowIndex + 1,
-              question_text: questionMatch ? questionMatch[1].trim() : "",
+              question_text: questionText,
               type: "Essay",
-              model_answer: answerMatch ? answerMatch[1].trim() : "",
+              model_answer: answerText,
               errors: [],
             };
 
             if (!questionData.question_text) {
-              questionData.errors.push(
-                'Không tìm thấy "Câu hỏi:" trong văn bản'
-              );
+              questionData.errors.push('Không tách được nội dung câu hỏi');
             }
             if (!questionData.model_answer) {
-              questionData.errors.push(
-                'Không tìm thấy "Câu trả lời:" trong văn bản'
-              );
+              questionData.errors.push('Không tách được phần trả lời');
             }
-
             questions.push(questionData);
           }
         }
@@ -209,21 +246,16 @@ const ExamBank = () => {
     }
   };
 
-  // Handle commit to database
+  // Handle commit to database (use preview JSON -> matches UI parsing)
   const handleCommit = async () => {
-    if (!previewData) {
-      setError("⚠️ Không có dữ liệu để commit");
+    // Ưu tiên lưu dựa trên dữ liệu đã phân tích (previewData)
+    if (!previewData || !previewData.preview || previewData.preview.length === 0) {
+      setError("⚠️ Vui lòng bấm 'Phân tích file' trước khi lưu");
       return;
     }
 
-    if (!examTitle || examTitle.trim() === "") {
-      setError("⚠️ Vui lòng nhập tên đề thi trước khi lưu");
-      return;
-    }
-
-    const hasErrors = previewData.preview.some((q) => q.errors.length > 0);
-    if (hasErrors) {
-      setError("⚠️ Có câu hỏi bị lỗi. Vui lòng kiểm tra lại trước khi commit");
+    if (!examTitle.trim()) {
+      setError("⚠️ Vui lòng nhập tên đề thi");
       return;
     }
 
@@ -232,37 +264,43 @@ const ExamBank = () => {
 
     try {
       const token = localStorage.getItem("token");
+
+      // Gọi API import-commit, backend sẽ tạo exam và lưu câu hỏi theo preview
       const response = await axios.post(
         "http://localhost:5000/api/exam-bank/import-commit",
         {
+          exam_title: examTitle,
           preview: previewData.preview,
           summary: previewData.summary,
-          exam_title: examTitle,
         },
         {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
         }
       );
 
       if (response.data.status === "success") {
+        const examId = response.data.exam_id || response.data.data?.exam_id;
+        const imported = response.data.imported || response.data.data?.imported;
+
         alert(
-          `✅ Import thành công! Đã thêm ${previewData.summary.total} câu hỏi vào ngân hàng.\nExam ID: ${response.data.exam_id}`
+          `✅ Lưu thành công!\nĐề thi: ${examTitle}\nSố câu hỏi đã lưu: ${imported}${examId ? `\nExam ID: ${examId}` : ""}`
         );
 
+        // Reset UI
         setPreviewData(null);
         setUploadedFile(null);
         setExamTitle("");
         const fileInput = document.getElementById("fileInput");
         if (fileInput) fileInput.value = "";
       } else {
-        setError(
-          "❌ Import thất bại! Backend không trả về trạng thái success."
-        );
+        setError("❌ Lưu thất bại! Vui lòng kiểm tra lại dữ liệu.");
       }
     } catch (err) {
       setError(
-        "❌ Lỗi khi commit dữ liệu: " +
-          (err.response?.data?.message || err.message)
+        "❌ Lỗi khi lưu đề thi: " + (err.response?.data?.message || err.message)
       );
     } finally {
       setLoading(false);

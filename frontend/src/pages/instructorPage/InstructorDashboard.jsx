@@ -24,19 +24,15 @@ const InstructorDashboard = () => {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const token = localStorage.getItem("token");
-        const res = await axios.get(
-          "http://localhost:5000/api/instructor/dashboard",
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-        setStats({
-          total_exams_created: res.data.total_exams_created || 0,
-          total_tests_submitted: res.data.total_tests_submitted || 0,
-          total_students_participated:
-            res.data.total_students_participated || 0,
-        });
+        const res = await axiosClient.get("/exams/dashboard-stats");
+        if (res.data.status === "success") {
+          const { stats: apiStats } = res.data.data;
+          setStats({
+            total_exams_created: apiStats.total_exams || 0,
+            total_tests_submitted: apiStats.total_submissions || 0,
+            total_students_participated: apiStats.unique_students || 0,
+          });
+        }
       } catch (err) {
         console.error("❌ Lỗi lấy dữ liệu thống kê:", err);
       }
@@ -187,12 +183,12 @@ const InstructorDashboard = () => {
                 <p className="text-gray-500">Tổng số đề đã tạo</p>
               </div>
             </div>
-            <a
-              href="#"
-              className="text-gray-400 hover:text-gray-600 text-sm mt-4 self-end"
+            <button
+              onClick={() => navigate("/exam-list")}
+              className="text-gray-400 hover:text-gray-600 text-sm mt-4 self-end transition-colors"
             >
               Xem →
-            </a>
+            </button>
           </div>
 
           {/* Tổng số bài kiểm tra */}
