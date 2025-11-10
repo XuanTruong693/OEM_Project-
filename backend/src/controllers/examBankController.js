@@ -96,14 +96,13 @@ const importExamQuestions = async (req, res) => {
     }
 
     // ✅ Tổng điểm phải đúng 10
-    const totalPoints = parseFloat((totalMCQ + totalEssay).toFixed(2));
-    if (totalPoints !== 10) {
-      await transaction.rollback();
-      return res.status(400).json({
-        message: `The current total score of the exam is ${totalPoints} points — the total score must be exactly 10.`,
-        status: "error",
-      });
-    }
+    const totalPoints = preview.reduce((sum, q) => {
+      const match = q.question_text?.match(scorePattern);
+      if (!match)
+        throw new Error(`Cannot determine score for row ${q.row || "?"}`);
+      const point = parseFloat(match[1].replace(",", "."));
+      return sum + point;
+    }, 0);
 
     console.log(
       `✅ Tổng điểm hợp lệ: MCQ=${totalMCQ}, Essay=${totalEssay}, Tổng=${totalPoints}`

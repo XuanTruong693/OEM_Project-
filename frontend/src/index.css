@@ -2,7 +2,26 @@
 
 @layer base {
   a,
-  button {
+  button,
+  input,
+  select {
     @apply cursor-pointer;
   }
+
+  input,
+  select,
+  textarea,
+  option {
+    @apply outline-none;
+  }
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
 }

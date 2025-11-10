@@ -28,6 +28,8 @@ import AssignExam from "./pages/instructorPage/AssignExam.jsx";
 import ExamBank from "./pages/instructorPage/ExamBank.jsx";
 import Result from "./pages/instructorPage/Result.jsx";
 import Setting from "./pages/instructorPage/Setting.jsx";
+import EditExam from "./pages/instructorPage/EditExam.jsx";
+
 import StudentDashboard from "./pages/studentPage/StudentDashboard.jsx";
 
 import InstructorSidebar from "./components/instructor/InstructorSidebar.jsx";
@@ -153,6 +155,7 @@ const App = () => {
           />
           <Route path="/exam-bank" element={<ExamBank />} />
           <Route path="/assign-exam" element={<AssignExam />} />
+          <Route path="/instructor/exams/:id/edit" element={<EditExam />} />
           <Route path="/result" element={<Result />} />
           <Route path="/setting" element={<Setting />} />
           <Route path="/profile" element={<Profile />} />

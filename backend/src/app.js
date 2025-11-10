@@ -8,18 +8,16 @@ const instructorRoutes = require("./routes/instructorRoutes");
 const profileRoutes = require("./routes/profileRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const examBankRoutes = require("./routes/examBankRoutes");
+const assignBankRoutes = require("./routes/assignBankRoutes");
+const editExamRoutes = require("./routes/editExamRoutes");
 const app = express();
 // const profileRouter = require("./routes/profile");
 
-const allowedOrigins = [
-  "http://localhost:4000",
-  "http://127.0.0.1:4000",
-];
+const allowedOrigins = ["http://localhost:4000", "http://127.0.0.1:4000"];
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
@@ -27,7 +25,7 @@ app.use(
         callback(new Error("Not allowed by CORS"));
       }
     },
-    credentials: true, 
+    credentials: true,
   })
 );
 
@@ -50,6 +48,8 @@ app.use("/api/instructor", require("./routes/instructorRoutes"));
 app.use("/api/profile", profileRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/exam-bank", examBankRoutes);
+app.use("/api/assign-bank", assignBankRoutes);
+app.use("/api/edit-exam", editExamRoutes);
 
 // ✅ Route test
 app.get("/", (req, res) => {
