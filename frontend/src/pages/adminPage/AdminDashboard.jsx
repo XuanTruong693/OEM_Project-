@@ -108,7 +108,12 @@ const AdminDashboard = () => {
       {/* Sidebar */}
       <aside className="w-64 bg-gray-800 border-r border-gray-700">
         <div className="p-6 pb-8">
-          <h2 className="text-xl font-semibold text-white">OEM Mini</h2>
+          <img
+          src="/Logo2.png"
+          alt="OEM Logo2"
+          className="h-14 md:h-20 w-auto cursor-pointer"
+          onClick={() => navigate("/")}
+        />
         </div>
         
         <nav className="flex flex-col">
