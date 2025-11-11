@@ -1,0 +1,2372 @@
+* Unmerged path backend/src/app.js
+diff --git a/backend/src/config/db.js b/backend/src/config/db.js
+index 274726a..a7c6a4e 100644
+--- a/backend/src/config/db.js
++++ b/backend/src/config/db.js
+@@ -10,6 +10,7 @@ const sequelize = new Sequelize(
+     dialect: "mysql",
+     port: process.env.DB_PORT,
+     logging: false,
++    timezone: process.env.APP_TZ || "+07:00", // chuẩn hoá múi giờ VN cho phiên kết nối
+   }
+ );
+ 
+diff --git a/backend/src/models/ExamRoom.js b/backend/src/models/ExamRoom.js
+index 2b155a9..2ad6527 100644
+--- a/backend/src/models/ExamRoom.js
++++ b/backend/src/models/ExamRoom.js
+@@ -1,93 +1,57 @@
+ const { DataTypes } = require("sequelize");
+-
+ const sequelize = require("../config/db");
+ 
+-
++// Sequelize model khớp schema mới của bảng `exams`
++// - ĐÃ BỎ course_id
++// - Có instructor_id (một số DB có thể để NULL nếu dữ liệu cũ)
++// - Có thể có thêm các cột cấu hình (duration_minutes, time_open, time_close, max_points,
++//   require_face_check, require_student_card, monitor_screen) — khai báo allowNull để tương thích
+ 
+ const Exam = sequelize.define(
+-
+-  "Exam",
+-
+-  {
+-
+-    id: {
+-
+-      type: DataTypes.INTEGER,
+-
+-      autoIncrement: true,
+-
+-      primaryKey: true,
+-
+-    },
+-
+-    course_id: {
+-
+-      type: DataTypes.INTEGER,
+-
+-      allowNull: false,
+-
+-      
+-
+-     references: {
+-
+-       model: 'courses',
+-
+-      key: 'id'
+-
+-      }
+-
+-    },
+-
+-    title: {
+-
+-      type: DataTypes.STRING(100),
+-
+-      allowNull: false,
+-
+-    },
+-
+-    duration: {
+-
+-      type: DataTypes.INTEGER, 
+-
+-      allowNull: false,
+-
+-    },
+-
+-    exam_room_code: {
+-
+-      type: DataTypes.STRING(20),
+-
+-      allowNull: false,
+-
+-      unique: true,
+-
+-    },
+-
+-    status: {
+-
+-      type: DataTypes.ENUM('draft', 'published', 'archived'),
+-
+-      allowNull: false,
+-
+-      defaultValue: 'draft',
+-
+-    },
+-
+-  },
+-
+-  {
+-
+-    tableName: "exams", 
+-
+-    timestamps: true,
+-
+-    underscored: true, 
+-
+-  }
+-
++  "Exam",
++  {
++    id: {
++      type: DataTypes.INTEGER.UNSIGNED,
++      autoIncrement: true,
++      primaryKey: true,
++    },
++    instructor_id: {
++      type: DataTypes.INTEGER.UNSIGNED,
++      allowNull: true, // một số DB cũ có thể đang NULL; BE nên set khi tạo mới
++    },
++    title: {
++      type: DataTypes.STRING(100),
++      allowNull: false,
++    },
++    duration: {
++      type: DataTypes.INTEGER,
++      allowNull: false,
++    },
++    // Các cột mở rộng – nếu DB chưa có cũng không ảnh hưởng khi chỉ đọc
++    duration_minutes: { type: DataTypes.INTEGER, allowNull: true },
++    time_open: { type: DataTypes.DATE, allowNull: true },
++    time_close: { type: DataTypes.DATE, allowNull: true },
++    max_points: { type: DataTypes.FLOAT, allowNull: true },
++    require_face_check: { type: DataTypes.BOOLEAN, allowNull: true },
++    require_student_card: { type: DataTypes.BOOLEAN, allowNull: true },
++    monitor_screen: { type: DataTypes.BOOLEAN, allowNull: true },
++
++    exam_room_code: {
++      type: DataTypes.STRING(64),
++      allowNull: true,
++      unique: true,
++    },
++    status: {
++      type: DataTypes.ENUM("draft", "published", "archived"),
++      allowNull: false,
++      defaultValue: "draft",
++    },
++  },
++  {
++    tableName: "exams",
++    timestamps: true, // map tới created_at/updated_at vì underscored
++    underscored: true,
++  }
+ );
+ 
+-
+-
+-module.exports = Exam;
+\ No newline at end of file
++module.exports = Exam;
+diff --git a/backend/src/routes/authRoutes.js b/backend/src/routes/authRoutes.js
+index 38a8dfd..519ad67 100644
+--- a/backend/src/routes/authRoutes.js
++++ b/backend/src/routes/authRoutes.js
+@@ -31,15 +31,26 @@ const generateOTP = () => {
+ // Test email configuration on startup (commented out to avoid blocking)
+ // testEmailConfig();
+ 
+-// Helper: lấy exam theo roomId hoặc exam_room_code
++// Helper: lấy exam theo id hoặc exam_room_code (truy vấn SQL thuần để không lệ thuộc model cũ)
+ const getExamByRoom = async (roomId) => {
+-  const Exam = require("../models/ExamRoom");
++  const sequelize = require("../config/db");
+   if (!roomId) return null;
+-
+-  if (/^\d+$/.test(roomId.toString())) {
+-    return await Exam.findByPk(roomId);
+-  } else {
+-    return await Exam.findOne({ where: { exam_room_code: roomId } });
++  try {
++    if (/^\d+$/.test(String(roomId))) {
++      const [rows] = await sequelize.query(
++        `SELECT id, title, exam_room_code, status FROM exams WHERE id = ? LIMIT 1`,
++        { replacements: [roomId] }
++      );
++      return Array.isArray(rows) && rows.length ? rows[0] : null;
++    }
++    const [rows] = await sequelize.query(
++      `SELECT id, title, exam_room_code, status FROM exams WHERE exam_room_code = ? LIMIT 1`,
++      { replacements: [roomId] }
++    );
++    return Array.isArray(rows) && rows.length ? rows[0] : null;
++  } catch (e) {
++    console.error('[getExamByRoom] query error', e);
++    return null;
+   }
+ };
+ 
+@@ -544,26 +555,34 @@ router.post("/login", async (req, res) => {
+ router.get("/verify-room/:code", async (req, res) => {
+   try {
+     const { code } = req.params;
+-    const Exam = require("../models/ExamRoom");
+-    const exam = await Exam.findOne({ where: { exam_room_code: code } });
++    const sequelize = require("../config/db");
++
++    // Dùng truy vấn thuần để tránh sai khác model/schema
++    const [rows] = await sequelize.query(
++      `SELECT id, title, exam_room_code, status
++       FROM exams
++       WHERE exam_room_code = ?
++       LIMIT 1`,
++      { replacements: [code] }
++    );
++    const exam = Array.isArray(rows) ? rows[0] : rows;
+ 
+-    if (!exam)
++    if (!exam) {
+       return res.json({ valid: false, message: "Mã phòng không hợp lệ" });
+-    if (exam.status !== "published")
+-      return res.json({
+-        valid: false,
+-        message: "Phòng thi chưa được kích hoạt",
+-      });
++    }
++    if (String(exam.status) !== "published") {
++      return res.json({ valid: false, message: "Phòng thi chưa được kích hoạt" });
++    }
+ 
+-    res.json({
++    return res.json({
+       valid: true,
+       roomId: exam.exam_room_code,
+-      examCode: code,
++      examCode: exam.exam_room_code,
+       title: exam.title,
+     });
+   } catch (err) {
+     console.error("❌ Lỗi verify room:", err);
+-    res.status(500).json({ valid: false, message: "Lỗi server" });
++    return res.status(500).json({ valid: false, message: "Lỗi server" });
+   }
+ });
+ 
+diff --git a/backend/src/routes/instructorRoutes.js b/backend/src/routes/instructorRoutes.js
+index 6f2f108..d39a024 100644
+--- a/backend/src/routes/instructorRoutes.js
++++ b/backend/src/routes/instructorRoutes.js
+@@ -2,6 +2,7 @@ const express = require("express");
+ const router = express.Router();
+ const sequelize = require("../config/db");
+ const { verifyToken, authorizeRole } = require("../middleware/authMiddleware");
++const crypto = require('crypto');
+ 
+ // ==============================
+ // 📊 1️⃣ API: Lấy thống kê tổng
+@@ -86,6 +87,397 @@ router.get(
+ );
+ 
+ 
++// ==============================
++// 📄 4️⃣ Instructor: Danh sách đề thi của tôi
++// ==============================
++router.get(
++  "/exams/my",
++  verifyToken,
++  authorizeRole(["instructor"]),
++  async (req, res) => {
++    try {
++      const instructorId = req.user.id;
++      const [rows] = await sequelize.query(
++        `SELECT id, title, status, duration, duration_minutes, time_open, time_close, exam_room_code,
++                require_face_check, require_student_card, monitor_screen, max_points
++         FROM exams WHERE instructor_id = ? ORDER BY id DESC`,
++        { replacements: [instructorId] }
++      );
++      return res.json(rows || []);
++    } catch (err) {
++      console.error('instructor/exams/my error:', err);
++      return res.status(500).json({ message: 'Server error' });
++    }
++  }
++);
++
++// ==============================
++// 📊 7️⃣ Results: Helpers
++// ==============================
++async function ensureExamOwnership(examId, instructorId) {
++  const [rows] = await sequelize.query(
++    `SELECT id FROM exams WHERE id = ? AND instructor_id = ? LIMIT 1`,
++    { replacements: [examId, instructorId] }
++  );
++  return Array.isArray(rows) && rows.length > 0;
++}
++
++async function getExamRow(examId) {
++  const [rows] = await sequelize.query(
++    `SELECT id, status, instructor_id FROM exams WHERE id = ? LIMIT 1`,
++    { replacements: [examId] }
++  );
++  return Array.isArray(rows) && rows.length ? rows[0] : null;
++}
++
++// GET /api/instructor/exams/:examId/summary
++router.get(
++  "/exams/:examId/summary",
++  verifyToken,
++  authorizeRole(["instructor"]),
++  async (req, res) => {
++    try {
++      const examId = parseInt(req.params.examId, 10);
++      if (!Number.isFinite(examId)) return res.status(400).json({ message: 'examId invalid' });
++      const ok = await ensureExamOwnership(examId, req.user.id);
++      if (!ok) {
++        // allow view-only if exam is published (to reduce friction per request)
++        const er = await getExamRow(examId);
++        if (!er || String(er.status) !== 'published') {
++          return res.status(403).json({ message: 'Not owner of exam' });
++        }
++      }
++
++      // Try view v_instructor_exam_bank / v_exam_overview
++      try {
++        const [rows] = await sequelize.query(
++          `SELECT * FROM v_instructor_exam_bank WHERE exam_id = ? LIMIT 1`,
++          { replacements: [examId] }
++        );
++        if (Array.isArray(rows) && rows.length) return res.json(rows[0]);
++      } catch {}
++      try {
++        const [rows] = await sequelize.query(
++          `SELECT * FROM v_exam_overview WHERE exam_id = ? LIMIT 1`,
++          { replacements: [examId] }
++        );
++        if (Array.isArray(rows) && rows.length) return res.json(rows[0]);
++      } catch {}
++      // Fallback quick summary
++      const [[q1]] = await sequelize.query(
++        `SELECT COUNT(*) AS total_submissions, MAX(submitted_at) AS last_submission_time
++         FROM submissions WHERE exam_id = ?`, { replacements: [examId] }
++      );
++      const [[q2]] = await sequelize.query(
++        `SELECT COUNT(DISTINCT user_id) AS total_students FROM submissions WHERE exam_id = ?`,
++        { replacements: [examId] }
++      );
++      return res.json({ exam_id: examId, total_submissions: q1?.total_submissions||0, total_students: q2?.total_students||0, last_submission_time: q1?.last_submission_time || null });
++    } catch (err) {
++      console.error('exams/:examId/summary error:', err);
++      return res.status(500).json({ message: 'Server error' });
++    }
++  }
++);
++
++// GET /api/instructor/exams/overview
++router.get(
++  "/exams/overview",
++  verifyToken,
++  authorizeRole(["instructor"]),
++  async (req, res) => {
++    try {
++      try {
++        const [rows] = await sequelize.query(
++          `SELECT * FROM v_instructor_stats WHERE instructor_id = ?`,
++          { replacements: [req.user.id] }
++        );
++        if (Array.isArray(rows)) return res.json(rows);
++      } catch {}
++      // Fallback quick stats
++      const [[a]] = await sequelize.query(`SELECT COUNT(*) AS total_exams FROM exams WHERE instructor_id = ?`, { replacements: [req.user.id] });
++      const [[b]] = await sequelize.query(`SELECT COUNT(*) AS total_submissions, AVG(total_score) AS avg_score FROM submissions s JOIN exams e ON e.id=s.exam_id WHERE e.instructor_id = ?`, { replacements: [req.user.id] });
++      const [[c]] = await sequelize.query(`SELECT COUNT(DISTINCT s.user_id) AS total_students FROM submissions s JOIN exams e ON e.id=s.exam_id WHERE e.instructor_id = ?`, { replacements: [req.user.id] });
++      return res.json([{ total_exams: a?.total_exams||0, total_submissions: b?.total_submissions||0, avg_score: b?.avg_score||0, total_students: c?.total_students||0 }]);
++    } catch (err) {
++      console.error('exams/overview error:', err);
++      return res.status(500).json({ message: 'Server error' });
++    }
++  }
++);
++
++// GET /api/instructor/exams/:examId/results
++router.get(
++  "/exams/:examId/results",
++  verifyToken,
++  authorizeRole(["instructor"]),
++  async (req, res) => {
++    try {
++      const examId = parseInt(req.params.examId, 10);
++      if (!Number.isFinite(examId)) return res.status(400).json({ message: 'examId invalid' });
++      const ok = await ensureExamOwnership(examId, req.user.id);
++      if (!ok) {
++        const er = await getExamRow(examId);
++        if (!er || String(er.status) !== 'published') {
++          return res.status(403).json({ message: 'Not owner of exam' });
++        }
++      }
++
++      try {
++        const [rows] = await sequelize.query(`CALL sp_get_exam_results(?, 'instructor', ?);`, { replacements: [examId, req.user.id] });
++        // mysql2/sequelize for CALL may wrap results in multiple arrays
++        let data = [];
++        if (Array.isArray(rows)) {
++          if (Array.isArray(rows[0])) data = rows[0];
++          else data = rows;
++        }
++        return res.json(data);
++      } catch (e) {
++        // Fallback: join basics
++        const [rows] = await sequelize.query(
++          `SELECT 
++              u.full_name AS student_name,
++              s.user_id AS student_id,
++              s.status,
++              s.ai_score,
++              s.total_score,
++              COALESCE(SUM(CASE WHEN q.type='MCQ' THEN COALESCE(sa.score,0) ELSE 0 END),0) AS mcq_score,
++              COALESCE(s.suggested_total_score, COALESCE(SUM(CASE WHEN q.type='MCQ' THEN COALESCE(sa.score,0) ELSE 0 END),0) + COALESCE(s.ai_score,0)) AS suggested_total_score,
++              s.started_at,
++              s.submitted_at,
++              TIMESTAMPDIFF(MINUTE, s.started_at, s.submitted_at) AS duration_minutes,
++              s.proctor_flags,
++              s.face_image_url,
++              s.student_card_url
++           FROM submissions s 
++           JOIN users u ON u.id = s.user_id
++           LEFT JOIN student_answers sa ON sa.submission_id = s.id
++           LEFT JOIN exam_questions q ON q.id = sa.question_id
++           WHERE s.exam_id = ?
++           GROUP BY s.id
++           ORDER BY u.full_name`, { replacements: [examId] }
++        );
++        return res.json(rows || []);
++      }
++    } catch (err) {
++      console.error('exams/:examId/results error:', err);
++      return res.status(500).json({ message: 'Server error' });
++    }
++  }
++);
++
++// PUT /api/instructor/exams/:examId/students/:studentId/score
++router.put(
++  "/exams/:examId/students/:studentId/score",
++  verifyToken,
++  authorizeRole(["instructor"]),
++  async (req, res) => {
++    try {
++      const examId = parseInt(req.params.examId, 10);
++      const studentId = parseInt(req.params.studentId, 10);
++      const { mcq_score, ai_score, student_name } = req.body || {};
++      if (!Number.isFinite(examId) || !Number.isFinite(studentId)) return res.status(400).json({ message: 'invalid ids' });
++      const ok = await ensureExamOwnership(examId, req.user.id);
++      if (!ok) {
++        const er = await getExamRow(examId);
++        if (!er || String(er.status) !== 'published') {
++          return res.status(403).json({ message: 'Not owner of exam' });
++        }
++      }
++
++      const mcq = mcq_score != null ? Number(mcq_score) : null;
++      const ai = ai_score != null ? Number(ai_score) : null;
++      if ((mcq != null && isNaN(mcq)) || (ai != null && isNaN(ai))) return res.status(400).json({ message: 'score must be number' });
++
++      try {
++        await sequelize.query(`CALL sp_update_student_exam_record(?, ?, ?, ?, ?);`, { replacements: [examId, studentId, student_name || null, mcq, ai] });
++      } catch (e) {
++        // Fallback direct update
++        await sequelize.query(
++          `UPDATE submissions s SET total_score = ?, ai_score = ?, suggested_total_score = COALESCE(?,0) + COALESCE(?,0), instructor_confirmed = 1, status='confirmed'
++           WHERE s.exam_id = ? AND s.user_id = ?`,
++          { replacements: [mcq, ai, mcq, ai, examId, studentId] }
++        );
++        try {
++          await sequelize.query(
++            `UPDATE results r SET total_score = (SELECT total_score FROM submissions WHERE exam_id=? AND user_id=?), status='confirmed'
++             WHERE r.exam_id = ? AND r.student_id = ?`,
++            { replacements: [examId, studentId, examId, studentId] }
++          );
++        } catch {}
++      }
++      // return updated row
++      try {
++        const [rows] = await sequelize.query(`CALL sp_get_exam_results(?, 'instructor', ?);`, { replacements: [examId, req.user.id] });
++        const data = Array.isArray(rows) ? rows : [];
++        const row = data.find(r => Number(r.student_id) === Number(studentId));
++        return res.json(row || { ok: true });
++      } catch {
++        return res.json({ ok: true });
++      }
++    } catch (err) {
++      console.error('PUT score error:', err);
++      return res.status(500).json({ message: 'Server error' });
++    }
++  }
++);
++
++// POST /api/instructor/exams/:examId/confirm-bulk
++router.post(
++  "/exams/:examId/confirm-bulk",
++  verifyToken,
++  authorizeRole(["instructor"]),
++  async (req, res) => {
++    try {
++      const examId = parseInt(req.params.examId, 10);
++      if (!Number.isFinite(examId)) return res.status(400).json({ message: 'examId invalid' });
++      const ok = await ensureExamOwnership(examId, req.user.id);
++      if (!ok) return res.status(403).json({ message: 'Not owner of exam' });
++      const list = Array.isArray(req.body?.items) ? req.body.items : [];
++      for (const it of list) {
++        const sid = Number(it.studentId);
++        const mcq = it.mcq != null ? Number(it.mcq) : null;
++        const ai = it.ai != null ? Number(it.ai) : null;
++        try { await sequelize.query(`CALL sp_update_student_exam_record(?, ?, ?, ?, ?);`, { replacements: [examId, sid, it.student_name || null, mcq, ai] }); } catch {}
++      }
++      return res.json({ ok: true });
++    } catch (err) {
++      console.error('confirm-bulk error:', err);
++      return res.status(500).json({ message: 'Server error' });
++    }
++  }
++);
++// ==============================
++// 🔍 5️⃣ Instructor: Xem preview câu hỏi một đề
++// ==============================
++router.get(
++  "/exams/:id/preview",
++  verifyToken,
++  authorizeRole(["instructor"]),
++  async (req, res) => {
++    try {
++      const examId = parseInt(req.params.id, 10);
++      const ownerCheck = await sequelize.query(
++        `SELECT id FROM exams WHERE id = ? AND instructor_id = ? LIMIT 1`,
++        { replacements: [examId, req.user.id] }
++      );
++      const ok = Array.isArray(ownerCheck[0]) && ownerCheck[0].length > 0;
++      if (!ok) return res.status(404).json({ message: 'Exam not found' });
++
++      // questions
++      const [qRows] = await sequelize.query(
++        `SELECT id AS question_id, question_text, type, points, model_answer FROM exam_questions WHERE exam_id = ? ORDER BY id ASC`,
++        { replacements: [examId] }
++      );
++      const questions = Array.isArray(qRows) ? qRows : [];
++      const ids = questions.filter(q => q.type === 'MCQ').map(q => q.question_id);
++      let optionsByQ = {};
++      if (ids.length) {
++        const [oRows] = await sequelize.query(
++          `SELECT question_id, id AS option_id, option_text, is_correct FROM exam_options WHERE question_id IN (${ids.map(()=>'?').join(',')}) ORDER BY id ASC`,
++          { replacements: ids }
++        );
++        (Array.isArray(oRows) ? oRows : []).forEach(o => {
++          optionsByQ[o.question_id] ||= [];
++          optionsByQ[o.question_id].push(o);
++        });
++      }
++      const merged = questions.map(q => q.type === 'MCQ' ? { ...q, options: optionsByQ[q.question_id] || [] } : q);
++      return res.json({ exam_id: examId, questions: merged });
++    } catch (err) {
++      console.error('instructor/exams/:id/preview error:', err);
++      return res.status(500).json({ message: 'Server error' });
++    }
++  }
++);
++
++// ==============================
++// 🚀 6️⃣ Instructor: Mở phòng thi (publish + cấu hình)
++// ==============================
++router.post(
++  "/exams/:id/open",
++  verifyToken,
++  authorizeRole(["instructor"]),
++  async (req, res) => {
++    try {
++      const examId = parseInt(req.params.id, 10);
++      const {
++        duration,
++        duration_minutes,
++        time_open,
++        time_close,
++        max_points,
++        require_face_check,
++        require_student_card,
++        monitor_screen,
++      } = req.body || {};
++
++      // owner check
++      const [own] = await sequelize.query(`SELECT id FROM exams WHERE id = ? AND instructor_id = ? LIMIT 1`, { replacements: [examId, req.user.id] });
++      if (!Array.isArray(own) || own.length === 0) return res.status(404).json({ message: 'Exam not found' });
++
++      // validate time
++      const now = new Date();
++      const openAt = time_open ? new Date(time_open) : null;
++      const closeAt = time_close ? new Date(time_close) : null;
++      if (!openAt || !closeAt || isNaN(openAt) || isNaN(closeAt)) {
++        return res.status(400).json({ message: 'time_open/time_close invalid' });
++      }
++      if (openAt.getTime() < now.getTime()) {
++        return res.status(400).json({ message: 'time_open must be now or future' });
++      }
++      if (closeAt.getTime() <= openAt.getTime()) {
++        return res.status(400).json({ message: 'time_close must be after time_open' });
++      }
++
++      // generate 6-char room code (A-Z0-9)
++      const genCode = () => crypto.randomBytes(4).toString('hex').slice(0,6).toUpperCase();
++      let room = genCode();
++      try {
++        // try ensure uniqueness a few times
++        for (let i=0;i<5;i++) {
++          const [r] = await sequelize.query(`SELECT 1 FROM exams WHERE exam_room_code = ? LIMIT 1`, { replacements: [room] });
++          if (!Array.isArray(r) || r.length === 0) break;
++          room = genCode();
++        }
++      } catch {}
++
++      // build update set, mirror duration into duration_minutes when missing
++      const dur = Number(duration || duration_minutes || 0) || null;
++      const durMin = Number(duration_minutes || duration || 0) || null;
++
++      const fmt = (d)=> {
++        // accept ISO/local datetime; format to 'YYYY-MM-DD HH:MM:SS'
++        const pad = (n)=> String(n).padStart(2,'0');
++        const dt = new Date(d);
++        return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}:00`;
++      };
++
++      await sequelize.query(
++        `UPDATE exams SET 
++           duration = ?,
++           duration_minutes = ?,
++           status = 'published',
++           exam_room_code = ?,
++           time_open = ?,
++           time_close = ?,
++           max_points = ?,
++           require_face_check = ?,
++           require_student_card = ?,
++           monitor_screen = ?
++         WHERE id = ?`,
++        { replacements: [dur, durMin, room, fmt(openAt), fmt(closeAt), (max_points ?? null), (require_face_check?1:0), (require_student_card?1:0), (monitor_screen?1:0), examId] }
++      );
++
++      return res.json({ ok: true, exam_id: examId, exam_room_code: room, status: 'published' });
++    } catch (err) {
++      console.error('instructor/exams/:id/open error:', err);
++      return res.status(500).json({ message: 'Server error' });
++    }
++  }
++);
++
++
+ // =======================================
+ // 👤 3️⃣ API: Lấy thông tin user theo ID
+ // =======================================
+diff --git a/database/oem_migration_v5.sql b/database/oem_migration_v5.sql
+index 702493d..cc61e69 100644
+--- a/database/oem_migration_v5.sql
++++ b/database/oem_migration_v5.sql
+@@ -803,5 +803,494 @@ DROP COLUMN course_id;
+ DROP TABLE IF EXISTS courses;
+ SET FOREIGN_KEY_CHECKS = 1;
+ SELECT '✅ Đã xóa khóa ngoại, cột course_id trong exams và các bảng courses, enrollments thành công.' AS message;
++
++-- update exams table + submission table cho phòng thi
++USE oem_mini;
++SET @db := DATABASE();
++
++-- exam_id (INT UNSIGNED, NOT NULL)
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='exam_id';
++SET @sql := IF(@c=0,
++  'ALTER TABLE submissions ADD COLUMN exam_id INT UNSIGNED NULL',
++  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- user_id (INT UNSIGNED, NOT NULL)
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='user_id';
++SET @sql := IF(@c=0,
++  'ALTER TABLE submissions ADD COLUMN user_id INT UNSIGNED NULL',
++  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- attempt_no
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='attempt_no';
++SET @sql := IF(@c=0,
++  'ALTER TABLE submissions ADD COLUMN attempt_no INT NOT NULL DEFAULT 1',
++  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- started_at
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='started_at';
++SET @sql := IF(@c=0,
++  'ALTER TABLE submissions ADD COLUMN started_at DATETIME NULL',
++  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- submitted_at
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='submitted_at';
++SET @sql := IF(@c=0,
++  'ALTER TABLE submissions ADD COLUMN submitted_at DATETIME NULL',
++  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- status
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='status';
++SET @sql := IF(@c=0,
++  'ALTER TABLE submissions ADD COLUMN status ENUM(''pending'',''in_progress'',''submitted'',''graded'',''cancelled'') NOT NULL DEFAULT ''pending''',
++  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- face_image_blob
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='face_image_blob';
++SET @sql := IF(@c=0,
++  'ALTER TABLE submissions ADD COLUMN face_image_blob LONGBLOB NULL',
++  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- face_image_mimetype
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='face_image_mimetype';
++SET @sql := IF(@c=0,
++  'ALTER TABLE submissions ADD COLUMN face_image_mimetype VARCHAR(100) NULL',
++  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- face_image_url
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='face_image_url';
++SET @sql := IF(@c=0,
++  'ALTER TABLE submissions ADD COLUMN face_image_url VARCHAR(500) NULL',
++  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- student_card_blob
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='student_card_blob';
++SET @sql := IF(@c=0,
++  'ALTER TABLE submissions ADD COLUMN student_card_blob LONGBLOB NULL',
++  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- student_card_mimetype
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='student_card_mimetype';
++SET @sql := IF(@c=0,
++  'ALTER TABLE submissions ADD COLUMN student_card_mimetype VARCHAR(100) NULL',
++  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- student_card_url
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='student_card_url';
++SET @sql := IF(@c=0,
++  'ALTER TABLE submissions ADD COLUMN student_card_url VARCHAR(500) NULL',
++  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- proctor_flags (JSON)
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='proctor_flags';
++SET @sql := IF(@c=0,
++  'ALTER TABLE submissions ADD COLUMN proctor_flags JSON NULL',
++  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++/* ---------- Backfill nhỏ ---------- */
++UPDATE submissions SET attempt_no = 1 WHERE attempt_no IS NULL;
++
++/* ---------- Đảm bảo kiểu cột đúng để gắn FK ---------- */
++-- (Nếu trước đó lỡ tạo BIGINT thì đổi về INT UNSIGNED)
++ALTER TABLE submissions
++  MODIFY COLUMN exam_id INT UNSIGNED NULL,
++  MODIFY COLUMN user_id INT UNSIGNED NULL;
++
++/* ---------- Foreign Keys (thêm nếu chưa có) ---------- */
++-- Xoá trước nếu đã tồn tại để tránh va
++SET FOREIGN_KEY_CHECKS = 0;
++SELECT COUNT(*) INTO @fk_exists
++FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS
++WHERE CONSTRAINT_SCHEMA=@db AND CONSTRAINT_NAME='fk_submissions__exams';
++SET @sql := IF(@fk_exists>0, 'ALTER TABLE submissions DROP FOREIGN KEY fk_submissions__exams','SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++SELECT COUNT(*) INTO @fk_exists
++FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS
++WHERE CONSTRAINT_SCHEMA=@db AND CONSTRAINT_NAME='fk_submissions__users';
++SET @sql := IF(@fk_exists>0, 'ALTER TABLE submissions DROP FOREIGN KEY fk_submissions__users','SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++SET FOREIGN_KEY_CHECKS = 1;
++
++-- Thêm lại FK
++ALTER TABLE submissions
++  ADD CONSTRAINT fk_submissions__exams
++    FOREIGN KEY (exam_id) REFERENCES exams(id)
++    ON DELETE CASCADE ON UPDATE CASCADE,
++  ADD CONSTRAINT fk_submissions__users
++    FOREIGN KEY (user_id) REFERENCES users(id)
++    ON DELETE CASCADE ON UPDATE CASCADE;
++
++/* ---------- Indexes (tạo nếu thiếu) ---------- */
++-- Unique (exam_id, user_id, attempt_no)
++SELECT COUNT(*) INTO @idx_exists
++FROM INFORMATION_SCHEMA.STATISTICS
++WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND INDEX_NAME='uq_submissions_exam_user_attempt';
++SET @sql := IF(@idx_exists=0,
++  'CREATE UNIQUE INDEX uq_submissions_exam_user_attempt ON submissions (exam_id, user_id, attempt_no)',
++  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- Index (exam_id, user_id)
++SELECT COUNT(*) INTO @idx_exists
++FROM INFORMATION_SCHEMA.STATISTICS
++WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND INDEX_NAME='idx_submissions_exam_user';
++SET @sql := IF(@idx_exists=0,
++  'CREATE INDEX idx_submissions_exam_user ON submissions (exam_id, user_id)',
++  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- Index (status)
++SELECT COUNT(*) INTO @idx_exists
++FROM INFORMATION_SCHEMA.STATISTICS
++WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND INDEX_NAME='idx_submissions_status';
++SET @sql := IF(@idx_exists=0,
++  'CREATE INDEX idx_submissions_status ON submissions (status)',
++  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- Index (user_id)
++SELECT COUNT(*) INTO @idx_exists
++FROM INFORMATION_SCHEMA.STATISTICS
++WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND INDEX_NAME='idx_submissions_user';
++SET @sql := IF(@idx_exists=0,
++  'CREATE INDEX idx_submissions_user ON submissions (user_id)',
++  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++
++--
++ALTER TABLE exams
++  MODIFY COLUMN duration_minutes INT NOT NULL DEFAULT 60,
++  MODIFY COLUMN max_points DECIMAL(10,2) NULL,
++  MODIFY COLUMN require_face_check TINYINT(1) NOT NULL DEFAULT 0,
++  MODIFY COLUMN require_student_card TINYINT(1) NOT NULL DEFAULT 0,
++  MODIFY COLUMN monitor_screen TINYINT(1) NOT NULL DEFAULT 0;
++
++
++USE oem_mini;
++
++/* Drop target columns if exist */
++-- duration_minutes
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='exams' AND COLUMN_NAME='duration_minutes';
++SET @sql := IF(@c=1, 'ALTER TABLE exams DROP COLUMN duration_minutes', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- time_open
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='exams' AND COLUMN_NAME='time_open';
++SET @sql := IF(@c=1, 'ALTER TABLE exams DROP COLUMN time_open', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- time_close
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='exams' AND COLUMN_NAME='time_close';
++SET @sql := IF(@c=1, 'ALTER TABLE exams DROP COLUMN time_close', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- max_points
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='exams' AND COLUMN_NAME='max_points';
++SET @sql := IF(@c=1, 'ALTER TABLE exams DROP COLUMN max_points', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- require_face_check
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='exams' AND COLUMN_NAME='require_face_check';
++SET @sql := IF(@c=1, 'ALTER TABLE exams DROP COLUMN require_face_check', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- require_student_card
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='exams' AND COLUMN_NAME='require_student_card';
++SET @sql := IF(@c=1, 'ALTER TABLE exams DROP COLUMN require_student_card', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- monitor_screen
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='exams' AND COLUMN_NAME='monitor_screen';
++SET @sql := IF(@c=1, 'ALTER TABLE exams DROP COLUMN monitor_screen', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++/* Add fresh columns */
++ALTER TABLE exams
++  ADD COLUMN duration_minutes INT NOT NULL DEFAULT 60,
++  ADD COLUMN time_open DATETIME NULL,
++  ADD COLUMN time_close DATETIME NULL,
++  ADD COLUMN max_points DECIMAL(10,2) NULL,
++  ADD COLUMN require_face_check TINYINT(1) NOT NULL DEFAULT 0,
++  ADD COLUMN require_student_card TINYINT(1) NOT NULL DEFAULT 0,
++  ADD COLUMN monitor_screen TINYINT(1) NOT NULL DEFAULT 0;
++
++/* Recreate indexes for EXAMS */
++-- idx_exams_status_room
++SELECT COUNT(*) INTO @idx_exists
++FROM INFORMATION_SCHEMA.STATISTICS
++WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='exams' AND INDEX_NAME='idx_exams_status_room';
++SET @sql := IF(@idx_exists>0, 'DROP INDEX idx_exams_status_room ON exams', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++CREATE INDEX idx_exams_status_room ON exams (status, exam_room_code);
++
++-- idx_exams_time_open
++SELECT COUNT(*) INTO @idx_exists
++FROM INFORMATION_SCHEMA.STATISTICS
++WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='exams' AND INDEX_NAME='idx_exams_time_open';
++SET @sql := IF(@idx_exists>0, 'DROP INDEX idx_exams_time_open ON exams', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++CREATE INDEX idx_exams_time_open ON exams (time_open);
++
++/* Ensure submissions table exists (id only) */
++CREATE TABLE IF NOT EXISTS submissions (
++  id BIGINT PRIMARY KEY AUTO_INCREMENT
++);
++
++/* Drop FKs first to allow dropping columns safely */
++SET FOREIGN_KEY_CHECKS = 0;
++
++-- drop FK exams
++SELECT COUNT(*) INTO @fk_exists
++FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS
++WHERE CONSTRAINT_SCHEMA=DATABASE() AND CONSTRAINT_NAME='fk_submissions__exams';
++SET @sql := IF(@fk_exists>0, 'ALTER TABLE submissions DROP FOREIGN KEY fk_submissions__exams', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- drop FK users
++SELECT COUNT(*) INTO @fk_exists
++FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS
++WHERE CONSTRAINT_SCHEMA=DATABASE() AND CONSTRAINT_NAME='fk_submissions__users';
++SET @sql := IF(@fk_exists>0, 'ALTER TABLE submissions DROP FOREIGN KEY fk_submissions__users', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++SET FOREIGN_KEY_CHECKS = 1;
++
++/* Drop indexes so we can rebuild clean */
++-- unique attempt index
++SELECT COUNT(*) INTO @idx_exists
++FROM INFORMATION_SCHEMA.STATISTICS
++WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND INDEX_NAME='uq_submissions_exam_user_attempt';
++SET @sql := IF(@idx_exists>0, 'DROP INDEX uq_submissions_exam_user_attempt ON submissions', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++-- other indexes
++SELECT COUNT(*) INTO @idx_exists
++FROM INFORMATION_SCHEMA.STATISTICS
++WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND INDEX_NAME='idx_submissions_exam_user';
++SET @sql := IF(@idx_exists>0, 'DROP INDEX idx_submissions_exam_user ON submissions', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++SELECT COUNT(*) INTO @idx_exists
++FROM INFORMATION_SCHEMA.STATISTICS
++WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND INDEX_NAME='idx_submissions_status';
++SET @sql := IF(@idx_exists>0, 'DROP INDEX idx_submissions_status ON submissions', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++SELECT COUNT(*) INTO @idx_exists
++FROM INFORMATION_SCHEMA.STATISTICS
++WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND INDEX_NAME='idx_submissions_user';
++SET @sql := IF(@idx_exists>0, 'DROP INDEX idx_submissions_user ON submissions', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++
++/* Drop target columns (if exist) and add fresh ones */
++-- exam_id
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='exam_id';
++SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN exam_id', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++ALTER TABLE submissions ADD COLUMN exam_id BIGINT NULL;
++
++-- user_id
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='user_id';
++SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN user_id', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++ALTER TABLE submissions ADD COLUMN user_id BIGINT NULL;
++
++-- attempt_no
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='attempt_no';
++SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN attempt_no', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++ALTER TABLE submissions ADD COLUMN attempt_no INT NOT NULL DEFAULT 1;
++
++-- started_at
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='started_at';
++SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN started_at', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++ALTER TABLE submissions ADD COLUMN started_at DATETIME NULL;
++
++-- submitted_at
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='submitted_at';
++SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN submitted_at', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++ALTER TABLE submissions ADD COLUMN submitted_at DATETIME NULL;
++
++-- status
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='status';
++SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN status', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++ALTER TABLE submissions
++  ADD COLUMN status ENUM('pending','in_progress','submitted','graded','cancelled')
++  NOT NULL DEFAULT 'pending';
++
++-- face_image_blob
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='face_image_blob';
++SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN face_image_blob', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++ALTER TABLE submissions ADD COLUMN face_image_blob LONGBLOB NULL;
++
++-- face_image_mimetype
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='face_image_mimetype';
++SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN face_image_mimetype', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++ALTER TABLE submissions ADD COLUMN face_image_mimetype VARCHAR(100) NULL;
++
++-- face_image_url
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='face_image_url';
++SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN face_image_url', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++ALTER TABLE submissions ADD COLUMN face_image_url VARCHAR(500) NULL;
++
++-- student_card_blob
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='student_card_blob';
++SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN student_card_blob', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++ALTER TABLE submissions ADD COLUMN student_card_blob LONGBLOB NULL;
++
++-- student_card_mimetype
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='student_card_mimetype';
++SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN student_card_mimetype', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++ALTER TABLE submissions ADD COLUMN student_card_mimetype VARCHAR(100) NULL;
++
++-- student_card_url
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='student_card_url';
++SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN student_card_url', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++ALTER TABLE submissions ADD COLUMN student_card_url VARCHAR(500) NULL;
++
++-- proctor_flags
++SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
++ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='proctor_flags';
++SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN proctor_flags', 'SELECT 1');
++PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
++ALTER TABLE submissions ADD COLUMN proctor_flags JSON NULL;
++
++/* Recreate FKs */
++SET FOREIGN_KEY_CHECKS = 1;
++ALTER TABLE submissions
++  ADD CONSTRAINT fk_submissions__exams
++    FOREIGN KEY (exam_id) REFERENCES exams(id)
++    ON DELETE CASCADE ON UPDATE CASCADE;
++
++ALTER TABLE submissions
++  ADD CONSTRAINT fk_submissions__users
++    FOREIGN KEY (user_id) REFERENCES users(id)
++    ON DELETE CASCADE ON UPDATE CASCADE;
++/* NOTE: nếu bảng user của bạn KHÔNG phải 'users', hãy đổi tên ở dòng trên. */
++
++/* Recreate Indexes */
++CREATE UNIQUE INDEX uq_submissions_exam_user_attempt
++  ON submissions (exam_id, user_id, attempt_no);
++
++CREATE INDEX idx_submissions_exam_user
++  ON submissions (exam_id, user_id);
++
++CREATE INDEX idx_submissions_status
++  ON submissions (status);
++
++CREATE INDEX idx_submissions_user
++  ON submissions (user_id);
++---
++DELIMITER $$
++
++DROP PROCEDURE IF EXISTS sp_get_exam_results $$
++CREATE PROCEDURE sp_get_exam_results(IN p_exam_id INT, IN p_role VARCHAR(20), IN p_instructor_id INT)
++BEGIN
++    SELECT u.full_name AS student_name, s.user_id AS student_id, s.status,
++           COALESCE(SUM(CASE WHEN q.type='MCQ' THEN COALESCE(sa.score,0) ELSE 0 END),0) AS mcq_score,
++           s.ai_score,
++           COALESCE(s.suggested_total_score,
++                    COALESCE(SUM(CASE WHEN q.type='MCQ' THEN COALESCE(sa.score,0) ELSE 0 END),0) + COALESCE(s.ai_score,0)) AS suggested_total_score,
++           s.total_score, s.started_at, s.submitted_at,
++           TIMESTAMPDIFF(MINUTE, s.started_at, s.submitted_at) AS duration_minutes,
++           s.proctor_flags, s.face_image_url, s.student_card_url
++    FROM submissions s
++    JOIN users u ON u.id = s.user_id
++    LEFT JOIN student_answers sa ON sa.submission_id = s.id
++    LEFT JOIN exam_questions q ON q.id = sa.question_id
++    WHERE s.exam_id = p_exam_id
++    GROUP BY s.id
++    ORDER BY u.full_name;
++END $$
++DELIMITER ;
++--
++DELIMITER $$
++
++DROP PROCEDURE IF EXISTS sp_update_student_exam_record $$
++CREATE PROCEDURE sp_update_student_exam_record(
++    IN p_exam_id INT,
++    IN p_student_id INT,
++    IN p_student_name VARCHAR(255),
++    IN p_mcq_score DECIMAL(10,2),
++    IN p_ai_score DECIMAL(10,2)
++)
++BEGIN
++    -- (tuỳ chọn) gói trong transaction
++    START TRANSACTION;
++
++    -- 1) Cập nhật submissions
++    UPDATE submissions
++    SET
++        total_score = COALESCE(p_mcq_score, 0),
++        ai_score = COALESCE(p_ai_score, 0),
++        suggested_total_score = COALESCE(p_mcq_score, 0) + COALESCE(p_ai_score, 0),
++        instructor_confirmed = TRUE,
++        status = 'confirmed'
++    WHERE exam_id = p_exam_id
++      AND user_id = p_student_id;
++
++    -- 2) Cập nhật results bằng JOIN để tránh subquery trả nhiều dòng
++    UPDATE results r
++    JOIN submissions s
++      ON s.exam_id = r.exam_id
++     AND s.user_id  = r.student_id
++    SET
++        r.total_score = s.total_score,
++        r.status = 'confirmed'
++    WHERE r.exam_id = p_exam_id
++      AND r.student_id = p_student_id;
++
++    -- 3) Cập nhật tên sinh viên nếu có
++    IF p_student_name IS NOT NULL AND LENGTH(TRIM(p_student_name)) > 0 THEN
++        UPDATE users
++        SET full_name = p_student_name
++        WHERE id = p_student_id;
++    END IF;
++
++    COMMIT;
++END $$
++DELIMITER ;
++
++
++
++
+ -- =================================================================
+--- ✅ END OF SCRIPT (OEM Mini v5.1 - Sprint 2 Update)
+\ No newline at end of file
++-- ✅ END OF SCRIPT (OEM Mini v5.1 - Sprint 2 Update)
+* Unmerged path frontend/src/App.jsx
+diff --git a/frontend/src/authPages/LoginPage.jsx b/frontend/src/authPages/LoginPage.jsx
+index 0dba6b0..f0aa478 100644
+--- a/frontend/src/authPages/LoginPage.jsx
++++ b/frontend/src/authPages/LoginPage.jsx
+@@ -108,11 +108,31 @@ const LoginPage = () => {
+         );
+ 
+         const userRole = res.data.user.role;
+-        const dashboardPath = userRole === "student" 
+-          ? "/student-dashboard" 
+-          : userRole === "admin" 
++        // If student came from /join with room_token, auto-join and go to prepare
++        if (userRole === 'student') {
++          const roomToken = sessionStorage.getItem('room_token');
++          const pendingExam = sessionStorage.getItem('pending_exam_id');
++          if (roomToken && pendingExam) {
++            (async ()=>{
++              try {
++                const j = await axiosClient.post('/exams/join', { room_token: roomToken });
++                const sid = j.data?.submission_id;
++                if (sid) {
++                  try { sessionStorage.setItem('exam_flags', JSON.stringify(j.data?.flags || {})); } catch(e){}
++                  navigate(`/exam/${j.data.exam_id}/prepare?submission_id=${sid}`);
++                  return;
++                }
++              } catch (e) {}
++              navigate('/student-dashboard');
++            })();
++            return;
++          }
++        }
++        const dashboardPath = userRole === "admin" 
+           ? "/admin-dashboard" 
+-          : "/instructor-dashboard";
++          : userRole === "instructor" 
++          ? "/instructor-dashboard" 
++          : "/student-dashboard";
+         navigate(dashboardPath);
+       }, 1500);
+     } catch (error) {
+@@ -188,13 +208,34 @@ const LoginPage = () => {
+         );
+ 
+         const userRole = res.data.user.role;
+-        const dashboardPath = userRole === "student" 
+-          ? "/student-dashboard" 
+-          : userRole === "admin" 
++        if (userRole === 'student') {
++          // Nếu đến từ /verify-room và đã có room_token → auto join và chuyển thẳng vào prepare
++          const roomToken = sessionStorage.getItem('room_token');
++          const pendingExam = sessionStorage.getItem('pending_exam_id');
++          if (roomToken && pendingExam) {
++            (async ()=>{
++              try {
++                const j = await axiosClient.post('/exams/join', { room_token: roomToken });
++                const sid = j.data?.submission_id;
++                if (sid) {
++                  try { sessionStorage.setItem('exam_flags', JSON.stringify(j.data?.flags || {})); } catch(e){}
++                  navigate(`/exam/${j.data.exam_id}/prepare?submission_id=${sid}`);
++                  return;
++                }
++              } catch (e) { /* fallthrough */ }
++              navigate('/student-dashboard');
++            })();
++            return;
++          }
++        }
++
++        const dashboardPath = userRole === "admin" 
+           ? "/admin-dashboard" 
+-          : "/instructor-dashboard";
++          : userRole === "instructor" 
++          ? "/instructor-dashboard" 
++          : "/student-dashboard";
+         navigate(dashboardPath);
+-      }, 1500);
++      }, 800);
+     } catch (error) {
+       console.error("❌ Lỗi Google login:", error?.response?.data || error);
+       setErrors({
+diff --git a/frontend/src/authPages/VerifyRoom.jsx b/frontend/src/authPages/VerifyRoom.jsx
+index c865dc5..6387611 100644
+--- a/frontend/src/authPages/VerifyRoom.jsx
++++ b/frontend/src/authPages/VerifyRoom.jsx
+@@ -43,39 +43,65 @@ export default function VerifyRoom() {
+     setError("");
+     setSuccess("");
+     try {
+-      const res = await axiosClient.get(`/auth/verify-room/${roomCode}`);
+-      console.log("[DEV] Verify room response:", res.data);
++      // Ưu tiên gọi endpoint mới để lấy room_token
++      const resNew = await axiosClient.post('/exams/verify-room', { room_code: roomCode.trim() });
++      console.log('[DEV] Verify room (new) response:', resNew.data);
++      const { exam_id, duration_minutes, room_token, require_face_check, require_student_card, monitor_screen, time_open, time_close } = resNew.data || {};
++      if (room_token && exam_id) {
++        // Lưu token phòng ở sessionStorage (ngắn hạn)
++        sessionStorage.setItem('room_token', room_token);
++        sessionStorage.setItem('pending_exam_id', String(exam_id));
++        if (duration_minutes) sessionStorage.setItem('pending_exam_duration', String(duration_minutes));
++        try {
++          sessionStorage.setItem('exam_flags', JSON.stringify({ face: !!require_face_check, card: !!require_student_card, monitor: !!monitor_screen }));
++        } catch(e) {}
++        if (time_open) sessionStorage.setItem('exam_time_open', String(time_open));
++        if (time_close) sessionStorage.setItem('exam_time_close', String(time_close));
++        // Lưu code cũ để tương thích các flow tồn tại
++        localStorage.setItem('verifiedRoomId', roomCode.trim());
++        localStorage.setItem('verifiedRoomCode', roomCode.trim());
+ 
++        setSuccess('✅ Mã phòng thi hợp lệ! Đang chuyển hướng...');
++        setTimeout(() => {
++          navigate('/login', { state: { role, fromVerifyRoom: true } });
++        }, 800);
++        return;
++      }
++
++      // Fallback sang API cũ nếu không có room_token
++      const res = await axiosClient.get(`/auth/verify-room/${roomCode}`);
++      console.log("[DEV] Verify room (legacy) response:", res.data);
+       if (res.data.valid) {
+         setSuccess("✅ Mã phòng thi hợp lệ! Đang chuyển hướng...");
+-
+-        // ✅ Lưu theo exam_room_code, không phải roomId (ID)
+-        localStorage.setItem("verifiedRoomId", res.data.examCode); // <--- code, not id
++        localStorage.setItem("verifiedRoomId", res.data.examCode);
+         localStorage.setItem("verifiedRoomCode", res.data.examCode);
+-
+-        setTimeout(() => {
+-          const nextPath = location.state?.fromRoleSelection
+-            ? "/login"
+-            : localStorage.getItem("isLoginMode") === "true"
+-            ? "/login"
+-            : "/register";
+-          navigate(nextPath, {
+-            state: {
+-              role,
+-              verifiedRoomId: res.data.examCode, // giữ code
+-              verifiedRoomCode: res.data.examCode,
+-            },
+-          });
+-        }, 1500);
++        setTimeout(() => navigate('/login', { state: { role, fromVerifyRoom: true } }), 800);
+       } else {
+         setError(res.data.message || "Mã phòng không hợp lệ");
+         setSuccess("");
+       }
+     } catch (error) {
+-      setError(
+-        error.response?.data?.message || "Có lỗi xảy ra, vui lòng thử lại"
+-      );
+-      setSuccess("");
++      // Nếu 403 do hết giờ/chưa mở → hiển thị và không fallback
++      const m = error?.response?.data?.message || error?.message;
++      if (error?.response?.status === 403) {
++        setError(m || 'Không thể vào phòng thi (thời gian)');
++        setSuccess('');
++        return;
++      }
++      console.warn('[VerifyRoom] new verify failed, try legacy route…', error?.response?.data || error?.message || error);
++      try {
++        const res = await axiosClient.get(`/auth/verify-room/${roomCode}`);
++        if (res.data?.valid) {
++          localStorage.setItem("verifiedRoomId", res.data.examCode);
++          localStorage.setItem("verifiedRoomCode", res.data.examCode);
++          setSuccess("✅ Mã phòng thi hợp lệ! Đang chuyển hướng...");
++          setTimeout(() => navigate('/login', { state: { role, fromVerifyRoom: true } }), 800);
++        } else {
++          setError(res.data?.message || "Mã phòng không hợp lệ");
++        }
++      } catch (e2) {
++        setError(e2?.response?.data?.message || 'Có lỗi xảy ra, vui lòng thử lại');
++      }
+     }
+     setLoading(false);
+   };
+diff --git a/frontend/src/components/instructor/InstructorSidebar.jsx b/frontend/src/components/instructor/InstructorSidebar.jsx
+index f641d05..d033441 100644
+--- a/frontend/src/components/instructor/InstructorSidebar.jsx
++++ b/frontend/src/components/instructor/InstructorSidebar.jsx
+@@ -9,26 +9,23 @@ import {
+   FiSettings,
+   FiChevronDown,
+ } from "react-icons/fi";
++import { useUi } from "../../context/UiContext.jsx";
+ 
+ const InstructorSidebar = () => {
+   const navigate = useNavigate();
+   const location = useLocation();
+   const [openDropdown, setOpenDropdown] = useState(false);
+ 
++  const { t } = useUi();
+   const menu = [
+-    { icon: FiHome, label: "Dashboard", path: "/instructor-dashboard" },
+-    {
+-      icon: FiFolder,
+-      label: "Resources",
+-      path: "/resources",
+-      hasDropdown: true,
+-    },
+-    { icon: FiFileText, label: "Exam Bank", path: "/exam-bank" },
+-    { icon: FiEdit3, label: "Assign Exam", path: "/assign-exam" },
+-    { icon: FiClipboard, label: "Result", path: "/result" },
++    { icon: FiHome, label: t('dashboard','Bảng điều khiển','Dashboard'), path: "/instructor-dashboard" },
++    { icon: FiFolder, label: t('resources','Tài nguyên','Resources'), path: "/resources", hasDropdown: true },
++    { icon: FiFileText, label: t('exam_bank','Ngân hàng đề','Exam Bank'), path: "/exam-bank" },
++    { icon: FiEdit3, label: t('assign_exam','Assign Exam','Assign Exam'), path: "/assign-exam" },
++    { icon: FiClipboard, label: t('result','Kết quả','Result'), path: "/result" },
+   ];
+ 
+-  const setting = { icon: FiSettings, label: "Setting", path: "/setting" };
++  const setting = { icon: FiSettings, label: t('setting','Cài đặt','Setting'), path: "/setting" };
+ 
+   const dropdownRef = useRef(null);
+   const resourcesRef = useRef(null);
+@@ -52,7 +49,7 @@ const InstructorSidebar = () => {
+   };
+ 
+   return (
+-    <aside className="w-64 h-screen bg-gradient-to-b from-[#E8F5FF] to-[#CAEAFF] rounded-tr-3xl rounded-br-3xl p-5 shadow-md flex flex-col justify-between relative">
++    <aside className="w-64 h-screen bg-gradient-to-b from-[#E8F5FF] to-[#CAEAFF] rounded-tr-3xl rounded-br-3xl p-5 shadow-md flex flex-col justify-between relative text-slate-800">
+       <div>
+         <div
+           className="flex items-center justify-center mb-8 cursor-pointer"
+@@ -118,14 +115,14 @@ const InstructorSidebar = () => {
+                       className="flex items-center gap-3 px-4 py-2 hover:bg-[#E8F5FF] text-gray-700 hover:text-[#0080FF] w-full text-left"
+                     >
+                       <FiFileText className="w-5 h-5" />
+-                      Exam Bank
++                      {t('exam_bank','Ngân hàng đề','Exam Bank')}
+                     </button>
+                     <button
+-                      onClick={() => navigate("/assign-exam")}
++                      onClick={() => navigate("/open-exam")}
+                       className="flex items-center gap-3 px-4 py-2 hover:bg-[#E8F5FF] text-gray-700 hover:text-[#0080FF] w-full text-left"
+                     >
+                       <FiEdit3 className="w-5 h-5" />
+-                      Assign Exam
++                      {t('open_room','Mở phòng thi','Open Room')}
+                     </button>
+                   </div>
+                 )}
+diff --git a/frontend/src/pages/instructorPage/InstructorDashboard.jsx b/frontend/src/pages/instructorPage/InstructorDashboard.jsx
+index f72e606..3b1be54 100644
+--- a/frontend/src/pages/instructorPage/InstructorDashboard.jsx
++++ b/frontend/src/pages/instructorPage/InstructorDashboard.jsx
+@@ -171,7 +171,7 @@ const InstructorDashboard = () => {
+         {/* Summary Cards */}
+         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+           {/* Tổng số đề đã tạo */}
+-          <div className="bg-white rounded-xl shadow-sm p-6 flex flex-col justify-between">
++          <div className="bg-white rounded-xl shadow-sm p-6 flex flex-col justify-between border border-slate-200">
+             <div className="flex items-center gap-4">
+               <div className="bg-green-500 p-3 rounded-full flex items-center justify-center">
+                 <img
+@@ -196,7 +196,7 @@ const InstructorDashboard = () => {
+           </div>
+ 
+           {/* Tổng số bài kiểm tra */}
+-          <div className="bg-white rounded-xl shadow-sm p-6 flex flex-col justify-between">
++          <div className="bg-white rounded-xl shadow-sm p-6 flex flex-col justify-between border border-slate-200">
+             <div className="flex items-center gap-4">
+               <div className="bg-red-500 p-3 rounded-full flex items-center justify-center">
+                 <img
+@@ -221,7 +221,7 @@ const InstructorDashboard = () => {
+           </div>
+ 
+           {/* Tổng số thí sinh đã thi */}
+-          <div className="bg-white rounded-xl shadow-sm p-6 flex flex-col justify-between">
++          <div className="bg-white rounded-xl shadow-sm p-6 flex flex-col justify-between border border-slate-200">
+             <div className="flex items-center gap-4">
+               <div className="bg-purple-500 p-3 rounded-full flex items-center justify-center">
+                 <img
+@@ -248,7 +248,7 @@ const InstructorDashboard = () => {
+ 
+         {/* Charts */}
+         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-8">
+-          <div className="bg-white rounded-xl shadow-sm p-4">
++          <div className="bg-white rounded-xl shadow-sm p-4 border border-slate-200">
+             <h2 className="text-gray-700 font-semibold mb-2">Total Exams</h2>
+             <ResponsiveContainer width="100%" height={250}>
+               <BarChart data={monthlyData}>
+@@ -259,7 +259,7 @@ const InstructorDashboard = () => {
+             </ResponsiveContainer>
+           </div>
+ 
+-          <div className="bg-white rounded-xl shadow-sm p-4">
++          <div className="bg-white rounded-xl shadow-sm p-4 border border-slate-200">
+             <h2 className="text-gray-700 font-semibold mb-2">Total Students</h2>
+             <ResponsiveContainer width="100%" height={250}>
+               <BarChart data={monthlyData}>
+diff --git a/frontend/src/pages/instructorPage/Result.jsx b/frontend/src/pages/instructorPage/Result.jsx
+index 1a36da4..6b40d6f 100644
+--- a/frontend/src/pages/instructorPage/Result.jsx
++++ b/frontend/src/pages/instructorPage/Result.jsx
+@@ -1,7 +1,702 @@
+ import React from "react";
++import { useNavigate } from "react-router-dom";
++import axiosClient from "../../api/axiosClient";
+ 
+-const Result = () => {
+-  return <div>Result</div>;
++const cls = (...a) => a.filter(Boolean).join(" ");
++
++const Badge = ({ color = "slate", children }) => (
++  <span
++    className={cls(
++      "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border",
++      color === "emerald" && "bg-emerald-50 text-emerald-700 border-emerald-200",
++      color === "amber" && "bg-amber-50 text-amber-700 border-amber-200",
++      color === "rose" && "bg-rose-50 text-rose-700 border-rose-200",
++      color === "slate" && "bg-slate-50 text-slate-700 border-slate-200"
++    )}
++  >
++    {children}
++  </span>
++);
++
++const StatCard = ({ label, value, subtle }) => (
++  <div className="group rounded-2xl border bg-white p-4 shadow-sm hover:shadow-md transition-all">
++    <div className="text-slate-500 text-sm">{label}</div>
++    <div className="mt-1 text-2xl font-semibold tracking-tight">{value}</div>
++    {subtle ? <div className="text-xs text-slate-400 mt-1">{subtle}</div> : null}
++  </div>
++);
++
++const Section = ({ title, right, children }) => (
++  <section className="rounded-2xl border bg-white p-4 shadow-sm">
++    <div className="mb-3 flex items-center justify-between">
++      <h3 className="text-base font-semibold text-slate-800">{title}</h3>
++      {right}
++    </div>
++    {children}
++  </section>
++);
++
++const StatusPill = (v) => {
++  const s = String(v || "").toLowerCase();
++  if (s === "confirmed") return <Badge color="emerald">Confirmed</Badge>;
++  if (s === "graded") return <Badge color="amber">Awaiting Approval</Badge>;
++  if (s === "pending") return <Badge color="slate">Pending</Badge>;
++  return <Badge>—</Badge>;
+ };
+ 
+-export default Result;
++const fmtDate = (s) => (s ? new Date(s).toLocaleString() : "-");
++const toFinal = (r) =>
++  r.total_score ?? r.suggested_total_score ?? 0;
++
++export default function Result() {
++  const nav = useNavigate();
++
++  const [examId, setExamId] = React.useState("");
++  const [examList, setExamList] = React.useState([]);
++  const [summary, setSummary] = React.useState(null);
++  const [rows, setRows] = React.useState([]);
++  const [loading, setLoading] = React.useState(false);
++
++  const [q, setQ] = React.useState("");
++  const [status, setStatus] = React.useState("all");
++  const [sort, setSort] = React.useState("score_desc");
++  const [minScore, setMinScore] = React.useState("");
++  const [maxScore, setMaxScore] = React.useState("");
++  const [passThreshold, setPassThreshold] = React.useState(50);
++
++  const [drawer, setDrawer] = React.useState({ open: false, row: null });
++
++
++  const load = async (id) => {
++    if (!id) return;
++    setLoading(true);
++    try {
++      const [s, r] = await Promise.all([
++        axiosClient.get(`/instructor/exams/${id}/summary`),
++        axiosClient.get(`/instructor/exams/${id}/results`),
++      ]);
++      setSummary(s?.data || null);
++      setRows(Array.isArray(r?.data) ? r.data : []);
++    } catch {
++      setRows([]);
++      setSummary(null);
++    } finally {
++      setLoading(false);
++    }
++  };
++
++  React.useEffect(() => {
++    (async () => {
++      try {
++        const res = await axiosClient.get("/instructor/exams/my");
++        const list = Array.isArray(res.data) ? res.data : [];
++        setExamList(list);
++
++        const url = new URL(window.location.href);
++        const idQ = url.searchParams.get("exam_id");
++        if (idQ) {
++          setExamId(idQ);
++          load(idQ);
++        } else {
++          const first =
++            list.find((e) => String(e.status) === "published") || list[0];
++          if (first) {
++            setExamId(String(first.id));
++            load(String(first.id));
++          }
++        }
++      } catch {
++        /* ignore */
++      }
++    })();
++  }, []);
++
++  const onPick = (e) => {
++    const id = e.target.value.trim();
++    setExamId(id);
++    load(id);
++  };
++
++  const filtered = React.useMemo(() => {
++    const norm = (s) => String(s || "").toLowerCase();
++    let arr = (rows || []).filter((r) =>
++      norm(r.student_name).includes(norm(q))
++    );
++
++    if (status !== "all")
++      arr = arr.filter((r) =>
++        String(r.status || "").toLowerCase().includes(status)
++      );
++
++    const min = minScore !== "" ? Number(minScore) : null;
++    const max = maxScore !== "" ? Number(maxScore) : null;
++    if (min != null) arr = arr.filter((r) => toFinal(r) >= min);
++    if (max != null) arr = arr.filter((r) => toFinal(r) <= max);
++
++    // always sort on a clone to avoid mutating state
++    const sorted = [...arr];
++    if (sort === "score_desc") sorted.sort((a, b) => toFinal(b) - toFinal(a));
++    if (sort === "score_asc") sorted.sort((a, b) => toFinal(a) - toFinal(b));
++
++    return sorted;
++  }, [rows, q, status, sort, minScore, maxScore]);
++
++
++  const exportCsv = () => {
++    const header = [
++      "Student",
++      "MCQ",
++      "AI",
++      "Suggested",
++      "Final",
++      "Status",
++      "Start",
++      "Submitted",
++      "Duration(min)",
++      "Cheating",
++      "FaceURL",
++      "CardURL",
++    ];
++    const lines = [header.join(",")];
++    filtered.forEach((r) => {
++      const line = [
++        r.student_name ?? "",
++        r.mcq_score ?? "",
++        r.ai_score ?? "",
++        r.suggested_total_score ?? "",
++        r.total_score ?? "",
++        r.status ?? "",
++        r.started_at ? new Date(r.started_at).toLocaleString() : "",
++        r.submitted_at ? new Date(r.submitted_at).toLocaleString() : "",
++        r.duration_minutes ?? "",
++        r.cheating_flag ? "Yes" : "No",
++        r.face_image_url ?? "",
++        r.student_card_url ?? "",
++      ]
++        .map((v) => `"${String(v).replaceAll('"', '""')}"`)
++        .join(",");
++      lines.push(line);
++    });
++    const blob = new Blob([lines.join("\n")], {
++      type: "text/csv;charset=utf-8;",
++    });
++    const url = URL.createObjectURL(blob);
++    const a = document.createElement("a");
++    a.href = url;
++    a.download = `results_exam_${examId || "unknown"}.csv`;
++    a.click();
++    URL.revokeObjectURL(url);
++  };
++
++  const exportXlsx = async () => {
++    try {
++      const data = filtered.map((r) => ({
++        Student: r.student_name,
++        MCQ: r.mcq_score,
++        AI: r.ai_score,
++        Suggested: r.suggested_total_score,
++        Final: r.total_score ?? r.suggested_total_score,
++        Status: r.status,
++        Start: r.started_at ? new Date(r.started_at).toLocaleString() : "",
++        Submitted: r.submitted_at
++          ? new Date(r.submitted_at).toLocaleString()
++          : "",
++        "Duration (min)": r.duration_minutes ?? "",
++        Cheating: r.cheating_flag ? "Yes" : "No",
++        FaceURL: r.face_image_url ?? "",
++        CardURL: r.student_card_url ?? "",
++      }));
++      const mod = await import(/* @vite-ignore */ "xlsx");
++      const ws = mod.utils.json_to_sheet(data);
++      const wb = mod.utils.book_new();
++      mod.utils.book_append_sheet(wb, ws, "Results");
++      mod.writeFile(wb, `results_exam_${examId || "unknown"}.xlsx`);
++    } catch {
++      exportCsv();
++    }
++  };
++
++  const openDrawer = (row) => setDrawer({ open: true, row });
++  const closeDrawer = () => setDrawer({ open: false, row: null });
++
++  const saveScore = async () => {
++    const r = drawer.row;
++    if (!r) return;
++    try {
++      const payload = {
++        mcq_score: Number(r.mcq_score ?? 0),
++        ai_score: Number(r.ai_score ?? 0),
++        student_name: r.student_name,
++      };
++      await axiosClient.put(
++        `/instructor/exams/${examId}/students/${r.student_id}/score`,
++        payload
++      );
++      await load(examId);
++      closeDrawer();
++    } catch {
++      /* ignore */
++    }
++  };
++
++ 
++  return (
++    <div className="p-6 max-w-7xl mx-auto space-y-6">
++
++      {/* Header + actions */}
++      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
++        <div>
++          <h1 className="text-2xl font-bold tracking-tight">Exam Results</h1>
++          <p className="text-slate-500 text-sm">
++            Xem, lọc, chỉnh & công bố điểm cho từng bài thi đã publish.
++          </p>
++        </div>
++        <div className="flex items-center gap-2">
++          <button
++            onClick={() => nav("/results-exams")}
++            className="rounded-xl border bg-white px-3 py-2 shadow-sm hover:bg-slate-50 transition"
++          >
++            Chọn bài thi khác
++          </button>
++
++          <select
++            value={examId}
++            onChange={onPick}
++            className="rounded-xl border bg-white px-3 py-2 shadow-sm hover:border-slate-300"
++          >
++            <option value="">Chọn bài thi…</option>
++            {examList.map((e) => (
++              <option key={e.id} value={e.id}>
++                {e.title || `Exam #${e.id}`} {e.status ? `(${e.status})` : ""}
++              </option>
++            ))}
++          </select>
++
++          <div className="hidden sm:flex items-center gap-2">
++            <button
++              onClick={exportCsv}
++              className="rounded-xl border bg-white px-3 py-2 shadow-sm hover:bg-slate-50 transition"
++            >
++              Export CSV
++            </button>
++            <button
++              onClick={exportXlsx}
++              className="rounded-xl border bg-white px-3 py-2 shadow-sm hover:bg-slate-50 transition"
++            >
++              Export Excel
++            </button>
++          </div>
++        </div>
++      </div>
++
++      {/* Summary */}
++      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
++        <StatCard
++          label="Total Submissions"
++          value={(summary?.total_submissions ?? summary?.total ?? 0)}
++        />
++        <StatCard
++          label="Total Students"
++          value={summary?.total_students ?? 0}
++        />
++        <StatCard
++          label="Avg Score"
++          value={
++            summary?.avg_score != null
++              ? Number(summary.avg_score).toFixed(2)
++              : "-"
++          }
++        />
++        <StatCard
++          label="Last Submission"
++          value={fmtDate(summary?.last_submission_time)}
++        />
++      </div>
++
++      {/* Filters */}
++      <Section
++        title="Bộ lọc"
++        right={
++          <div className="text-xs text-slate-400">
++            {filtered.length} bản ghi hiển thị
++          </div>
++        }
++      >
++        <div className="flex flex-wrap items-center gap-2">
++          <input
++            value={q}
++            onChange={(e) => setQ(e.target.value)}
++            placeholder="Tìm tên sinh viên…"
++            className="w-56 rounded-xl border px-3 py-2 shadow-sm focus:outline-none focus:ring focus:ring-indigo-100"
++          />
++          <div className="inline-flex rounded-xl border overflow-hidden bg-white shadow-sm">
++            {["all", "pending", "graded", "confirmed"].map((s) => (
++              <button
++                key={s}
++                onClick={() => setStatus(s)}
++                className={cls(
++                  "px-3 py-2 text-sm",
++                  status === s ? "bg-indigo-600 text-white" : "hover:bg-slate-50"
++                )}
++              >
++                {s}
++              </button>
++            ))}
++          </div>
++          <input
++            type="number"
++            placeholder="Min"
++            className="w-24 rounded-xl border px-3 py-2 shadow-sm"
++            value={minScore}
++            onChange={(e) => setMinScore(e.target.value)}
++          />
++          <input
++            type="number"
++            placeholder="Max"
++            className="w-24 rounded-xl border px-3 py-2 shadow-sm"
++            value={maxScore}
++            onChange={(e) => setMaxScore(e.target.value)}
++          />
++          <div className="inline-flex rounded-xl border overflow-hidden bg-white shadow-sm">
++            <button
++              onClick={() => setSort("score_desc")}
++              className={cls(
++                "px-3 py-2 text-sm",
++                sort === "score_desc" ? "bg-indigo-600 text-white" : "hover:bg-slate-50"
++              )}
++            >
++              Điểm ↓
++            </button>
++            <button
++              onClick={() => setSort("score_asc")}
++              className={cls(
++                "px-3 py-2 text-sm",
++                sort === "score_asc" ? "bg-indigo-600 text-white" : "hover:bg-slate-50"
++              )}
++            >
++              Điểm ↑
++            </button>
++          </div>
++        </div>
++      </Section>
++
++      {/* Charts + Export row */}
++      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
++        <Section title="Phân bố điểm (Histogram)">
++          <Histogram rows={filtered} />
++        </Section>
++        <Section
++          title="Tỉ lệ đạt (Pass/Fail)"
++          right={
++            <div className="flex items-center gap-2 text-sm">
++              <span>Ngưỡng:</span>
++              <input
++                type="number"
++                className="w-20 rounded-lg border px-2 py-1 shadow-sm"
++                value={passThreshold}
++                onChange={(e) => setPassThreshold(e.target.value)}
++              />
++            </div>
++          }
++        >
++          <PassFail rows={filtered} passThreshold={Number(passThreshold || 0)} />
++        </Section>
++        <Section
++          title="Xuất báo cáo"
++          right={<div className="text-xs text-slate-400">CSV/Excel</div>}
++        >
++          <div className="flex flex-wrap gap-2">
++            <button
++              onClick={exportCsv}
++              className="rounded-xl border bg-white px-3 py-2 shadow-sm hover:bg-slate-50 transition"
++            >
++              Export CSV
++            </button>
++            <button
++              onClick={exportXlsx}
++              className="rounded-xl border bg-white px-3 py-2 shadow-sm hover:bg-slate-50 transition"
++            >
++              Export Excel
++            </button>
++          </div>
++        </Section>
++      </div>
++
++      {/* Table */}
++      <Section title="Danh sách bài nộp">
++        <div className="overflow-auto rounded-xl border">
++          <table className="min-w-full text-sm">
++            <thead className="bg-slate-50 sticky top-0">
++              <tr className="text-left text-slate-700">
++                <th className="p-3">Student</th>
++                <th className="p-3">MCQ</th>
++                <th className="p-3">Essay (AI)</th>
++                <th className="p-3">Suggested</th>
++                <th className="p-3">Final</th>
++                <th className="p-3">Start</th>
++                <th className="p-3">Submitted</th>
++                <th className="p-3">Duration (min)</th>
++                <th className="p-3">Cheating</th>
++                <th className="p-3">Face</th>
++                <th className="p-3">Card</th>
++                <th className="p-3">Status</th>
++                <th className="p-3">Actions</th>
++              </tr>
++            </thead>
++            <tbody>
++              {loading ? (
++                <tr>
++                  <td colSpan={13} className="p-6 text-center text-slate-500">
++                    Đang tải...
++                  </td>
++                </tr>
++              ) : filtered.length === 0 ? (
++                <tr>
++                  <td colSpan={13} className="p-6 text-center text-slate-500">
++                    Không có dữ liệu
++                  </td>
++                </tr>
++              ) : (
++                filtered.map((r) => (
++                  <tr
++                    key={`${r.student_id}-${r.student_name}`}
++                    className="border-t hover:bg-indigo-50/40 transition"
++                  >
++                    <td className="p-3 font-medium text-slate-800">
++                      {r.student_name}
++                    </td>
++                    <td className="p-3">{r.mcq_score ?? "-"}</td>
++                    <td className="p-3">{r.ai_score ?? "-"}</td>
++                    <td className="p-3">{r.suggested_total_score ?? "-"}</td>
++                    <td className="p-3 font-semibold">
++                      {(r.total_score ?? r.suggested_total_score ?? 0).toFixed
++                        ? (r.total_score ?? r.suggested_total_score ?? 0).toFixed(2)
++                        : r.total_score ?? r.suggested_total_score ?? 0}
++                    </td>
++                    <td className="p-3">{fmtDate(r.started_at)}</td>
++                    <td className="p-3">{fmtDate(r.submitted_at)}</td>
++                    <td className="p-3">{r.duration_minutes ?? "-"}</td>
++                    <td className="p-3">
++                      {r.cheating_flag ? (
++                        <Badge color="rose">Yes</Badge>
++                      ) : (
++                        <Badge>No</Badge>
++                      )}
++                    </td>
++                    <td className="p-3">
++                      {r.face_image_url ? (
++                        <a
++                          className="text-indigo-600 underline hover:text-indigo-800"
++                          href={r.face_image_url}
++                          target="_blank"
++                        >
++                          View
++                        </a>
++                      ) : (
++                        "—"
++                      )}
++                    </td>
++                    <td className="p-3">
++                      {r.student_card_url ? (
++                        <a
++                          className="text-indigo-600 underline hover:text-indigo-800"
++                          href={r.student_card_url}
++                          target="_blank"
++                        >
++                          View
++                        </a>
++                      ) : (
++                        "—"
++                      )}
++                    </td>
++                    <td className="p-3">{StatusPill(r.status)}</td>
++                    <td className="p-3">
++                      <button
++                        onClick={() => openDrawer(r)}
++                        className="rounded-lg border bg-white px-3 py-1.5 shadow-sm hover:bg-slate-50 transition"
++                      >
++                        Edit
++                      </button>
++                    </td>
++                  </tr>
++                ))
++              )}
++            </tbody>
++          </table>
++        </div>
++      </Section>
++
++      {/* Drawer */}
++      {drawer.open && (
++        <div className="fixed inset-0 z-50 flex bg-black/30">
++          <div className="ml-auto h-full w-full max-w-md bg-white shadow-xl">
++            <div className="flex items-center justify-between border-b p-4">
++              <div>
++                <h4 className="text-lg font-semibold">Cập nhật điểm</h4>
++                <div className="text-xs text-slate-500">
++                  Save & Confirm sẽ công bố điểm cuối cùng cho sinh viên
++                </div>
++              </div>
++              <button
++                onClick={closeDrawer}
++                className="rounded-lg border bg-white px-3 py-1.5 hover:bg-slate-50"
++              >
++                Đóng
++              </button>
++            </div>
++
++            <div className="p-4 space-y-3">
++              <div>
++                <label className="text-sm text-slate-600">Tên sinh viên</label>
++                <input
++                  className="mt-1 w-full rounded-lg border px-3 py-2 shadow-sm focus:outline-none focus:ring focus:ring-indigo-100"
++                  value={drawer.row.student_name || ""}
++                  onChange={(e) =>
++                    setDrawer((d) => ({
++                      ...d,
++                      row: { ...d.row, student_name: e.target.value },
++                    }))
++                  }
++                />
++              </div>
++              <div className="grid grid-cols-2 gap-3">
++                <div>
++                  <label className="text-sm text-slate-600">Điểm MCQ</label>
++                  <input
++                    type="number"
++                    className="mt-1 w-full rounded-lg border px-3 py-2 shadow-sm focus:outline-none focus:ring focus:ring-indigo-100"
++                    value={drawer.row.mcq_score ?? 0}
++                    onChange={(e) =>
++                      setDrawer((d) => ({
++                        ...d,
++                        row: { ...d.row, mcq_score: e.target.value },
++                      }))
++                    }
++                  />
++                </div>
++                <div>
++                  <label className="text-sm text-slate-600">Điểm AI</label>
++                  <input
++                    type="number"
++                    className="mt-1 w-full rounded-lg border px-3 py-2 shadow-sm focus:outline-none focus:ring focus:ring-indigo-100"
++                    value={drawer.row.ai_score ?? 0}
++                    onChange={(e) =>
++                      setDrawer((d) => ({
++                        ...d,
++                        row: { ...d.row, ai_score: e.target.value },
++                      }))
++                    }
++                  />
++                </div>
++              </div>
++
++              <div className="rounded-xl border bg-slate-50 p-3">
++                <div className="text-sm text-slate-600">Final Preview</div>
++                <div className="mt-1 text-xl font-semibold">
++                  {(
++                    Number(drawer.row.mcq_score ?? 0) +
++                    Number(drawer.row.ai_score ?? 0)
++                  ).toFixed(2)}
++                </div>
++              </div>
++
++              <button
++                onClick={saveScore}
++                className="w-full rounded-xl bg-indigo-600 px-4 py-2 font-medium text-white shadow-sm hover:bg-indigo-700 transition"
++              >
++                Lưu & Xác nhận
++              </button>
++            </div>
++          </div>
++        </div>
++      )}
++    </div>
++  );
++}
++
++function Histogram({ rows }) {
++  const finals = rows
++    .map(toFinal)
++    .filter((v) => !isNaN(Number(v)));
++
++  const bins = new Array(10).fill(0);
++  finals.forEach((v) => {
++    const i = Math.max(0, Math.min(9, Math.floor(Number(v) / 10)));
++    bins[i]++;
++  });
++  const data = bins.map((c, i) => ({ name: `${i * 10}-${i * 10 + 9}`, cnt: c }));
++
++  const [lib, setLib] = React.useState(null);
++  React.useEffect(() => {
++    (async () => {
++      try {
++        const m = await import("recharts");
++        setLib(m);
++      } catch {}
++    })();
++  }, []);
++  if (!lib)
++    return <div className="text-sm text-slate-500">Đang tải biểu đồ…</div>;
++
++  const { ResponsiveContainer, BarChart, Bar, XAxis, Tooltip, CartesianGrid } =
++    lib;
++
++  return (
++    <div style={{ width: "100%", height: 240 }}>
++      <ResponsiveContainer width="100%" height={240}>
++        <BarChart data={data}>
++          <CartesianGrid strokeDasharray="3 3" />
++          <XAxis dataKey="name" />
++          <Tooltip />
++          <Bar dataKey="cnt" radius={[8, 8, 0, 0]} fill="#6366f1" />
++        </BarChart>
++      </ResponsiveContainer>
++    </div>
++  );
++}
++
++function PassFail({ rows, passThreshold }) {
++  const finals = rows
++    .map(toFinal)
++    .filter((v) => !isNaN(Number(v)));
++  const pass = finals.filter((v) => Number(v) >= passThreshold).length;
++  const fail = finals.length - pass;
++
++  const [lib, setLib] = React.useState(null);
++  React.useEffect(() => {
++    (async () => {
++      try {
++        const m = await import("recharts");
++        setLib(m);
++      } catch {}
++    })();
++  }, []);
++  if (!lib)
++    return <div className="text-sm text-slate-500">Đang tải biểu đồ…</div>;
++
++  const { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } = lib;
++  const data = [
++    { name: "Pass", value: pass },
++    { name: "Fail", value: fail },
++  ];
++
++  return (
++    <div style={{ width: "100%", height: 240 }}>
++      <ResponsiveContainer width="100%" height={240}>
++        <PieChart>
++          <Pie
++            data={data}
++            dataKey="value"
++            nameKey="name"
++            innerRadius={50}
++            outerRadius={80}
++          >
++            <Cell fill="#10b981" />
++            <Cell fill="#f43f5e" />
++          </Pie>
++          <Tooltip />
++        </PieChart>
++      </ResponsiveContainer>
++    </div>
++  );
++}
+diff --git a/frontend/src/pages/instructorPage/Setting.jsx b/frontend/src/pages/instructorPage/Setting.jsx
+index 2a86c5a..e2e9778 100644
+--- a/frontend/src/pages/instructorPage/Setting.jsx
++++ b/frontend/src/pages/instructorPage/Setting.jsx
+@@ -1,7 +1,44 @@
+ import React from "react";
++import { useUi } from "../../context/UiContext.jsx";
+ 
+-const Setting = () => {
+-  return <div>Setting</div>;
+-};
++export default function Setting() {
++  const { lang, setLang } = useUi();
+ 
+-export default Setting;
++  const Toggle = ({checked, onChange}) => (
++    <button
++      type="button"
++      role="switch"
++      aria-checked={checked}
++      onClick={()=> onChange(!checked)}
++      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${checked? 'bg-emerald-500': 'bg-slate-300'}`}
++    >
++      <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${checked? 'translate-x-5' : 'translate-x-1'}`} />
++    </button>
++  );
++
++  return (
++    <div className="max-w-3xl mx-auto">
++      <header className="mb-4">
++        <h1 className="text-xl font-semibold text-slate-800">Cài đặt giao diện</h1>
++        <p className="text-slate-600">Thiết lập theme và ngôn ngữ cho giao diện giảng viên</p>
++      </header>
++
++      {/* Theme section removed per user request; interface always uses light theme */}
++
++      <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
++        <div className="flex items-center justify-between">
++          <div>
++            <div className="font-medium text-slate-800">Ngôn ngữ</div>
++            <div className="text-sm text-slate-500">Chọn ngôn ngữ hiển thị cho giao diện giảng viên</div>
++          </div>
++          <div className="inline-flex rounded-xl border border-slate-200 overflow-hidden">
++            <button onClick={()=> setLang('vi')} className={`px-3 py-2 text-sm ${lang==='vi'?'bg-blue-600 text-white':'bg-white hover:bg-slate-50'}`}>Tiếng Việt</button>
++            <button onClick={()=> setLang('en')} className={`px-3 py-2 text-sm ${lang==='en'?'bg-blue-600 text-white':'bg-white hover:bg-slate-50'}`}>English</button>
++          </div>
++        </div>
++      </section>
++
++      <p className="text-xs text-slate-500 mt-3">Gợi ý: Một số trang sẽ phản ứng ngay; phần còn lại sẽ được áp dụng dần.</p>
++    </div>
++  );
++}
+diff --git a/frontend/src/pages/studentPage/StudentDashboard.jsx b/frontend/src/pages/studentPage/StudentDashboard.jsx
+index fbd397c..95a251d 100644
+--- a/frontend/src/pages/studentPage/StudentDashboard.jsx
++++ b/frontend/src/pages/studentPage/StudentDashboard.jsx
+@@ -1,10 +1,149 @@
+-import React from "react";
++import React from 'react';
++import { useNavigate } from 'react-router-dom';
++import axiosClient from '../../api/axiosClient';
+ 
+-const StudentDashboard = () => {
+-  return <div>StudentDashboard
+-    <h1>Chào mừng bạn đã quay trở lại</h1>
+-  </div>;
+-  
+-};
++export default function StudentDashboard() {
++  const navigate = useNavigate();
++  const [results, setResults] = React.useState([]);
++  const [loading, setLoading] = React.useState(true);
++  const [user, setUser] = React.useState({ fullname: '', avatar: '' });
+ 
+-export default StudentDashboard;
++  React.useEffect(() => {
++    (async () => {
++      try {
++        const res = await axiosClient.get('/results/my');
++        setResults((res.data || []).slice(0, 6));
++      } catch (e) {
++        setResults([]);
++      } finally { setLoading(false); }
++    })();
++  }, []);
++
++  // Load profile for greeting (ưu tiên API, fallback localStorage)
++  React.useEffect(() => {
++    (async () => {
++      try {
++        const res = await axiosClient.get('/profile');
++        const u = res?.data?.data;
++        if (u) {
++          setUser({ fullname: u.full_name || 'Người dùng', avatar: u.avatar || '/icons/UI Image/default-avatar.png' });
++          try {
++            localStorage.setItem('fullname', u.full_name || '');
++            if (u.avatar) localStorage.setItem('avatar', u.avatar);
++          } catch {}
++          return;
++        }
++      } catch {}
++      // fallback
++      const fullname = localStorage.getItem('fullname') || 'Người dùng';
++      const avatar = localStorage.getItem('avatar') || '/icons/UI Image/default-avatar.png';
++      setUser({ fullname, avatar });
++    })();
++  }, []);
++
++  const logout = () => {
++    try { localStorage.clear(); sessionStorage.clear(); } catch {}
++    navigate('/login');
++  };
++
++  const Card = ({ title, desc, action, onClick, icon }) => (
++    <button onClick={onClick} className="group text-left rounded-2xl p-4 bg-white border border-slate-200 hover:border-blue-300 hover:shadow transition">
++      <div className="flex items-center gap-3">
++        <div className="w-10 h-10 rounded-xl grid place-items-center bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-600 group-hover:from-blue-200 group-hover:to-indigo-200">
++          {icon || '📘'}
++        </div>
++        <div>
++          <h3 className="font-semibold text-slate-800">{title}</h3>
++          <p className="text-sm text-slate-500">{desc}</p>
++        </div>
++      </div>
++      <div className="mt-3 text-sm font-medium text-blue-600">{action} →</div>
++    </button>
++  );
++
++  return (
++    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
++      {/* Header */}
++      <header className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b border-slate-200">
++        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
++          <div className="flex items-center gap-3">
++            <button onClick={() => navigate('/')} className="flex items-center gap-3">
++              <img src="/Logo.png" alt="Logo" className="h-9 w-auto" />
++              <h1 className="text-base font-semibold text-slate-700">Student Dashboard</h1>
++            </button>
++          </div>
++          <div className="flex items-center gap-3">
++            <div className="flex items-center gap-2">
++              <img src={user.avatar || '/icons/UI Image/default-avatar.png'} alt="avatar" className="w-8 h-8 rounded-full object-cover border border-slate-200" />
++              <span className="text-sm text-slate-600">Xin chào, <span className="font-semibold text-slate-800">{user.fullname || 'Người dùng'}</span></span>
++            </div>
++            <button onClick={logout} className="px-3 py-2 rounded-lg border border-slate-300 text-slate-700 hover:border-slate-400">Đăng xuất</button>
++          </div>
++        </div>
++      </header>
++
++      <main className="max-w-6xl mx-auto p-4">
++        {/* Hero */}
++        <section className="rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 p-6 mb-6">
++          <h2 className="text-xl font-bold text-slate-800">Chào mừng bạn trở lại 👋</h2>
++          <p className="text-slate-600">Bắt đầu bằng cách xác minh mã phòng thi hoặc xem kết quả gần đây.</p>
++          <div className="mt-4 flex flex-wrap gap-3">
++            <button onClick={() => navigate('/student-dashboard/results')} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:border-slate-400">Kết quả của tôi</button>
++          </div>
++        </section>
++
++        {/* Quick actions mapped to user stories */}
++        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
++          <Card title="Vào thi" desc="Nhập mã phòng được giảng viên cung cấp." action="Xác minh ngay" onClick={() => navigate('/verify-room')} icon="🔐" />
++          <Card title="Kết quả & lịch sử" desc="Xem điểm các bài đã thi." action="Xem bảng điểm" onClick={() => navigate('/student-dashboard/results')} icon="📊" />
++          <Card title="Khoá học" desc="Duyệt các khoá học mở." action="Xem khoá học" onClick={() => alert('Tính năng duyệt khoá học (US12) — sẽ tích hợp sau.')} icon="📚" />
++          <Card title="Hồ sơ" desc="Cập nhật thông tin cá nhân, avatar." action="Cập nhật" onClick={() => navigate('/profile')} icon="👤" />
++          <Card title="Hướng dẫn làm bài" desc="Quy tắc & chống gian lận." action="Xem hướng dẫn" onClick={() => alert('Hiển thị hướng dẫn/FAQ chống gian lận.')} icon="🛡️" />
++          <Card title="Trợ giúp" desc="Liên hệ hỗ trợ khi gặp lỗi." action="Gửi yêu cầu" onClick={() => alert('Liên hệ hỗ trợ qua email/Zalo theo hướng dẫn.')} icon="❓" />
++        </section>
++
++        {/* Recent results */}
++        <section className="rounded-2xl bg-white border border-slate-200 p-4">
++          <div className="flex items-center justify-between mb-3">
++            <h3 className="font-semibold text-slate-800">Kết quả gần đây</h3>
++            <button onClick={() => navigate('/student-dashboard/results')} className="text-sm text-blue-600 hover:underline">Xem tất cả</button>
++          </div>
++          {loading ? (
++            <div className="space-y-2">
++              <div className="h-4 w-40 bg-slate-200 rounded animate-pulse" />
++              <div className="h-12 w-full bg-slate-200 rounded animate-pulse" />
++              <div className="h-12 w-full bg-slate-200 rounded animate-pulse" />
++            </div>
++          ) : results.length === 0 ? (
++            <p className="text-slate-500 text-sm">Chưa có kết quả nào.</p>
++          ) : (
++            <div className="overflow-x-auto">
++              <table className="min-w-full text-sm">
++                <thead>
++                  <tr className="text-left text-slate-500">
++                    <th className="py-2 pr-4">Bài thi</th>
++                    <th className="py-2 pr-4">MCQ</th>
++                    <th className="py-2 pr-4">Tự luận</th>
++                    <th className="py-2 pr-4">Tổng tạm</th>
++                    <th className="py-2 pr-4">Ngày nộp</th>
++                  </tr>
++                </thead>
++                <tbody>
++                  {results.map((r) => (
++                    <tr key={r.submission_id} className="border-t border-slate-100">
++                      <td className="py-2 pr-4 font-medium text-slate-700">{r.exam_title || r.exam_id}</td>
++                      <td className="py-2 pr-4">{(r.total_score ?? r.mcq_score) ?? '-'}</td>
++                      <td className="py-2 pr-4">{r.essay_score ?? '-'}</td>
++                      <td className="py-2 pr-4">{r.suggested_total_score ?? '-'}</td>
++                      <td className="py-2 pr-4">{r.submitted_at ? new Date(r.submitted_at).toLocaleString() : '-'}</td>
++                    </tr>
++                  ))}
++                </tbody>
++              </table>
++            </div>
++          )}
++        </section>
++      </main>
++    </div>
++  );
++}
