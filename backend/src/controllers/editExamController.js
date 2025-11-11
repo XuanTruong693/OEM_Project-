@@ -17,9 +17,6 @@ const isExpiredWindow = (close) => {
   return isValidDate(c) && c < new Date();
 };
 
-// ============================
-// Lấy chi tiết đề thi để chỉnh sửa
-// ============================
 const getExamForEdit = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
