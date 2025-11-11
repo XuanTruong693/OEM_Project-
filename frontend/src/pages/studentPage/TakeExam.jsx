@@ -401,10 +401,7 @@ export default function TakeExam() {
 
       {/* MODAL */}
       <div className={`fixed inset-0 z-50 ${showModal ? "grid" : "hidden"} place-items-center bg-black/50`}>
-        <div className={`w-[min(560px,94vw)] p-6 rounded-2xl border
-          ${theme==="dark"
-            ? "bg-[linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.04))] border-white/10 shadow-[0_24px_60px_rgba(0,0,0,.5)] text-white"
-            : "bg-white border-slate-200 shadow-2xl text-slate-800"}`}>
+        <div className={`w-[min(560px,94vw)] p-6 rounded-2xl border bg-white border-slate-200 shadow-2xl text-slate-800`}>
           <h2 className="text-lg font-bold mb-2">Kết quả tạm thời</h2>
           <div className={`flex items-center justify-between py-2 border-b ${theme==="dark"?"border-white/10":"border-dashed border-slate-300"}`}>
             <div>Điểm trắc nghiệm (MCQ)</div><strong>{mcqScore ?? '-'}</strong>

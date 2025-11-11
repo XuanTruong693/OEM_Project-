@@ -2,11 +2,6 @@ import React from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
 
-// NOTE: Để tránh mất focus khi gõ số, các component con
-// được định nghĩa ở cấp module (không khai báo bên trong ExamSettings)
-// vì nếu định nghĩa trong hàm thì mỗi lần setState sẽ tạo "loại"
-// component mới và React sẽ remount, làm mất focus input.
-
 const Label = ({ children }) => (
   <label className="text-sm text-slate-600">{children}</label>
 );
