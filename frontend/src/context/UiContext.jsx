@@ -7,7 +7,7 @@ const defaultDict = {
     dashboard: 'Bảng điều khiển',
     resources: 'Tài nguyên',
     exam_bank: 'Ngân hàng đề',
-    assign_exam: 'Assign Exam',
+    assign_exam: 'Bài kiểm tra',
     result: 'Kết quả',
     setting: 'Cài đặt',
     open_room: 'Mở phòng thi',

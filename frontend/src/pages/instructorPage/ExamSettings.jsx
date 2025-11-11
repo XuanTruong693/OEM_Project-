@@ -2,6 +2,154 @@ import React from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
 
+// NOTE: Để tránh mất focus khi gõ số, các component con
+// được định nghĩa ở cấp module (không khai báo bên trong ExamSettings)
+// vì nếu định nghĩa trong hàm thì mỗi lần setState sẽ tạo "loại"
+// component mới và React sẽ remount, làm mất focus input.
+
+const Label = ({ children }) => (
+  <label className="text-sm text-slate-600">{children}</label>
+);
+
+const Input = ({ type = "text", value, onChange, min }) => (
+  <input
+    type={type}
+    min={min}
+    className="w-full mt-1 border border-slate-300 rounded-xl p-2 bg-white transition focus:outline-none focus:ring-2 focus:ring-blue-300 hover:border-blue-300"
+    value={value}
+    onChange={onChange}
+  />
+);
+
+const Toggle = ({ checked, onChange }) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    onClick={() => onChange(!checked)}
+    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+      checked ? "bg-emerald-500" : "bg-slate-300"
+    }`}
+  >
+    <span
+      className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
+        checked ? "translate-x-5" : "translate-x-1"
+      }`}
+    />
+  </button>
+);
+
+const SectionCard = ({ icon, title, subtitle, children }) => (
+  <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+      <div className="flex items-center gap-3">
+        <div className="h-9 w-9 rounded-xl grid place-items-center text-white bg-gradient-to-br from-blue-500 to-indigo-500">
+          {icon}
+        </div>
+        <div>
+          <h2 className="font-semibold text-slate-800 leading-tight">{title}</h2>
+          {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
+        </div>
+      </div>
+    </div>
+    <div className="p-4">{children}</div>
+  </section>
+);
+
+const ModeSwitch = ({ combined, setCombined }) => (
+  <div className="hidden md:flex items-center gap-2 text-sm">
+    <span className="text-slate-500">Chế độ:</span>
+    <div className="inline-flex rounded-xl border border-slate-200 bg-slate-100 p-0.5">
+      <button
+        onClick={() => setCombined(true)}
+        className={`px-3 py-1.5 rounded-lg transition ${
+          combined ? "bg-white text-blue-700 shadow-sm" : "text-slate-600 hover:text-slate-800"
+        }`}
+      >
+        Chung
+      </button>
+      <button
+        onClick={() => setCombined(false)}
+        className={`px-3 py-1.5 rounded-lg transition ${
+          !combined ? "bg-white text-blue-700 shadow-sm" : "text-slate-600 hover:text-slate-800"
+        }`}
+      >
+        Theo tab
+      </button>
+    </div>
+  </div>
+);
+
+const Tabs = ({ tab, setTab }) => (
+  <div className="mb-4 flex gap-2 border-b border-slate-200">
+    {["overview", "anti"].map((k) => (
+      <button
+        key={k}
+        onClick={() => setTab(k)}
+        className={`px-3 py-2 text-sm rounded-t-lg border-b-2 -mb-px ${
+          tab === k
+            ? "border-blue-600 text-blue-700"
+            : "border-transparent text-slate-500 hover:text-slate-700"
+        }`}
+      >
+        {k === "overview" ? "Tổng quan" : "Chống gian lận"}
+      </button>
+    ))}
+    <span className="px-3 py-2 text-sm text-slate-400">Làm chủ</span>
+    <span className="px-3 py-2 text-sm text-slate-400">Game hoá</span>
+  </div>
+);
+
+const Page = ({ children, examId, nav, combined, setCombined, submitting, submit }) => (
+  <div className="min-h-screen bg-slate-50">
+    {/* Sticky header */}
+    <header className="sticky top-0 z-20 backdrop-blur supports-[backdrop-filter]:bg-white/70 bg-white/90 border-b border-slate-200">
+      <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <h1 className="text-lg md:text-xl font-semibold text-slate-800">Cấu hình phòng thi</h1>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => nav(`/exams/${examId}/preview`)}
+            className="hidden md:inline-flex items-center gap-2 rounded-xl px-3 py-2 border border-slate-200 text-slate-700 hover:border-blue-300 hover:text-blue-700"
+            title="Xem lại đề đã chọn"
+          >
+            Xem lại đề
+          </button>
+          <button
+            onClick={() => nav('/open-exam')}
+            className="hidden md:inline-flex items-center gap-2 rounded-xl px-3 py-2 border border-slate-200 text-slate-700 hover:border-blue-300 hover:text-blue-700"
+            title="Quay lại danh sách đề"
+          >
+            ← Quay lại danh sách
+          </button>
+          <ModeSwitch combined={combined} setCombined={setCombined} />
+          <button
+            disabled={submitting}
+            onClick={submit}
+            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm disabled:opacity-60"
+          >
+            {submitting ? (
+              <>
+                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-transparent" />
+                Đang lưu…
+              </>
+            ) : (
+              <>
+                <span>🚀</span>
+                <span>Mở phòng</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </header>
+
+    {/* Content */}
+    <main className="mx-auto max-w-6xl p-4">{children}</main>
+  </div>
+);
+
 export default function ExamSettings() {
   const { examId } = useParams();
   const nav = useNavigate();
@@ -89,152 +237,11 @@ export default function ExamSettings() {
     }
   };
 
-  const Page = ({ children }) => (
-    <div className="min-h-screen bg-slate-50">
-      {/* Sticky header */}
-      <header className="sticky top-0 z-20 backdrop-blur supports-[backdrop-filter]:bg-white/70 bg-white/90 border-b border-slate-200">
-        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h1 className="text-lg md:text-xl font-semibold text-slate-800">Cấu hình phòng thi</h1>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => nav(`/exams/${examId}/preview`)}
-              className="hidden md:inline-flex items-center gap-2 rounded-xl px-3 py-2 border border-slate-200 text-slate-700 hover:border-blue-300 hover:text-blue-700"
-              title="Xem lại đề đã chọn"
-            >
-              Xem lại đề
-            </button>
-            <button
-              onClick={() => nav('/open-exam')}
-              className="hidden md:inline-flex items-center gap-2 rounded-xl px-3 py-2 border border-slate-200 text-slate-700 hover:border-blue-300 hover:text-blue-700"
-              title="Quay lại danh sách đề"
-            >
-              ← Quay lại danh sách
-            </button>
-            <ModeSwitch combined={combined} setCombined={setCombined} />
-            <button
-              disabled={submitting}
-              onClick={submit}
-              className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm disabled:opacity-60"
-            >
-              {submitting ? (
-                <>
-                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-transparent" />
-                  Đang lưu…
-                </>
-              ) : (
-                <>
-                  <span>🚀</span>
-                  <span>Mở phòng</span>
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Content */}
-      <main className="mx-auto max-w-6xl p-4">{children}</main>
-    </div>
-  );
-
-  const ModeSwitch = ({ combined, setCombined }) => (
-    <div className="hidden md:flex items-center gap-2 text-sm">
-      <span className="text-slate-500">Chế độ:</span>
-      <div className="inline-flex rounded-xl border border-slate-200 bg-slate-100 p-0.5">
-        <button
-          onClick={() => setCombined(true)}
-          className={`px-3 py-1.5 rounded-lg transition ${
-            combined ? "bg-white text-blue-700 shadow-sm" : "text-slate-600 hover:text-slate-800"
-          }`}
-        >
-          Chung
-        </button>
-        <button
-          onClick={() => setCombined(false)}
-          className={`px-3 py-1.5 rounded-lg transition ${
-            !combined ? "bg-white text-blue-700 shadow-sm" : "text-slate-600 hover:text-slate-800"
-          }`}
-        >
-          Theo tab
-        </button>
-      </div>
-    </div>
-  );
-
-  const Tabs = () => (
-    <div className="mb-4 flex gap-2 border-b border-slate-200">
-      {["overview", "anti"].map((k) => (
-        <button
-          key={k}
-          onClick={() => setTab(k)}
-          className={`px-3 py-2 text-sm rounded-t-lg border-b-2 -mb-px ${
-            tab === k
-              ? "border-blue-600 text-blue-700"
-              : "border-transparent text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          {k === "overview" ? "Tổng quan" : "Chống gian lận"}
-        </button>
-      ))}
-      <span className="px-3 py-2 text-sm text-slate-400">Làm chủ</span>
-      <span className="px-3 py-2 text-sm text-slate-400">Game hoá</span>
-    </div>
-  );
-
-  const SectionCard = ({ icon, title, subtitle, children }) => (
-    <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-xl grid place-items-center text-white bg-gradient-to-br from-blue-500 to-indigo-500">
-            {icon}
-          </div>
-          <div>
-            <h2 className="font-semibold text-slate-800 leading-tight">{title}</h2>
-            {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
-          </div>
-        </div>
-      </div>
-      <div className="p-4">{children}</div>
-    </section>
-  );
-
-  const Label = ({ children }) => (
-    <label className="text-sm text-slate-600">{children}</label>
-  );
-
-  const Input = ({ type = "text", value, onChange, min }) => (
-    <input
-      type={type}
-      min={min}
-      className="w-full mt-1 border border-slate-300 rounded-xl p-2 bg-white transition focus:outline-none focus:ring-2 focus:ring-blue-300 hover:border-blue-300"
-      value={value}
-      onChange={onChange}
-    />
-  );
-
-  const Toggle = ({ checked, onChange }) => (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-        checked ? "bg-emerald-500" : "bg-slate-300"
-      }`}
-    >
-      <span
-        className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
-          checked ? "translate-x-5" : "translate-x-1"
-        }`}
-      />
-    </button>
-  );
+  // các component con đã chuyển ra ngoài để tránh remount
 
   return (
-    <Page>
-      {!combined && <Tabs />}
+    <Page examId={examId} nav={nav} combined={combined} setCombined={setCombined} submitting={submitting} submit={submit}>
+      {!combined && <Tabs tab={tab} setTab={setTab} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Left (main) */}

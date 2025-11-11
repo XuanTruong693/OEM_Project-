@@ -9,19 +9,15 @@ export default defineConfig({
     port: 4000,
     strictPort: true,
     cors: true,
-    allowedHosts: [
-      "localhost",
-      "127.0.0.1",
-      "",
-    ],
+    allowedHosts: ["localhost", "127.0.0.1"],
     proxy: {
       "/auth": {
-        target: "http://localhost:5000 ",
+        target: "http://localhost:5000",
         changeOrigin: true,
         secure: false,
       },
       "/exam_rooms": {
-        target: "http://localhost:5000 ",
+        target: "http://localhost:5000",
         changeOrigin: true,
         secure: false,
       },
@@ -31,5 +27,8 @@ export default defineConfig({
         secure: false,
       },
     },
+  },
+  optimizeDeps: {
+    include: ["axios", "react", "react-dom", "react-router-dom"],
   },
 });

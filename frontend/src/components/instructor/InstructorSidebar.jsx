@@ -53,7 +53,7 @@ const InstructorSidebar = () => {
       <div>
         <div
           className="flex items-center justify-center mb-8 cursor-pointer"
-          onClick={() => navigate("/")}
+          onClick={() => navigate("/instructor-dashboard")}
         >
           <img
             src="/Logo.png"
