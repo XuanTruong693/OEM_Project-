@@ -31,15 +31,26 @@ const generateOTP = () => {
 // Test email configuration on startup (commented out to avoid blocking)
 // testEmailConfig();
 
-// Helper: lấy exam theo roomId hoặc exam_room_code
+// Helper: lấy exam theo id hoặc exam_room_code (truy vấn SQL thuần để không lệ thuộc model cũ)
 const getExamByRoom = async (roomId) => {
-  const Exam = require("../models/ExamRoom");
+  const sequelize = require("../config/db");
   if (!roomId) return null;
-
-  if (/^\d+$/.test(roomId.toString())) {
-    return await Exam.findByPk(roomId);
-  } else {
-    return await Exam.findOne({ where: { exam_room_code: roomId } });
+  try {
+    if (/^\d+$/.test(String(roomId))) {
+      const [rows] = await sequelize.query(
+        `SELECT id, title, exam_room_code, status FROM exams WHERE id = ? LIMIT 1`,
+        { replacements: [roomId] }
+      );
+      return Array.isArray(rows) && rows.length ? rows[0] : null;
+    }
+    const [rows] = await sequelize.query(
+      `SELECT id, title, exam_room_code, status FROM exams WHERE exam_room_code = ? LIMIT 1`,
+      { replacements: [roomId] }
+    );
+    return Array.isArray(rows) && rows.length ? rows[0] : null;
+  } catch (e) {
+    console.error('[getExamByRoom] query error', e);
+    return null;
   }
 };
 
@@ -544,26 +555,34 @@ router.post("/login", async (req, res) => {
 router.get("/verify-room/:code", async (req, res) => {
   try {
     const { code } = req.params;
-    const Exam = require("../models/ExamRoom");
-    const exam = await Exam.findOne({ where: { exam_room_code: code } });
+    const sequelize = require("../config/db");
 
-    if (!exam)
+    // Dùng truy vấn thuần để tránh sai khác model/schema
+    const [rows] = await sequelize.query(
+      `SELECT id, title, exam_room_code, status
+       FROM exams
+       WHERE exam_room_code = ?
+       LIMIT 1`,
+      { replacements: [code] }
+    );
+    const exam = Array.isArray(rows) ? rows[0] : rows;
+
+    if (!exam) {
       return res.json({ valid: false, message: "Mã phòng không hợp lệ" });
-    if (exam.status !== "published")
-      return res.json({
-        valid: false,
-        message: "Phòng thi chưa được kích hoạt",
-      });
+    }
+    if (String(exam.status) !== "published") {
+      return res.json({ valid: false, message: "Phòng thi chưa được kích hoạt" });
+    }
 
-    res.json({
+    return res.json({
       valid: true,
       roomId: exam.exam_room_code,
-      examCode: code,
+      examCode: exam.exam_room_code,
       title: exam.title,
     });
   } catch (err) {
     console.error("❌ Lỗi verify room:", err);
-    res.status(500).json({ valid: false, message: "Lỗi server" });
+    return res.status(500).json({ valid: false, message: "Lỗi server" });
   }
 });
 

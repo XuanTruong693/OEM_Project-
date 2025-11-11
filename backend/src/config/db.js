@@ -10,6 +10,7 @@ const sequelize = new Sequelize(
     dialect: "mysql",
     port: process.env.DB_PORT,
     logging: false,
+    timezone: process.env.APP_TZ || "+07:00", // chuẩn hoá múi giờ VN cho phiên kết nối
   }
 );
 

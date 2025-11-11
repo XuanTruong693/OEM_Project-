@@ -9,26 +9,23 @@ import {
   FiSettings,
   FiChevronDown,
 } from "react-icons/fi";
+import { useUi } from "../../context/UiContext.jsx";
 
 const InstructorSidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [openDropdown, setOpenDropdown] = useState(false);
 
+  const { t } = useUi();
   const menu = [
-    { icon: FiHome, label: "Dashboard", path: "/instructor-dashboard" },
-    {
-      icon: FiFolder,
-      label: "Resources",
-      path: "/resources",
-      hasDropdown: true,
-    },
-    { icon: FiFileText, label: "Exam Bank", path: "/exam-bank" },
-    { icon: FiEdit3, label: "Assign Exam", path: "/assign-exam" },
-    { icon: FiClipboard, label: "Result", path: "/result" },
+    { icon: FiHome, label: t('dashboard','Bảng điều khiển','Dashboard'), path: "/instructor-dashboard" },
+    { icon: FiFolder, label: t('resources','Tài nguyên','Resources'), path: "/resources", hasDropdown: true },
+    { icon: FiFileText, label: t('exam_bank','Ngân hàng đề','Exam Bank'), path: "/exam-bank" },
+    { icon: FiEdit3, label: t('assign_exam','Assign Exam','Assign Exam'), path: "/assign-exam" },
+    { icon: FiClipboard, label: t('result','Kết quả','Result'), path: "/result" },
   ];
 
-  const setting = { icon: FiSettings, label: "Setting", path: "/setting" };
+  const setting = { icon: FiSettings, label: t('setting','Cài đặt','Setting'), path: "/setting" };
 
   const dropdownRef = useRef(null);
   const resourcesRef = useRef(null);
@@ -52,7 +49,7 @@ const InstructorSidebar = () => {
   };
 
   return (
-    <aside className="w-64 h-screen bg-gradient-to-b from-[#E8F5FF] to-[#CAEAFF] rounded-tr-3xl rounded-br-3xl p-5 shadow-md flex flex-col justify-between relative">
+    <aside className="w-64 h-screen bg-gradient-to-b from-[#E8F5FF] to-[#CAEAFF] rounded-tr-3xl rounded-br-3xl p-5 shadow-md flex flex-col justify-between relative text-slate-800">
       <div>
         <div
           className="flex items-center justify-center mb-8 cursor-pointer"
@@ -118,14 +115,14 @@ const InstructorSidebar = () => {
                       className="flex items-center gap-3 px-4 py-2 hover:bg-[#E8F5FF] text-gray-700 hover:text-[#0080FF] w-full text-left"
                     >
                       <FiFileText className="w-5 h-5" />
-                      Exam Bank
+                      {t('exam_bank','Ngân hàng đề','Exam Bank')}
                     </button>
                     <button
-                      onClick={() => navigate("/assign-exam")}
+                      onClick={() => navigate("/open-exam")}
                       className="flex items-center gap-3 px-4 py-2 hover:bg-[#E8F5FF] text-gray-700 hover:text-[#0080FF] w-full text-left"
                     >
                       <FiEdit3 className="w-5 h-5" />
-                      Assign Exam
+                      {t('open_room','Mở phòng thi','Open Room')}
                     </button>
                   </div>
                 )}

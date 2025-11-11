@@ -171,7 +171,7 @@ const InstructorDashboard = () => {
         {/* Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           {/* Tổng số đề đã tạo */}
-          <div className="bg-white rounded-xl shadow-sm p-6 flex flex-col justify-between">
+          <div className="bg-white rounded-xl shadow-sm p-6 flex flex-col justify-between border border-slate-200">
             <div className="flex items-center gap-4">
               <div className="bg-green-500 p-3 rounded-full flex items-center justify-center">
                 <img
@@ -196,7 +196,7 @@ const InstructorDashboard = () => {
           </div>
 
           {/* Tổng số bài kiểm tra */}
-          <div className="bg-white rounded-xl shadow-sm p-6 flex flex-col justify-between">
+          <div className="bg-white rounded-xl shadow-sm p-6 flex flex-col justify-between border border-slate-200">
             <div className="flex items-center gap-4">
               <div className="bg-red-500 p-3 rounded-full flex items-center justify-center">
                 <img
@@ -221,7 +221,7 @@ const InstructorDashboard = () => {
           </div>
 
           {/* Tổng số thí sinh đã thi */}
-          <div className="bg-white rounded-xl shadow-sm p-6 flex flex-col justify-between">
+          <div className="bg-white rounded-xl shadow-sm p-6 flex flex-col justify-between border border-slate-200">
             <div className="flex items-center gap-4">
               <div className="bg-purple-500 p-3 rounded-full flex items-center justify-center">
                 <img
@@ -248,7 +248,7 @@ const InstructorDashboard = () => {
 
         {/* Charts */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-8">
-          <div className="bg-white rounded-xl shadow-sm p-4">
+          <div className="bg-white rounded-xl shadow-sm p-4 border border-slate-200">
             <h2 className="text-gray-700 font-semibold mb-2">Total Exams</h2>
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={monthlyData}>
@@ -259,7 +259,7 @@ const InstructorDashboard = () => {
             </ResponsiveContainer>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm p-4">
+          <div className="bg-white rounded-xl shadow-sm p-4 border border-slate-200">
             <h2 className="text-gray-700 font-semibold mb-2">Total Students</h2>
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={monthlyData}>

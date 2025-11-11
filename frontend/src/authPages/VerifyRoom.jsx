@@ -43,39 +43,65 @@ export default function VerifyRoom() {
     setError("");
     setSuccess("");
     try {
-      const res = await axiosClient.get(`/auth/verify-room/${roomCode}`);
-      console.log("[DEV] Verify room response:", res.data);
+      // Ưu tiên gọi endpoint mới để lấy room_token
+      const resNew = await axiosClient.post('/exams/verify-room', { room_code: roomCode.trim() });
+      console.log('[DEV] Verify room (new) response:', resNew.data);
+      const { exam_id, duration_minutes, room_token, require_face_check, require_student_card, monitor_screen, time_open, time_close } = resNew.data || {};
+      if (room_token && exam_id) {
+        // Lưu token phòng ở sessionStorage (ngắn hạn)
+        sessionStorage.setItem('room_token', room_token);
+        sessionStorage.setItem('pending_exam_id', String(exam_id));
+        if (duration_minutes) sessionStorage.setItem('pending_exam_duration', String(duration_minutes));
+        try {
+          sessionStorage.setItem('exam_flags', JSON.stringify({ face: !!require_face_check, card: !!require_student_card, monitor: !!monitor_screen }));
+        } catch(e) {}
+        if (time_open) sessionStorage.setItem('exam_time_open', String(time_open));
+        if (time_close) sessionStorage.setItem('exam_time_close', String(time_close));
+        // Lưu code cũ để tương thích các flow tồn tại
+        localStorage.setItem('verifiedRoomId', roomCode.trim());
+        localStorage.setItem('verifiedRoomCode', roomCode.trim());
 
+        setSuccess('✅ Mã phòng thi hợp lệ! Đang chuyển hướng...');
+        setTimeout(() => {
+          navigate('/login', { state: { role, fromVerifyRoom: true } });
+        }, 800);
+        return;
+      }
+
+      // Fallback sang API cũ nếu không có room_token
+      const res = await axiosClient.get(`/auth/verify-room/${roomCode}`);
+      console.log("[DEV] Verify room (legacy) response:", res.data);
       if (res.data.valid) {
         setSuccess("✅ Mã phòng thi hợp lệ! Đang chuyển hướng...");
-
-        // ✅ Lưu theo exam_room_code, không phải roomId (ID)
-        localStorage.setItem("verifiedRoomId", res.data.examCode); // <--- code, not id
+        localStorage.setItem("verifiedRoomId", res.data.examCode);
         localStorage.setItem("verifiedRoomCode", res.data.examCode);
-
-        setTimeout(() => {
-          const nextPath = location.state?.fromRoleSelection
-            ? "/login"
-            : localStorage.getItem("isLoginMode") === "true"
-            ? "/login"
-            : "/register";
-          navigate(nextPath, {
-            state: {
-              role,
-              verifiedRoomId: res.data.examCode, // giữ code
-              verifiedRoomCode: res.data.examCode,
-            },
-          });
-        }, 1500);
+        setTimeout(() => navigate('/login', { state: { role, fromVerifyRoom: true } }), 800);
       } else {
         setError(res.data.message || "Mã phòng không hợp lệ");
         setSuccess("");
       }
     } catch (error) {
-      setError(
-        error.response?.data?.message || "Có lỗi xảy ra, vui lòng thử lại"
-      );
-      setSuccess("");
+      // Nếu 403 do hết giờ/chưa mở → hiển thị và không fallback
+      const m = error?.response?.data?.message || error?.message;
+      if (error?.response?.status === 403) {
+        setError(m || 'Không thể vào phòng thi (thời gian)');
+        setSuccess('');
+        return;
+      }
+      console.warn('[VerifyRoom] new verify failed, try legacy route…', error?.response?.data || error?.message || error);
+      try {
+        const res = await axiosClient.get(`/auth/verify-room/${roomCode}`);
+        if (res.data?.valid) {
+          localStorage.setItem("verifiedRoomId", res.data.examCode);
+          localStorage.setItem("verifiedRoomCode", res.data.examCode);
+          setSuccess("✅ Mã phòng thi hợp lệ! Đang chuyển hướng...");
+          setTimeout(() => navigate('/login', { state: { role, fromVerifyRoom: true } }), 800);
+        } else {
+          setError(res.data?.message || "Mã phòng không hợp lệ");
+        }
+      } catch (e2) {
+        setError(e2?.response?.data?.message || 'Có lỗi xảy ra, vui lòng thử lại');
+      }
     }
     setLoading(false);
   };

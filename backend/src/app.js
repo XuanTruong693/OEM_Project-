@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const sequelize = require("./config/db");
+const path = require('path');
 const authRoutes = require("./routes/authRoutes");
 const examRoomRoutes = require("./routes/examRoomRoutes");
 const instructorRoutes = require("./routes/instructorRoutes");
@@ -10,6 +11,7 @@ const adminRoutes = require("./routes/adminRoutes");
 const examBankRoutes = require("./routes/examBankRoutes");
 const assignBankRoutes = require("./routes/assignBankRoutes");
 const editExamRoutes = require("./routes/editExamRoutes");
+const studentExamRoutes = require("./routes/studentExamRoutes");
 const app = express();
 // const profileRouter = require("./routes/profile");
 
@@ -31,6 +33,9 @@ app.use(
 
 app.use(express.json());
 
+// Serve uploaded verification images if *_url columns are used
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // ✅ Log debug chỉ khi chạy dev
 if (process.env.NODE_ENV === "development") {
   // console.log("📦 authRoutes:", typeof authRoutes);
@@ -50,6 +55,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/exam-bank", examBankRoutes);
 app.use("/api/assign-bank", assignBankRoutes);
 app.use("/api/edit-exam", editExamRoutes);
+app.use("/api", studentExamRoutes);
 
 // ✅ Route test
 app.get("/", (req, res) => {

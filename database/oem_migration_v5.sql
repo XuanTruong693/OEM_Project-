@@ -803,5 +803,494 @@ DROP COLUMN course_id;
 DROP TABLE IF EXISTS courses;
 SET FOREIGN_KEY_CHECKS = 1;
 SELECT '✅ Đã xóa khóa ngoại, cột course_id trong exams và các bảng courses, enrollments thành công.' AS message;
+
+-- update exams table + submission table cho phòng thi
+USE oem_mini;
+SET @db := DATABASE();
+
+-- exam_id (INT UNSIGNED, NOT NULL)
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='exam_id';
+SET @sql := IF(@c=0,
+  'ALTER TABLE submissions ADD COLUMN exam_id INT UNSIGNED NULL',
+  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- user_id (INT UNSIGNED, NOT NULL)
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='user_id';
+SET @sql := IF(@c=0,
+  'ALTER TABLE submissions ADD COLUMN user_id INT UNSIGNED NULL',
+  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- attempt_no
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='attempt_no';
+SET @sql := IF(@c=0,
+  'ALTER TABLE submissions ADD COLUMN attempt_no INT NOT NULL DEFAULT 1',
+  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- started_at
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='started_at';
+SET @sql := IF(@c=0,
+  'ALTER TABLE submissions ADD COLUMN started_at DATETIME NULL',
+  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- submitted_at
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='submitted_at';
+SET @sql := IF(@c=0,
+  'ALTER TABLE submissions ADD COLUMN submitted_at DATETIME NULL',
+  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- status
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='status';
+SET @sql := IF(@c=0,
+  'ALTER TABLE submissions ADD COLUMN status ENUM(''pending'',''in_progress'',''submitted'',''graded'',''cancelled'') NOT NULL DEFAULT ''pending''',
+  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- face_image_blob
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='face_image_blob';
+SET @sql := IF(@c=0,
+  'ALTER TABLE submissions ADD COLUMN face_image_blob LONGBLOB NULL',
+  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- face_image_mimetype
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='face_image_mimetype';
+SET @sql := IF(@c=0,
+  'ALTER TABLE submissions ADD COLUMN face_image_mimetype VARCHAR(100) NULL',
+  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- face_image_url
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='face_image_url';
+SET @sql := IF(@c=0,
+  'ALTER TABLE submissions ADD COLUMN face_image_url VARCHAR(500) NULL',
+  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- student_card_blob
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='student_card_blob';
+SET @sql := IF(@c=0,
+  'ALTER TABLE submissions ADD COLUMN student_card_blob LONGBLOB NULL',
+  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- student_card_mimetype
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='student_card_mimetype';
+SET @sql := IF(@c=0,
+  'ALTER TABLE submissions ADD COLUMN student_card_mimetype VARCHAR(100) NULL',
+  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- student_card_url
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='student_card_url';
+SET @sql := IF(@c=0,
+  'ALTER TABLE submissions ADD COLUMN student_card_url VARCHAR(500) NULL',
+  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- proctor_flags (JSON)
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND COLUMN_NAME='proctor_flags';
+SET @sql := IF(@c=0,
+  'ALTER TABLE submissions ADD COLUMN proctor_flags JSON NULL',
+  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+/* ---------- Backfill nhỏ ---------- */
+UPDATE submissions SET attempt_no = 1 WHERE attempt_no IS NULL;
+
+/* ---------- Đảm bảo kiểu cột đúng để gắn FK ---------- */
+-- (Nếu trước đó lỡ tạo BIGINT thì đổi về INT UNSIGNED)
+ALTER TABLE submissions
+  MODIFY COLUMN exam_id INT UNSIGNED NULL,
+  MODIFY COLUMN user_id INT UNSIGNED NULL;
+
+/* ---------- Foreign Keys (thêm nếu chưa có) ---------- */
+-- Xoá trước nếu đã tồn tại để tránh va
+SET FOREIGN_KEY_CHECKS = 0;
+SELECT COUNT(*) INTO @fk_exists
+FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS
+WHERE CONSTRAINT_SCHEMA=@db AND CONSTRAINT_NAME='fk_submissions__exams';
+SET @sql := IF(@fk_exists>0, 'ALTER TABLE submissions DROP FOREIGN KEY fk_submissions__exams','SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+SELECT COUNT(*) INTO @fk_exists
+FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS
+WHERE CONSTRAINT_SCHEMA=@db AND CONSTRAINT_NAME='fk_submissions__users';
+SET @sql := IF(@fk_exists>0, 'ALTER TABLE submissions DROP FOREIGN KEY fk_submissions__users','SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+SET FOREIGN_KEY_CHECKS = 1;
+
+-- Thêm lại FK
+ALTER TABLE submissions
+  ADD CONSTRAINT fk_submissions__exams
+    FOREIGN KEY (exam_id) REFERENCES exams(id)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT fk_submissions__users
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE CASCADE ON UPDATE CASCADE;
+
+/* ---------- Indexes (tạo nếu thiếu) ---------- */
+-- Unique (exam_id, user_id, attempt_no)
+SELECT COUNT(*) INTO @idx_exists
+FROM INFORMATION_SCHEMA.STATISTICS
+WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND INDEX_NAME='uq_submissions_exam_user_attempt';
+SET @sql := IF(@idx_exists=0,
+  'CREATE UNIQUE INDEX uq_submissions_exam_user_attempt ON submissions (exam_id, user_id, attempt_no)',
+  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- Index (exam_id, user_id)
+SELECT COUNT(*) INTO @idx_exists
+FROM INFORMATION_SCHEMA.STATISTICS
+WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND INDEX_NAME='idx_submissions_exam_user';
+SET @sql := IF(@idx_exists=0,
+  'CREATE INDEX idx_submissions_exam_user ON submissions (exam_id, user_id)',
+  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- Index (status)
+SELECT COUNT(*) INTO @idx_exists
+FROM INFORMATION_SCHEMA.STATISTICS
+WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND INDEX_NAME='idx_submissions_status';
+SET @sql := IF(@idx_exists=0,
+  'CREATE INDEX idx_submissions_status ON submissions (status)',
+  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- Index (user_id)
+SELECT COUNT(*) INTO @idx_exists
+FROM INFORMATION_SCHEMA.STATISTICS
+WHERE TABLE_SCHEMA=@db AND TABLE_NAME='submissions' AND INDEX_NAME='idx_submissions_user';
+SET @sql := IF(@idx_exists=0,
+  'CREATE INDEX idx_submissions_user ON submissions (user_id)',
+  'SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+
+--
+ALTER TABLE exams
+  MODIFY COLUMN duration_minutes INT NOT NULL DEFAULT 60,
+  MODIFY COLUMN max_points DECIMAL(10,2) NULL,
+  MODIFY COLUMN require_face_check TINYINT(1) NOT NULL DEFAULT 0,
+  MODIFY COLUMN require_student_card TINYINT(1) NOT NULL DEFAULT 0,
+  MODIFY COLUMN monitor_screen TINYINT(1) NOT NULL DEFAULT 0;
+
+
+USE oem_mini;
+
+/* Drop target columns if exist */
+-- duration_minutes
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='exams' AND COLUMN_NAME='duration_minutes';
+SET @sql := IF(@c=1, 'ALTER TABLE exams DROP COLUMN duration_minutes', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- time_open
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='exams' AND COLUMN_NAME='time_open';
+SET @sql := IF(@c=1, 'ALTER TABLE exams DROP COLUMN time_open', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- time_close
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='exams' AND COLUMN_NAME='time_close';
+SET @sql := IF(@c=1, 'ALTER TABLE exams DROP COLUMN time_close', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- max_points
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='exams' AND COLUMN_NAME='max_points';
+SET @sql := IF(@c=1, 'ALTER TABLE exams DROP COLUMN max_points', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- require_face_check
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='exams' AND COLUMN_NAME='require_face_check';
+SET @sql := IF(@c=1, 'ALTER TABLE exams DROP COLUMN require_face_check', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- require_student_card
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='exams' AND COLUMN_NAME='require_student_card';
+SET @sql := IF(@c=1, 'ALTER TABLE exams DROP COLUMN require_student_card', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- monitor_screen
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='exams' AND COLUMN_NAME='monitor_screen';
+SET @sql := IF(@c=1, 'ALTER TABLE exams DROP COLUMN monitor_screen', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+/* Add fresh columns */
+ALTER TABLE exams
+  ADD COLUMN duration_minutes INT NOT NULL DEFAULT 60,
+  ADD COLUMN time_open DATETIME NULL,
+  ADD COLUMN time_close DATETIME NULL,
+  ADD COLUMN max_points DECIMAL(10,2) NULL,
+  ADD COLUMN require_face_check TINYINT(1) NOT NULL DEFAULT 0,
+  ADD COLUMN require_student_card TINYINT(1) NOT NULL DEFAULT 0,
+  ADD COLUMN monitor_screen TINYINT(1) NOT NULL DEFAULT 0;
+
+/* Recreate indexes for EXAMS */
+-- idx_exams_status_room
+SELECT COUNT(*) INTO @idx_exists
+FROM INFORMATION_SCHEMA.STATISTICS
+WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='exams' AND INDEX_NAME='idx_exams_status_room';
+SET @sql := IF(@idx_exists>0, 'DROP INDEX idx_exams_status_room ON exams', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+CREATE INDEX idx_exams_status_room ON exams (status, exam_room_code);
+
+-- idx_exams_time_open
+SELECT COUNT(*) INTO @idx_exists
+FROM INFORMATION_SCHEMA.STATISTICS
+WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='exams' AND INDEX_NAME='idx_exams_time_open';
+SET @sql := IF(@idx_exists>0, 'DROP INDEX idx_exams_time_open ON exams', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+CREATE INDEX idx_exams_time_open ON exams (time_open);
+
+/* Ensure submissions table exists (id only) */
+CREATE TABLE IF NOT EXISTS submissions (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT
+);
+
+/* Drop FKs first to allow dropping columns safely */
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- drop FK exams
+SELECT COUNT(*) INTO @fk_exists
+FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS
+WHERE CONSTRAINT_SCHEMA=DATABASE() AND CONSTRAINT_NAME='fk_submissions__exams';
+SET @sql := IF(@fk_exists>0, 'ALTER TABLE submissions DROP FOREIGN KEY fk_submissions__exams', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- drop FK users
+SELECT COUNT(*) INTO @fk_exists
+FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS
+WHERE CONSTRAINT_SCHEMA=DATABASE() AND CONSTRAINT_NAME='fk_submissions__users';
+SET @sql := IF(@fk_exists>0, 'ALTER TABLE submissions DROP FOREIGN KEY fk_submissions__users', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+/* Drop indexes so we can rebuild clean */
+-- unique attempt index
+SELECT COUNT(*) INTO @idx_exists
+FROM INFORMATION_SCHEMA.STATISTICS
+WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND INDEX_NAME='uq_submissions_exam_user_attempt';
+SET @sql := IF(@idx_exists>0, 'DROP INDEX uq_submissions_exam_user_attempt ON submissions', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- other indexes
+SELECT COUNT(*) INTO @idx_exists
+FROM INFORMATION_SCHEMA.STATISTICS
+WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND INDEX_NAME='idx_submissions_exam_user';
+SET @sql := IF(@idx_exists>0, 'DROP INDEX idx_submissions_exam_user ON submissions', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+SELECT COUNT(*) INTO @idx_exists
+FROM INFORMATION_SCHEMA.STATISTICS
+WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND INDEX_NAME='idx_submissions_status';
+SET @sql := IF(@idx_exists>0, 'DROP INDEX idx_submissions_status ON submissions', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+SELECT COUNT(*) INTO @idx_exists
+FROM INFORMATION_SCHEMA.STATISTICS
+WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND INDEX_NAME='idx_submissions_user';
+SET @sql := IF(@idx_exists>0, 'DROP INDEX idx_submissions_user ON submissions', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+
+/* Drop target columns (if exist) and add fresh ones */
+-- exam_id
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='exam_id';
+SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN exam_id', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+ALTER TABLE submissions ADD COLUMN exam_id BIGINT NULL;
+
+-- user_id
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='user_id';
+SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN user_id', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+ALTER TABLE submissions ADD COLUMN user_id BIGINT NULL;
+
+-- attempt_no
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='attempt_no';
+SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN attempt_no', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+ALTER TABLE submissions ADD COLUMN attempt_no INT NOT NULL DEFAULT 1;
+
+-- started_at
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='started_at';
+SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN started_at', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+ALTER TABLE submissions ADD COLUMN started_at DATETIME NULL;
+
+-- submitted_at
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='submitted_at';
+SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN submitted_at', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+ALTER TABLE submissions ADD COLUMN submitted_at DATETIME NULL;
+
+-- status
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='status';
+SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN status', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+ALTER TABLE submissions
+  ADD COLUMN status ENUM('pending','in_progress','submitted','graded','cancelled')
+  NOT NULL DEFAULT 'pending';
+
+-- face_image_blob
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='face_image_blob';
+SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN face_image_blob', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+ALTER TABLE submissions ADD COLUMN face_image_blob LONGBLOB NULL;
+
+-- face_image_mimetype
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='face_image_mimetype';
+SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN face_image_mimetype', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+ALTER TABLE submissions ADD COLUMN face_image_mimetype VARCHAR(100) NULL;
+
+-- face_image_url
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='face_image_url';
+SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN face_image_url', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+ALTER TABLE submissions ADD COLUMN face_image_url VARCHAR(500) NULL;
+
+-- student_card_blob
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='student_card_blob';
+SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN student_card_blob', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+ALTER TABLE submissions ADD COLUMN student_card_blob LONGBLOB NULL;
+
+-- student_card_mimetype
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='student_card_mimetype';
+SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN student_card_mimetype', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+ALTER TABLE submissions ADD COLUMN student_card_mimetype VARCHAR(100) NULL;
+
+-- student_card_url
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='student_card_url';
+SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN student_card_url', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+ALTER TABLE submissions ADD COLUMN student_card_url VARCHAR(500) NULL;
+
+-- proctor_flags
+SELECT COUNT(*) INTO @c FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='proctor_flags';
+SET @sql := IF(@c=1, 'ALTER TABLE submissions DROP COLUMN proctor_flags', 'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
+ALTER TABLE submissions ADD COLUMN proctor_flags JSON NULL;
+
+/* Recreate FKs */
+SET FOREIGN_KEY_CHECKS = 1;
+ALTER TABLE submissions
+  ADD CONSTRAINT fk_submissions__exams
+    FOREIGN KEY (exam_id) REFERENCES exams(id)
+    ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE submissions
+  ADD CONSTRAINT fk_submissions__users
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE CASCADE ON UPDATE CASCADE;
+/* NOTE: nếu bảng user của bạn KHÔNG phải 'users', hãy đổi tên ở dòng trên. */
+
+/* Recreate Indexes */
+CREATE UNIQUE INDEX uq_submissions_exam_user_attempt
+  ON submissions (exam_id, user_id, attempt_no);
+
+CREATE INDEX idx_submissions_exam_user
+  ON submissions (exam_id, user_id);
+
+CREATE INDEX idx_submissions_status
+  ON submissions (status);
+
+CREATE INDEX idx_submissions_user
+  ON submissions (user_id);
+---
+DELIMITER $$
+
+DROP PROCEDURE IF EXISTS sp_get_exam_results $$
+CREATE PROCEDURE sp_get_exam_results(IN p_exam_id INT, IN p_role VARCHAR(20), IN p_instructor_id INT)
+BEGIN
+    SELECT u.full_name AS student_name, s.user_id AS student_id, s.status,
+           COALESCE(SUM(CASE WHEN q.type='MCQ' THEN COALESCE(sa.score,0) ELSE 0 END),0) AS mcq_score,
+           s.ai_score,
+           COALESCE(s.suggested_total_score,
+                    COALESCE(SUM(CASE WHEN q.type='MCQ' THEN COALESCE(sa.score,0) ELSE 0 END),0) + COALESCE(s.ai_score,0)) AS suggested_total_score,
+           s.total_score, s.started_at, s.submitted_at,
+           TIMESTAMPDIFF(MINUTE, s.started_at, s.submitted_at) AS duration_minutes,
+           s.proctor_flags, s.face_image_url, s.student_card_url
+    FROM submissions s
+    JOIN users u ON u.id = s.user_id
+    LEFT JOIN student_answers sa ON sa.submission_id = s.id
+    LEFT JOIN exam_questions q ON q.id = sa.question_id
+    WHERE s.exam_id = p_exam_id
+    GROUP BY s.id
+    ORDER BY u.full_name;
+END $$
+DELIMITER ;
+--
+DELIMITER $$
+
+DROP PROCEDURE IF EXISTS sp_update_student_exam_record $$
+CREATE PROCEDURE sp_update_student_exam_record(
+    IN p_exam_id INT,
+    IN p_student_id INT,
+    IN p_student_name VARCHAR(255),
+    IN p_mcq_score DECIMAL(10,2),
+    IN p_ai_score DECIMAL(10,2)
+)
+BEGIN
+    -- (tuỳ chọn) gói trong transaction
+    START TRANSACTION;
+
+    -- 1) Cập nhật submissions
+    UPDATE submissions
+    SET
+        total_score = COALESCE(p_mcq_score, 0),
+        ai_score = COALESCE(p_ai_score, 0),
+        suggested_total_score = COALESCE(p_mcq_score, 0) + COALESCE(p_ai_score, 0),
+        instructor_confirmed = TRUE,
+        status = 'confirmed'
+    WHERE exam_id = p_exam_id
+      AND user_id = p_student_id;
+
+    -- 2) Cập nhật results bằng JOIN để tránh subquery trả nhiều dòng
+    UPDATE results r
+    JOIN submissions s
+      ON s.exam_id = r.exam_id
+     AND s.user_id  = r.student_id
+    SET
+        r.total_score = s.total_score,
+        r.status = 'confirmed'
+    WHERE r.exam_id = p_exam_id
+      AND r.student_id = p_student_id;
+
+    -- 3) Cập nhật tên sinh viên nếu có
+    IF p_student_name IS NOT NULL AND LENGTH(TRIM(p_student_name)) > 0 THEN
+        UPDATE users
+        SET full_name = p_student_name
+        WHERE id = p_student_id;
+    END IF;
+
+    COMMIT;
+END $$
+DELIMITER ;
+
+
+
+
 -- =================================================================
 -- ✅ END OF SCRIPT (OEM Mini v5.1 - Sprint 2 Update)

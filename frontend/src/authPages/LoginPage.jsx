@@ -108,11 +108,31 @@ const LoginPage = () => {
         );
 
         const userRole = res.data.user.role;
-        const dashboardPath = userRole === "student" 
-          ? "/student-dashboard" 
-          : userRole === "admin" 
+        // If student came from /join with room_token, auto-join and go to prepare
+        if (userRole === 'student') {
+          const roomToken = sessionStorage.getItem('room_token');
+          const pendingExam = sessionStorage.getItem('pending_exam_id');
+          if (roomToken && pendingExam) {
+            (async ()=>{
+              try {
+                const j = await axiosClient.post('/exams/join', { room_token: roomToken });
+                const sid = j.data?.submission_id;
+                if (sid) {
+                  try { sessionStorage.setItem('exam_flags', JSON.stringify(j.data?.flags || {})); } catch(e){}
+                  navigate(`/exam/${j.data.exam_id}/prepare?submission_id=${sid}`);
+                  return;
+                }
+              } catch (e) {}
+              navigate('/student-dashboard');
+            })();
+            return;
+          }
+        }
+        const dashboardPath = userRole === "admin" 
           ? "/admin-dashboard" 
-          : "/instructor-dashboard";
+          : userRole === "instructor" 
+          ? "/instructor-dashboard" 
+          : "/student-dashboard";
         navigate(dashboardPath);
       }, 1500);
     } catch (error) {
@@ -188,13 +208,34 @@ const LoginPage = () => {
         );
 
         const userRole = res.data.user.role;
-        const dashboardPath = userRole === "student" 
-          ? "/student-dashboard" 
-          : userRole === "admin" 
+        if (userRole === 'student') {
+          // Nếu đến từ /verify-room và đã có room_token → auto join và chuyển thẳng vào prepare
+          const roomToken = sessionStorage.getItem('room_token');
+          const pendingExam = sessionStorage.getItem('pending_exam_id');
+          if (roomToken && pendingExam) {
+            (async ()=>{
+              try {
+                const j = await axiosClient.post('/exams/join', { room_token: roomToken });
+                const sid = j.data?.submission_id;
+                if (sid) {
+                  try { sessionStorage.setItem('exam_flags', JSON.stringify(j.data?.flags || {})); } catch(e){}
+                  navigate(`/exam/${j.data.exam_id}/prepare?submission_id=${sid}`);
+                  return;
+                }
+              } catch (e) { /* fallthrough */ }
+              navigate('/student-dashboard');
+            })();
+            return;
+          }
+        }
+
+        const dashboardPath = userRole === "admin" 
           ? "/admin-dashboard" 
-          : "/instructor-dashboard";
+          : userRole === "instructor" 
+          ? "/instructor-dashboard" 
+          : "/student-dashboard";
         navigate(dashboardPath);
-      }, 1500);
+      }, 800);
     } catch (error) {
       console.error("❌ Lỗi Google login:", error?.response?.data || error);
       setErrors({
