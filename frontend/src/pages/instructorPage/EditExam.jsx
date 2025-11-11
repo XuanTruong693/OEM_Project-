@@ -14,12 +14,17 @@ const EditExam = () => {
   const [editingExam, setEditingExam] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [apiError, setApiError] = useState("");
+  const [valMap, setValMap] = useState({});
 
   // Upload states
   const [selectedFile, setSelectedFile] = useState(null);
   const [parsedQuestions, setParsedQuestions] = useState([]);
   const [newQuestions, setNewQuestions] = useState([]);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewError, setPreviewError] = useState("");
+  const [successToast, setSuccessToast] = useState("");
+  const lastSavedCountRef = React.useRef(0);
 
   useEffect(() => {
     const fetchExam = async () => {
@@ -45,9 +50,14 @@ const EditExam = () => {
           return q;
         });
         setEditingExam({ ...res.data, questions: processedQuestions });
+        lastSavedCountRef.current = (processedQuestions || []).length;
       } catch (err) {
-        alert("Không thể tải chi tiết đề thi!");
-        navigate("/assign-exam");
+        console.error(err);
+        setApiError(
+          err?.response?.data?.message ||
+            "Không thể tải chi tiết đề thi! Chỉ có thể chỉnh sửa đề nháp."
+        );
+        navigate("/exam-bank");
       } finally {
         setLoading(false);
       }
@@ -66,38 +76,134 @@ const EditExam = () => {
         10
     ) / 10;
 
-  // ---------- Save exam ----------
-  const handleSaveExam = async () => {
-    const totalPoints = computeTotalPoints(editingExam.questions);
+  // helper to normalize text when so khớp trùng
+  const norm = (s) => (s || "").toString().trim().replace(/\s+/g, " ").toLowerCase();
+
+  const areMCQEqual = (a, b) => {
+    if (norm(a.content) !== norm(b.content)) return false;
+    if ((a.options?.length || 0) !== (b.options?.length || 0)) return false;
+    for (let i = 0; i < a.options.length; i++) {
+      const oa = norm(a.options[i].content);
+      const ob = norm(b.options[i]?.content);
+      if (oa !== ob) return false;
+      if (!!a.options[i].is_correct !== !!b.options[i].is_correct) return false;
+    }
+    return true;
+  };
+
+  const areEssayEqual = (a, b) => {
+    return norm(a.content) === norm(b.content) && norm(a.modelAnswer) === norm(b.modelAnswer);
+  };
+
+  // ---------- Validation ----------
+  const validateQuestions = (questions) => {
+    const map = {};
+    const add = (qid, msg) => {
+      if (!map[qid]) map[qid] = [];
+      map[qid].push(msg);
+    };
+    questions.forEach((q) => {
+      const type = normalizeType(q.type);
+      const qid = q.id;
+      const content = (q.content || "").trim();
+      const points = parseFloat(q.points) || 0;
+      if (!content) add(qid, "Nội dung câu hỏi không được để trống.");
+      if (!(points > 0)) add(qid, "Điểm phải lớn hơn 0.");
+      if (type === "MCQ") {
+        const opts = q.options || [];
+        const nonEmpty = opts.filter((o) => (o.content || "").trim().length > 0);
+        if (nonEmpty.length < 2)
+          add(qid, "Trắc nghiệm phải có ít nhất 2 đáp án không rỗng.");
+        let correctCount = 0;
+        opts.forEach((o, i) => {
+          const t = (o.content || "").trim();
+          if (!t) add(qid, `Đáp án ${String.fromCharCode(65 + i)} bị trống.`);
+          if (o.is_correct) correctCount += 1;
+        });
+        if (correctCount !== 1)
+          add(qid, "Phải chọn đúng 1 đáp án đúng cho câu trắc nghiệm.");
+      } else {
+        const model = (q.modelAnswer || "").trim();
+        if (!model) add(qid, "Tự luận phải có đáp án mẫu.");
+      }
+    });
+    const ok = Object.keys(map).length === 0;
+    return { ok, map };
+  };
+
+  // ---------- Save + reload helpers ----------
+  const reloadExam = async () => {
+    try {
+      const res = await axios.get(
+        `http://localhost:5000/api/edit-exam/exams/${id}/edit`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const processedQuestions = res.data.questions.map((q) => ({
+        ...q,
+        points: q.points || 0.1,
+        options: q.options || [],
+      }));
+      setEditingExam({ ...res.data, questions: processedQuestions });
+      lastSavedCountRef.current = (processedQuestions || []).length;
+    } catch (e) {}
+  };
+
+  const showSuccess = (msg) => {
+    setSuccessToast(msg);
+    setTimeout(() => setSuccessToast(""), 3000);
+  };
+
+  const handleSaveExam = async (examOverride = null, options = {}) => {
+    setApiError("");
+    setErrorMessage("");
+    setValMap({});
+
+    const examData = examOverride || editingExam;
+
+    if (!examData.title?.trim()) {
+      setErrorMessage("Tiêu đề đề thi không được để trống!");
+      return;
+    }
+
+    const v = validateQuestions(examData.questions);
+    if (!v.ok) {
+      setValMap(v.map);
+      setErrorMessage("Vui lòng sửa các lỗi bên dưới trước khi lưu.");
+      return;
+    }
+
+    const totalPoints = computeTotalPoints(examData.questions);
     if (totalPoints !== 10) {
       setErrorMessage(
-        `Tổng điểm hiện tại là ${totalPoints.toFixed(
-          1
-        )}. Tổng điểm phải bằng 10 để lưu bài thi!`
+        `Tổng điểm hiện tại là ${totalPoints.toFixed(1)}. Tổng điểm phải bằng 10 để lưu bài thi!`
       );
       return;
     }
 
-    if (!editingExam.title?.trim()) {
-      alert("Tiêu đề đề thi không được để trống!");
-      return;
-    }
-
     try {
-      const updatedQuestions = editingExam.questions.map((q) => ({
+      const updatedQuestions = examData.questions.map((q) => ({
         ...q,
         type: normalizeType(q.type),
       }));
 
       await axios.put(
         `http://localhost:5000/api/edit-exam/exams/${id}`,
-        { ...editingExam, questions: updatedQuestions },
+        { ...examData, questions: updatedQuestions },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      alert("Cập nhật đề thi thành công!");
-      navigate("/assign-exam");
+      const added = options.toast === 'added' || (examData.questions.length > lastSavedCountRef.current);
+      const msg = added ? 'Thêm câu hỏi thành công' : 'Cập nhật đề thi thành công';
+      if (options.stay) {
+        showSuccess(msg);
+        await reloadExam();
+      } else {
+        showSuccess(msg);
+        setTimeout(() => navigate("/exam-bank"), 3200);
+      }
     } catch (err) {
-      alert("Cập nhật đề thi thất bại!");
+      setApiError(
+        err?.response?.data?.message || "Cập nhật đề thi thất bại!"
+      );
     }
   };
 
@@ -107,74 +213,79 @@ const EditExam = () => {
     setParsedQuestions([]);
     setNewQuestions([]);
     setPreviewOpen(false);
+    setPreviewError("");
   };
 
   const parseExcelToQuestions = (workbook) => {
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-    const dataRows = rows.slice(1);
 
-    const questionsFromFile = dataRows
-      .map((row, rowIdx) => {
-        const rawType = (row[0] || "").toString().trim();
-        if (!rawType) return null;
+    const scorePattern = /\((\d+(?:[.,]\d+)?)\s*đ\)/i;
+    let section = null; // 'MCQ' | 'Essay'
+    const out = [];
 
-        const type = normalizeType(rawType);
-        const content = (row[1] || "").toString().trim();
-        const points = parseFloat(row[2]) || 0;
-        if (!content) return null;
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      const c0 = (row[0] || "").toString().trim();
+      if (!c0) continue;
 
-        // --- MCQ ---
-        if (type === "MCQ") {
-          const opts = ["A", "B", "C", "D"]
-            .map((letter, i) => {
-              const txt = (row[3 + i] || "").toString().trim();
-              return txt
-                ? {
-                    tempId: `${rowIdx}-${letter}`,
-                    content: txt,
-                    is_correct: false,
-                  }
-                : null;
-            })
-            .filter(Boolean);
+      const lower = c0.toLowerCase();
+      if (/trắc nghiệm|mcq/.test(lower)) { section = 'MCQ'; continue; }
+      if (/tự luận|essay/.test(lower)) { section = 'Essay'; continue; }
 
-          const correct = ((row[7] || "") + "").toString().trim().toUpperCase();
-          opts.forEach((o) => {
-            if (o.tempId.endsWith(`-${correct}`)) o.is_correct = true;
-          });
-
-          return { type: "MCQ", content, points, options: opts };
+      if (section === 'MCQ') {
+        // Column A: question with (đ). Columns B..H: options, one has *
+        const m = c0.match(scorePattern);
+        const points = m ? parseFloat(m[1].replace(',', '.')) : 0;
+        const content = m ? c0.replace(scorePattern, '').trim() : c0;
+        // Collect options from all non-empty cells starting col1
+        const opts = [];
+        for (let ci = 1; ci < row.length; ci++) {
+          const raw = (row[ci] || '').toString().trim();
+          if (!raw) continue;
+          const isStar = /\*+$/.test(raw);
+          opts.push({ tempId: `${r}-${ci}`, content: raw.replace(/\*+$/, '').trim(), is_correct: isStar });
         }
+        out.push({ type: 'MCQ', content, points, options: opts, sourceRow: r + 1 });
+        continue;
+      }
 
-        // --- ESSAY ---
-        const modelAnswer = (row[3] || "").toString().trim();
-        return { type: "essay", content, points, modelAnswer };
-      })
-      .filter(Boolean);
+      if (section === 'Essay') {
+        // Column A may contain both question and answer with labels
+        const joined = row.map((c) => (c || '').toString().trim()).join(' ');
+        const qMatch = joined.match(/Câu\s*hỏi:\s*([^]+?)(?=Câu\s*trả\s*lời:|$)/i);
+        const aMatch = joined.match(/Câu\s*trả\s*lời:\s*([^]+)$/i);
+        const m = joined.match(scorePattern);
+        const points = m ? parseFloat(m[1].replace(',', '.')) : 0;
+        const content = (qMatch?.[1] || c0).replace(scorePattern, '').trim();
+        const modelAnswer = (aMatch?.[1] || '').trim();
+        out.push({ type: 'essay', content, points, modelAnswer, sourceRow: r + 1 });
+        continue;
+      }
 
-    return questionsFromFile;
-  };
-
-  const areMCQEqual = (a, b) => {
-    if (a.content?.trim() !== b.content?.trim()) return false;
-    if ((a.options?.length || 0) !== (b.options?.length || 0)) return false;
-    for (let i = 0; i < a.options.length; i++) {
-      const oa = (a.options[i].content || "").trim();
-      const ob = (b.options[i]?.content || "").trim();
-      if (oa !== ob) return false;
-      if (!!a.options[i].is_correct !== !!b.options[i].is_correct) return false;
+      // Unknown section: try auto-detect (fallback)
+      const m = c0.match(scorePattern);
+      if (m) {
+        const points = parseFloat(m[1].replace(',', '.'));
+        const content = c0.replace(scorePattern, '').trim();
+        // Try read options from rest cells
+        const opts = [];
+        for (let ci = 1; ci < row.length; ci++) {
+          const raw = (row[ci] || '').toString().trim();
+          if (!raw) continue;
+          const isStar = /\*+$/.test(raw);
+          opts.push({ tempId: `${r}-${ci}`, content: raw.replace(/\*+$/, '').trim(), is_correct: isStar });
+        }
+        if (opts.length) out.push({ type: 'MCQ', content, points, options: opts, sourceRow: r + 1 });
+        else out.push({ type: 'essay', content, points, modelAnswer: '', sourceRow: r + 1 });
+      }
     }
-    return true;
+
+    return out;
   };
 
-  const areEssayEqual = (a, b) => {
-    return (
-      (a.content || "").trim() === (b.content || "").trim() &&
-      (a.modelAnswer || "").trim() === (b.modelAnswer || "").trim()
-    );
-  };
+  // (removed duplicate older equality helpers — now using normalized versions below)
 
   const isDuplicateAgainstExisting = (qFromFile, existingQs) => {
     return existingQs.some((exist) => {
@@ -199,26 +310,90 @@ const EditExam = () => {
         setParsedQuestions(fileQuestions);
 
         const existing = editingExam.questions || [];
-        const uniques = fileQuestions.filter(
-          (fq) => !isDuplicateAgainstExisting(fq, existing)
-        );
+        let uniques = fileQuestions.filter((fq) => !isDuplicateAgainstExisting(fq, existing));
 
-        if (uniques.length === 0) {
-          alert(
-            "Không có câu hỏi mới nào trong file, vui lòng thêm câu hỏi mới để cập nhật"
+        const invalids = [];
+        const valids = [];
+        uniques.forEach((q) => {
+          const msgs = [];
+          const p = parseFloat(q.points) || 0;
+          if (!q.content?.trim()) msgs.push("Nội dung câu hỏi trống");
+          if (!(p > 0)) msgs.push("Điểm phải > 0");
+          if (normalizeType(q.type) === "MCQ") {
+            const opts = q.options || [];
+            if (opts.length < 2) msgs.push("MCQ phải có ≥ 2 đáp án");
+            const c = opts.filter((o) => !!o.is_correct).length;
+            if (c !== 1) msgs.push("MCQ phải có đúng 1 đáp án đúng");
+          } else {
+            if (!q.modelAnswer?.trim()) msgs.push("Tự luận phải có đáp án mẫu");
+          }
+          if (msgs.length) invalids.push({ row: q.sourceRow || "?", msgs, q });
+          else valids.push(q);
+        });
+
+        const duplicatesCount = fileQuestions.length - uniques.length;
+
+        if (valids.length === 0) {
+          setPreviewError(
+            duplicatesCount === fileQuestions.length
+              ? "Không có câu hỏi mới nào trong file, vui lòng thêm câu hỏi để cập nhật"
+              : `Tất cả câu hỏi mới đều sai định dạng: ${invalids
+                  .map((it) => `Row ${it.row}: ${it.msgs.join('; ')}`)
+                  .join(' | ')}`
           );
           setNewQuestions([]);
           setPreviewOpen(false);
           return;
         }
 
-        const withSelected = uniques.map((q, i) => ({
+        // Nếu tất cả trong file đều là mới & hợp lệ và tổng điểm hợp lệ → tự động thêm + lưu + reload
+        if (duplicatesCount === 0 && invalids.length === 0) {
+          const merged = [
+            ...editingExam.questions,
+            ...valids.map((q, i) => ({
+              id: Date.now() + i,
+              type: normalizeType(q.type),
+              content: q.content,
+              points: parseFloat(q.points) || 0.1,
+              modelAnswer: q.modelAnswer || "",
+              options:
+                normalizeType(q.type) === "MCQ"
+                  ? q.options.map((o, idx) => ({
+                      id: Date.now() + 100 + idx,
+                      content: o.content,
+                      is_correct: o.is_correct,
+                    }))
+                  : [],
+            })),
+          ];
+          const newTotal = computeTotalPoints(merged);
+          if (newTotal === 10) {
+            const nextExam = { ...editingExam, questions: merged };
+            setPreviewError("");
+            setNewQuestions([]);
+            setPreviewOpen(false);
+            handleSaveExam(nextExam, { stay: true, toast: 'added' });
+            return;
+          }
+        }
+
+        // Nếu không auto-save, show preview các câu mới để xác nhận
+        const withSelected = valids.map((q, i) => ({
           ...q,
           selected: true,
           tempId: `preview-${Date.now()}-${i}`,
         }));
         setNewQuestions(withSelected);
         setPreviewOpen(true);
+        setPreviewError(
+          invalids.length
+            ? `Đã bỏ qua ${invalids.length} câu hỏi do sai định dạng: ${invalids
+                .map((it) => `Row ${it.row}`)
+                .join(', ')}`
+            : duplicatesCount === fileQuestions.length
+            ? "Không có câu hỏi mới nào trong file, vui lòng thêm câu hỏi để cập nhật"
+            : ""
+        );
       } catch (err) {
         console.error(err);
         alert("Đọc file thất bại. Vui lòng kiểm tra file Excel.");
@@ -245,7 +420,7 @@ const EditExam = () => {
   const handleAddSelectedQuestionsToExam = () => {
     const selected = newQuestions.filter((q) => q.selected);
     if (selected.length === 0) {
-      alert("Chưa chọn câu hỏi nào để thêm.");
+      setPreviewError("Chưa chọn câu hỏi nào để thêm.");
       return;
     }
 
@@ -253,10 +428,8 @@ const EditExam = () => {
     const addTotal = computeTotalPoints(selected);
     const newTotal = Math.round((currentTotal + addTotal) * 10) / 10;
     if (newTotal !== 10) {
-      alert(
-        `Tổng điểm sau khi thêm sẽ là ${newTotal.toFixed(
-          1
-        )}. Tổng điểm của đề phải bằng 10. Vui lòng điều chỉnh điểm trước khi thêm.`
+      setPreviewError(
+        `Tổng điểm sau khi thêm sẽ là ${newTotal.toFixed(1)}. Tổng điểm của đề phải bằng 10. Vui lòng điều chỉnh điểm trước khi thêm.`
       );
       return;
     }
@@ -286,19 +459,18 @@ const EditExam = () => {
         };
       }
     });
-
-    setEditingExam((prev) => ({
-      ...prev,
-      questions: [...prev.questions, ...assigned],
-    }));
-
+    // Build next exam payload and save immediately (stay on page)
+    const nextExam = {
+      ...editingExam,
+      questions: [...editingExam.questions, ...assigned],
+    };
+    setPreviewOpen(false);
+    setPreviewError("");
     setNewQuestions([]);
     setParsedQuestions([]);
     setSelectedFile(null);
-    setPreviewOpen(false);
-    alert(
-      "Đã thêm các câu chọn vào bài thi. Nhớ nhấn Lưu thay đổi để cập nhật lên server."
-    );
+    // Persist to DB and reload view, show success toast
+    handleSaveExam(nextExam, { stay: true, toast: 'added' });
   };
 
   // ---------- render ----------
@@ -318,20 +490,27 @@ const EditExam = () => {
   return (
     <div className="min-h-screen p-4 md:p-8">
       <div className="max-w-full mx-auto bg-white rounded-2xl shadow-2xl p-6">
+        {successToast && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+            <div className="bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-xl text-base font-medium">
+              {successToast}
+            </div>
+          </div>
+        )}
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-900">Chỉnh sửa đề thi</h2>
           <button
-            onClick={() => navigate("/assign-exam")}
+            onClick={() => navigate("/exam-bank")}
             className="text-gray-500 hover:text-gray-700"
           >
             <FiX className="w-6 h-6" />
           </button>
         </div>
 
-        {errorMessage && (
+        {(errorMessage || apiError) && (
           <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl mb-6">
-            {errorMessage}
+            {errorMessage || apiError}
           </div>
         )}
 
@@ -345,7 +524,11 @@ const EditExam = () => {
               type="text"
               value={editingExam.title}
               onChange={(e) =>
-                setEditingExam({ ...editingExam, title: e.target.value })
+                {
+                  setEditingExam({ ...editingExam, title: e.target.value });
+                  if (errorMessage) setErrorMessage("");
+                  if (apiError) setApiError("");
+                }
               }
               className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             />
@@ -441,11 +624,18 @@ const EditExam = () => {
               content, points, optionA..D (MCQ), correctOption (A/B/C/D),
               modelAnswer (essay)
             </p>
-          </div>
         </div>
+      </div>
 
-        {/* PREVIEW */}
-        {previewOpen && newQuestions.length > 0 && (
+      {/* Thông báo phân tích file (hiển thị cả khi không mở preview) */}
+      {previewError && !previewOpen && (
+        <div className="mb-4 p-3 rounded bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm">
+          {previewError}
+        </div>
+      )}
+
+      {/* PREVIEW */}
+      {previewOpen && newQuestions.length > 0 && (
           <div className="mb-6 border rounded-lg p-5 bg-gray-50">
             <h4 className="font-semibold mb-2">
               Preview: Các câu hỏi mới tìm được trong file
@@ -454,6 +644,12 @@ const EditExam = () => {
               Tick chọn câu muốn thêm, chỉnh điểm nếu cần. Tổng điểm sau khi
               thêm phải bằng 10.
             </p>
+
+            {previewError && (
+              <div className="mb-3 p-3 rounded bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm">
+                {previewError}
+              </div>
+            )}
 
             <div className="space-y-4 max-h-96 overflow-y-auto">
               {newQuestions.map((q) => (
@@ -681,6 +877,14 @@ const EditExam = () => {
                   + Thêm đáp án
                 </button>
               </div>
+
+              {valMap[q.id] && (
+                <div className="mt-3 p-3 rounded bg-red-50 border border-red-200 text-red-700 text-sm">
+                  {valMap[q.id].map((m, i) => (
+                    <div key={i}>• {m}</div>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
 
@@ -794,6 +998,14 @@ const EditExam = () => {
                 rows="4"
                 placeholder="Nhập đáp án mẫu cho câu tự luận"
               />
+
+              {valMap[q.id] && (
+                <div className="mt-3 p-3 rounded bg-red-50 border border-red-200 text-red-700 text-sm">
+                  {valMap[q.id].map((m, i) => (
+                    <div key={i}>• {m}</div>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
 
@@ -820,13 +1032,13 @@ const EditExam = () => {
         {/* Action buttons */}
         <div className="flex justify-end gap-3">
           <button
-            onClick={() => navigate("/assign-exam")}
+            onClick={() => navigate("/exam-bank")}
             className="px-6 py-2 border border-gray-300 rounded-xl hover:bg-gray-50"
           >
             Hủy
           </button>
           <button
-            onClick={handleSaveExam}
+            onClick={() => handleSaveExam(null, { stay: true })}
             className="px-6 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl hover:shadow-lg"
           >
             Lưu thay đổi

@@ -130,6 +130,65 @@ async function getExamRow(examId) {
   return Array.isArray(rows) && rows.length ? rows[0] : null;
 }
 
+// GET /api/instructor/exams/:examId/preview
+router.get(
+  "/exams/:examId/preview",
+  verifyToken,
+  authorizeRole(["instructor"]),
+  async (req, res) => {
+    try {
+      const examId = parseInt(req.params.examId, 10);
+      if (!Number.isFinite(examId)) return res.status(400).json({ message: 'examId invalid' });
+      // ownership or published view-only
+      const ok = await ensureExamOwnership(examId, req.user.id);
+      if (!ok) {
+        const er = await getExamRow(examId);
+        if (!er || String(er.status) !== 'published') {
+          return res.status(403).json({ message: 'Not owner of exam' });
+        }
+      }
+
+      const [rows] = await sequelize.query(
+        `SELECT 
+            eq.id AS question_id,
+            eq.question_text,
+            eq.type,
+            eq.model_answer,
+            eq.points,
+            eo.id AS option_id,
+            eo.option_text,
+            eo.is_correct
+         FROM exam_questions eq
+         LEFT JOIN exam_options eo ON eo.question_id = eq.id
+         WHERE eq.exam_id = ?
+         ORDER BY eq.order_index, eq.id, eo.id`,
+        { replacements: [examId] }
+      );
+
+      const map = new Map();
+      for (const r of rows || []) {
+        if (!map.has(r.question_id)) {
+          map.set(r.question_id, {
+            question_id: r.question_id,
+            question_text: r.question_text,
+            type: r.type,
+            model_answer: r.model_answer,
+            points: r.points,
+            options: [],
+          });
+        }
+        if (r.option_id) {
+          map.get(r.question_id).options.push({ option_id: r.option_id, option_text: r.option_text, is_correct: !!r.is_correct });
+        }
+      }
+      return res.json({ exam_id: examId, questions: Array.from(map.values()) });
+    } catch (err) {
+      console.error('exams/:examId/preview error:', err);
+      return res.status(500).json({ message: 'Server error' });
+    }
+  }
+);
+
 // GET /api/instructor/exams/:examId/summary
 router.get(
   "/exams/:examId/summary",

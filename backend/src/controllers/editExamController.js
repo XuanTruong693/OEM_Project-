@@ -2,6 +2,21 @@
 const sequelize = require("../config/db");
 const { QueryTypes } = require("sequelize");
 
+// Time helpers
+const parseTs = (v) => (v ? new Date(String(v).replace(" ", "T")) : null);
+const isValidDate = (d) => d instanceof Date && !isNaN(d.getTime());
+const isInProgressWindow = (open, close) => {
+  const o = parseTs(open);
+  const c = parseTs(close);
+  if (!isValidDate(o) || !isValidDate(c)) return false;
+  const now = new Date();
+  return now >= o && now <= c;
+};
+const isExpiredWindow = (close) => {
+  const c = parseTs(close);
+  return isValidDate(c) && c < new Date();
+};
+
 // ============================
 // Lấy chi tiết đề thi để chỉnh sửa
 // ============================
@@ -12,7 +27,7 @@ const getExamForEdit = async (req, res) => {
     const instructorId = req.user.id;
 
     const [exam] = await sequelize.query(
-      `SELECT id, title, duration, status 
+      `SELECT id, title, duration, status, time_open, time_close 
        FROM exams 
        WHERE id = :id AND instructor_id = :instructorId`,
       {
@@ -30,14 +45,19 @@ const getExamForEdit = async (req, res) => {
       });
     }
 
-    if (exam.status === "published") {
+    // Kiểm tra đang thi theo khoảng thời gian
+    const inProgress = isInProgressWindow(exam.time_open, exam.time_close);
+
+    // Nếu bài thi đang trong quá trình thi thì không thể sửa
+    if (inProgress) {
       await transaction.rollback();
       return res.status(400).json({
         status: "error",
-        message: "Không thể chỉnh sửa đề thi đã mở phòng.",
+        message: "Không thể chỉnh sửa đề thi đang trong thời gian mở phòng.",
       });
     }
 
+    // Tiếp tục lấy thông tin câu hỏi và các tùy chọn cho bài thi
     const questions = await sequelize.query(
       `SELECT 
           id,
@@ -82,10 +102,11 @@ const getExamForEdit = async (req, res) => {
     });
   } catch (error) {
     await transaction.rollback();
-    console.error("Error fetching exam for edit:", error);
+    console.error("Lỗi khi lấy thông tin bài thi:", error);
     res.status(500).json({ status: "error", message: "Lỗi máy chủ." });
   }
 };
+
 
 // ============================
 // Cập nhật đề thi
@@ -120,7 +141,7 @@ const updateExam = async (req, res) => {
     }
 
     const exam = await sequelize.query(
-      `SELECT status 
+      `SELECT status, time_open, time_close 
        FROM exams 
        WHERE id = :id AND instructor_id = :instructorId`,
       {
@@ -137,19 +158,32 @@ const updateExam = async (req, res) => {
         .json({ status: "error", message: "Không tìm thấy đề thi." });
     }
 
+    let resetToDraft = false;
     if (exam[0].status === "published") {
-      await transaction.rollback();
-      return res.status(400).json({
-        status: "error",
-        message: "Không thể sửa đề thi đã mở phòng.",
-      });
+      const inProgress = isInProgressWindow(exam[0].time_open, exam[0].time_close);
+      if (inProgress) {
+        await transaction.rollback();
+        return res.status(400).json({
+          status: "error",
+          message: "Không thể sửa đề thi đang trong thời gian mở phòng.",
+        });
+      }
+      // Nếu đã hết hạn (có close và quá hạn) thì chuyển về draft sau khi lưu
+      if (isExpiredWindow(exam[0].time_close)) resetToDraft = true;
     }
 
     // Cập nhật thông tin đề thi
-    await sequelize.query(
-      `UPDATE exams SET title = ?, duration = ?, updated_at = NOW() WHERE id = ?`,
-      { replacements: [title, duration, id], transaction }
-    );
+    if (resetToDraft) {
+      await sequelize.query(
+        `UPDATE exams SET title = ?, duration = ?, status = 'draft', updated_at = NOW() WHERE id = ?`,
+        { replacements: [title, duration, id], transaction }
+      );
+    } else {
+      await sequelize.query(
+        `UPDATE exams SET title = ?, duration = ?, updated_at = NOW() WHERE id = ?`,
+        { replacements: [title, duration, id], transaction }
+      );
+    }
 
     // Xóa câu hỏi và option cũ
     await sequelize.query(
@@ -196,7 +230,9 @@ const updateExam = async (req, res) => {
     await transaction.commit();
     res.json({
       status: "success",
-      message: "Cập nhật đề thi thành công!",
+      message: resetToDraft
+        ? "Cập nhật đề thi thành công! Trạng thái đã chuyển về draft để mở phòng lại."
+        : "Cập nhật đề thi thành công!",
     });
   } catch (error) {
     await transaction.rollback();

@@ -49,7 +49,6 @@ if (process.env.NODE_ENV === "development") {
 app.use("/api/auth", authRoutes);
 app.use("/api/exam_rooms", examRoomRoutes);
 app.use("/api/instructor", instructorRoutes);
-app.use("/api/instructor", require("./routes/instructorRoutes"));
 app.use("/api/profile", profileRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/exam-bank", examBankRoutes);

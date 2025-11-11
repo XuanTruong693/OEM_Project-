@@ -28,7 +28,9 @@ const getExams = async (req, res) => {
     }
 
     const query = `
-      SELECT e.id, e.title, e.duration, e.status, e.exam_room_code, e.created_at, e.updated_at
+      SELECT e.id, e.title, e.duration, e.status, e.exam_room_code,
+             e.time_open, e.time_close,
+             e.created_at, e.updated_at
       FROM exams e
       ${whereClause}
       ORDER BY e.updated_at DESC
@@ -136,7 +138,7 @@ const deleteExam = async (req, res) => {
     const { id } = req.params;
     const instructorId = req.user.id;
     const [exam] = await sequelize.query(
-      `SELECT id, title, status FROM exams WHERE id = :id AND instructor_id = :instructorId`,
+      `SELECT id, title, status, time_open, time_close FROM exams WHERE id = :id AND instructor_id = :instructorId`,
       {
         replacements: { id, instructorId },
         type: QueryTypes.SELECT,
@@ -151,11 +153,17 @@ const deleteExam = async (req, res) => {
       });
     }
     if (exam.status === "published") {
-      await transaction.rollback();
-      return res.status(400).json({
-        status: "error",
-        message: "Không thể xóa đề thi đã mở phòng.",
-      });
+      const now = new Date();
+      const open = exam.time_open ? new Date(String(exam.time_open).replace(' ', 'T')) : null;
+      const close = exam.time_close ? new Date(String(exam.time_close).replace(' ', 'T')) : null;
+      const inProgress = open instanceof Date && close instanceof Date && !isNaN(open) && !isNaN(close) && now >= open && now <= close;
+      if (inProgress) {
+        await transaction.rollback();
+        return res.status(400).json({
+          status: "error",
+          message: "Không thể xóa đề thi đang trong thời gian mở phòng.",
+        });
+      }
     }
     await sequelize.query(
       `DELETE eo FROM exam_options eo
