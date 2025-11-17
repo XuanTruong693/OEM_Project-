@@ -13,6 +13,19 @@ dotenv.config();
 
 const router = express.Router();
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const { getAppRole, setAppRole } = require("../utils/appRole");
+
+// Return current app role
+router.get("/role", (req, res) => {
+  return res.json({ role: getAppRole() });
+});
+
+router.post("/role", (req, res) => {
+  const { role } = req.body;
+  if (!role) return res.status(400).json({ message: "Role is required" });
+  setAppRole(role);
+  return res.json({ role: getAppRole() });
+});
 
 // JWT generator
 const generateToken = (user) =>
@@ -27,11 +40,7 @@ const otpStorage = new Map();
 const generateOTP = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
 };
-
-// Test email configuration on startup (commented out to avoid blocking)
-// testEmailConfig();
-
-// Helper: lấy exam theo id hoặc exam_room_code (truy vấn SQL thuần để không lệ thuộc model cũ)
+// Get exam by room ID or code
 const getExamByRoom = async (roomId) => {
   const sequelize = require("../config/db");
   if (!roomId) return null;
@@ -137,7 +146,7 @@ router.post("/verify-otp", async (req, res) => {
 
     const emailKey = email.toLowerCase().trim();
     const otpData = otpStorage.get(emailKey);
-
+    
     if (!otpData) {
       return res.status(400).json({
         message: "Mã OTP không tồn tại hoặc đã hết hạn",
@@ -203,6 +212,21 @@ router.post("/google", async (req, res) => {
         .status(400)
         .json({ message: "Học viên cần mã phòng thi", status: "error" });
 
+    // If appRole is set, block attempts that request a different role immediately
+    const appRole = getAppRole();
+    if (appRole && role !== appRole) {
+      console.log(
+        `[Google Login] ❌ Blocked because requested role ${role} != appRole ${appRole}`
+      );
+      return res.status(403).json({
+        message: "Đăng nhập sai quyền",
+        status: "error",
+        requiredRole: appRole,
+        currentRole: role,
+        redirect: "/",
+      });
+    }
+
     const ticket = await client.verifyIdToken({
       idToken,
       audience: process.env.GOOGLE_CLIENT_ID,
@@ -224,6 +248,19 @@ router.post("/google", async (req, res) => {
 
     let user = await User.findOne({ where: { email } });
 
+    // If an existing user has a role that doesn't match appRole, block
+    if (appRole && user && user.role !== appRole) {
+      console.log(
+        `[Google Login] ❌ Blocked because existing user role ${user.role} != appRole ${appRole}`
+      );
+      return res.status(403).json({
+        message: "Đăng nhập sai quyền",
+        status: "error",
+        requiredRole: appRole,
+        currentRole: user.role,
+        redirect: "/",
+      });
+    }
     if (!user) {
       user = await User.create({
         full_name,
@@ -266,6 +303,21 @@ router.post("/google", async (req, res) => {
     }
 
     console.log(`[Google Login] ✅ Đăng nhập thành công cho ${email}`);
+
+    // Enforce application-wide role (if configured)
+    if (appRole && user.role !== appRole) {
+      console.log(
+        `[Google Login] ❌ Đăng nhập bị chặn do sai quyền. appRole=${appRole} user.role=${user.role}`
+      );
+      return res.status(403).json({
+        message: "Đăng nhập sai quyền",
+        status: "error",
+        requiredRole: appRole,
+        currentRole: user.role,
+        redirect: "/",
+      });
+    }
+
     const token = generateToken(user);
     res.json({
       message: "Đăng nhập Google thành công",
@@ -484,6 +536,20 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({
         message: "Mật khẩu không chính xác",
         status: "error",
+      });
+    }
+    const appRole = getAppRole();
+    const requestedRole = role || user.role;
+    if (appRole && requestedRole !== appRole) {
+      console.log(
+        `[Login] ❌ Đăng nhập bị chặn do sai quyền. appRole=${appRole} requestedRole=${requestedRole} user.role=${user.role}`
+      );
+      return res.status(403).json({
+        message: "Đăng nhập sai quyền",
+        status: "error",
+        requiredRole: appRole,
+        currentRole: requestedRole,
+        redirect: "/",
       });
     }
 
