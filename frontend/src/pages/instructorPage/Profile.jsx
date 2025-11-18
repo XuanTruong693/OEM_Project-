@@ -68,7 +68,10 @@ const Profile = () => {
             avatar: user.avatar || prev.avatar,
           });
 
-          setUserInfo({ fullname: user.full_name || prev.fullname, avatar: user.avatar || prev.avatar });
+          setUserInfo({
+            fullname: user.full_name || prev.fullname,
+            avatar: user.avatar || prev.avatar,
+          });
 
           // also persist a couple of values locally for other UI
           if (user.full_name) localStorage.setItem("fullname", user.full_name);
@@ -78,12 +81,16 @@ const Profile = () => {
         }
       } catch (err) {
         // ignore fetch error and fall back to localStorage
-        console.warn("Could not fetch profile from API:", err?.response || err?.message || err);
+        console.warn(
+          "Could not fetch profile from API:",
+          err?.response || err?.message || err
+        );
       }
 
       // Fallback: use localStorage if backend not available
       const fullname = localStorage.getItem("fullname") || "Giảng viên";
-      const avatar = localStorage.getItem("avatar") || "/icons/UI Image/default-avatar.png";
+      const avatar =
+        localStorage.getItem("avatar") || "/icons/UI Image/default-avatar.png";
       const email = localStorage.getItem("email") || "";
 
       setUserInfo({ fullname, avatar });
@@ -122,43 +129,52 @@ const Profile = () => {
 
     // Helper: normalize avatar URL (remove cache-bust query param)
     const normalizeAvatar = (a) => {
-      if (!a) return '';
+      if (!a) return "";
       try {
         // treat blob/data URLs as unique (they indicate a new file)
-        if (a.startsWith('blob:') || a.startsWith('data:')) return a;
+        if (a.startsWith("blob:") || a.startsWith("data:")) return a;
         const url = new URL(a, window.location.origin);
-        url.searchParams.delete('t');
+        url.searchParams.delete("t");
         return url.toString();
       } catch (err) {
         // fallback string compare
-        return a.replace(/\?t=\d+$/, '');
+        return a.replace(/\?t=\d+$/, "");
       }
     };
 
     // If we have an initial snapshot, check if anything changed; if not, notify and skip
     if (initialForm) {
-      const fullnameNow = `${formData.lastName || ''} ${formData.firstName || ''}`.trim();
-      const fullnameThen = `${initialForm.lastName || ''} ${initialForm.firstName || ''}`.trim();
-      const changed = (
+      const fullnameNow = `${formData.lastName || ""} ${
+        formData.firstName || ""
+      }`.trim();
+      const fullnameThen = `${initialForm.lastName || ""} ${
+        initialForm.firstName || ""
+      }`.trim();
+      const changed =
         fullnameNow !== fullnameThen ||
-        (formData.phone || '') !== (initialForm.phone || '') ||
-        (formData.address || '') !== (initialForm.address || '') ||
-        (formData.gender || '') !== (initialForm.gender || '') ||
-        normalizeAvatar(formData.avatar) !== normalizeAvatar(initialForm.avatar)
-      );
+        (formData.phone || "") !== (initialForm.phone || "") ||
+        (formData.address || "") !== (initialForm.address || "") ||
+        (formData.gender || "") !== (initialForm.gender || "") ||
+        normalizeAvatar(formData.avatar) !==
+          normalizeAvatar(initialForm.avatar);
       if (!changed) {
         // show inline info message instead of alert
-        setMessage({ text: 'Không có thay đổi nào mới', type: 'info' });
+        setMessage({ text: "Không có thay đổi nào mới", type: "info" });
         if (messageTimerRef.current) clearTimeout(messageTimerRef.current);
-        messageTimerRef.current = setTimeout(() => setMessage({ text: '', type: '' }), 4000);
+        messageTimerRef.current = setTimeout(
+          () => setMessage({ text: "", type: "" }),
+          4000
+        );
         return;
       }
     }
 
     // Map frontend fields to backend expected payload
-    const genderMap = { Nam: "male", "Nữ": "female", Khác: "other" };
+    const genderMap = { Nam: "male", Nữ: "female", Khác: "other" };
     const payload = {
-      full_name: `${formData.lastName || ""} ${formData.firstName || ""}`.trim(),
+      full_name: `${formData.lastName || ""} ${
+        formData.firstName || ""
+      }`.trim(),
       phone: formData.phone || null,
       address: formData.address || null,
       avatar: formData.avatar || null,
@@ -174,15 +190,15 @@ const Profile = () => {
         const fullname = saved.full_name || payload.full_name || "";
         let avatar = saved.avatar || payload.avatar || formData.avatar;
         // cache-bust
-        if (typeof avatar === 'string' && !avatar.startsWith('data:')) {
-          const sep = avatar.includes('?') ? '&' : '?';
+        if (typeof avatar === "string" && !avatar.startsWith("data:")) {
+          const sep = avatar.includes("?") ? "&" : "?";
           avatar = `${avatar}${sep}t=${Date.now()}`;
         }
 
         const email = saved.email || formData.email;
-        localStorage.setItem('fullname', fullname);
-        if (avatar) localStorage.setItem('avatar', avatar);
-        if (email) localStorage.setItem('email', email);
+        localStorage.setItem("fullname", fullname);
+        if (avatar) localStorage.setItem("avatar", avatar);
+        if (email) localStorage.setItem("email", email);
 
         // update local UI
         const nameParts = (fullname || "").split(" ");
@@ -205,39 +221,50 @@ const Profile = () => {
         setUserInfo({ fullname, avatar });
 
         // update initial snapshot so further saves compare against the newly saved state
-        const normalizedAvatarForSnapshot = (typeof avatar === 'string') ? String(avatar).replace(/\?t=\d+$/, '') : avatar;
+        const normalizedAvatarForSnapshot =
+          typeof avatar === "string"
+            ? String(avatar).replace(/\?t=\d+$/, "")
+            : avatar;
         setInitialForm({
           firstName,
           lastName,
-          gender: genderMapBack[saved.gender] || '' ,
+          gender: genderMapBack[saved.gender] || "",
           email,
-          phone: saved.phone || formData.phone || '',
-          address: saved.address || formData.address || '',
+          phone: saved.phone || formData.phone || "",
+          address: saved.address || formData.address || "",
           avatar: normalizedAvatarForSnapshot,
         });
 
-        try { window.dispatchEvent(new Event('profileUpdated')); } catch (e) { /* ignore */ }
+        try {
+          window.dispatchEvent(new Event("profileUpdated"));
+        } catch (e) {
+          /* ignore */
+        }
 
         // show inline success message instead of alert
-        setMessage({ text: 'Lưu hồ sơ thành công', type: 'success' });
+        setMessage({ text: "Lưu hồ sơ thành công", type: "success" });
         if (messageTimerRef.current) clearTimeout(messageTimerRef.current);
-        messageTimerRef.current = setTimeout(() => setMessage({ text: '', type: '' }), 4000);
+        messageTimerRef.current = setTimeout(
+          () => setMessage({ text: "", type: "" }),
+          4000
+        );
         return;
       }
 
-      alert(res.data?.message || 'Lưu hồ sơ thất bại');
+      alert(res.data?.message || "Lưu hồ sơ thất bại");
     } catch (err) {
-      console.error('[Profile] save error', err);
-      const msg = err?.response?.data?.message || err.message || 'Lưu hồ sơ thất bại';
+      console.error("[Profile] save error", err);
+      const msg =
+        err?.response?.data?.message || err.message || "Lưu hồ sơ thất bại";
       alert(msg);
     }
   };
 
   return (
     <div className="flex bg-gray-50 min-h-screen">
-      <main className="flex-1 p-6">
+      <main className="flex-1 max-sm:p-3 p-6 mt-0 max-sm:mt-10">
         <div className="flex justify-center">
-          <div className="w-full max-w-full">
+          <div className="w-full max-w-xl lg:max-w-4xl ">
             <div className="flex items-center bg-[#1BA4FF] rounded-[17px] px-3 py-3 mb-6 gap-3">
               <button
                 onClick={() => navigate("/instructor-dashboard")}
@@ -254,9 +281,9 @@ const Profile = () => {
               </button>
             </div>
 
-            <div className="bg-white shadow-lg rounded-3xl w-full p-8 border border-gray-100">
+            <div className="bg-white shadow-lg rounded-3xl w-full p-5 sm:p-8 border border-gray-100">
               <div className="flex justify-center mb-6">
-                <div className="relative w-28 h-28">
+                <div className="relative w-24 h-24 sm:w-28 sm:h-28">
                   <img
                     src={formData.avatar}
                     alt="Avatar"
@@ -264,7 +291,9 @@ const Profile = () => {
                   />
                   <label
                     htmlFor="avatar"
-                    className="absolute bottom-1 right-1 bg-gray-100 border border-gray-300 text-gray-600 w-8 h-8 flex items-center justify-center rounded-full cursor-pointer hover:bg-gray-200 transition"
+                    className="absolute bottom-1 right-1 bg-gray-100 border border-gray-300 
+                           text-gray-600 w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center 
+                           rounded-full cursor-pointer hover:bg-gray-200 transition"
                   >
                     <FiCamera className="w-4 h-4" />
                     {/* Accessible label text for screen-readers */}
@@ -292,92 +321,167 @@ const Profile = () => {
                           // fetch the blob from the preview URL and convert it to a File.
                           let fileToUpload = file;
                           if (!(fileToUpload instanceof File)) {
-                            console.warn('[Profile] selected item is not a File object, attempting to resolve from preview URL');
+                            console.warn(
+                              "[Profile] selected item is not a File object, attempting to resolve from preview URL"
+                            );
                             const preview = formData.avatar;
-                            if (typeof preview === 'string' && (preview.startsWith('blob:') || preview.startsWith('data:'))) {
+                            if (
+                              typeof preview === "string" &&
+                              (preview.startsWith("blob:") ||
+                                preview.startsWith("data:"))
+                            ) {
                               try {
                                 const fetched = await fetch(preview);
                                 const blob = await fetched.blob();
                                 // Preserve mimetype if available
-                                const ext = (blob.type && blob.type.split('/')[1]) || 'jpg';
-                                fileToUpload = new File([blob], `avatar.${ext}`, { type: blob.type || 'image/jpeg' });
-                                console.log('[Profile] converted preview URL to File for upload', fileToUpload);
+                                const ext =
+                                  (blob.type && blob.type.split("/")[1]) ||
+                                  "jpg";
+                                fileToUpload = new File(
+                                  [blob],
+                                  `avatar.${ext}`,
+                                  { type: blob.type || "image/jpeg" }
+                                );
+                                console.log(
+                                  "[Profile] converted preview URL to File for upload",
+                                  fileToUpload
+                                );
                               } catch (fetchErr) {
-                                console.error('[Profile] failed to fetch blob from preview URL', fetchErr);
-                                alert('Không thể đọc file ảnh từ bản xem trước. Vui lòng chọn lại ảnh từ thiết bị.');
+                                console.error(
+                                  "[Profile] failed to fetch blob from preview URL",
+                                  fetchErr
+                                );
+                                alert(
+                                  "Không thể đọc file ảnh từ bản xem trước. Vui lòng chọn lại ảnh từ thiết bị."
+                                );
                                 return;
                               }
                             } else {
-                              alert('Không tìm thấy file ảnh hợp lệ. Vui lòng chọn file từ máy tính.');
+                              alert(
+                                "Không tìm thấy file ảnh hợp lệ. Vui lòng chọn file từ máy tính."
+                              );
                               return;
                             }
                           }
 
-                          form.append('avatar', fileToUpload);
+                          form.append("avatar", fileToUpload);
 
                           // Log token presence to help debug 401 issues
-                          const token = localStorage.getItem('token');
-                          console.log('[Profile] uploading avatar — token present:', !!token, token);
+                          const token = localStorage.getItem("token");
+                          console.log(
+                            "[Profile] uploading avatar — token present:",
+                            !!token,
+                            token
+                          );
 
                           // If there's no token, use the no-auth debug endpoint to verify server upload
                           if (!token) {
-                            console.warn('[Profile] No token found — attempting no-auth debug upload to /profile/avatar-test');
-                            const res = await axiosClient.post('/profile/avatar-test', form);
+                            console.warn(
+                              "[Profile] No token found — attempting no-auth debug upload to /profile/avatar-test"
+                            );
+                            const res = await axiosClient.post(
+                              "/profile/avatar-test",
+                              form
+                            );
                             if (res?.data?.data?.avatar) {
                               let savedUrl = res.data.data.avatar;
-                              if (typeof savedUrl === 'string' && !savedUrl.startsWith('data:')) {
-                                const sep = savedUrl.includes('?') ? '&' : '?';
+                              if (
+                                typeof savedUrl === "string" &&
+                                !savedUrl.startsWith("data:")
+                              ) {
+                                const sep = savedUrl.includes("?") ? "&" : "?";
                                 savedUrl = `${savedUrl}${sep}t=${Date.now()}`;
                               }
-                              setFormData((prev) => ({ ...prev, avatar: savedUrl }));
-                              localStorage.setItem('avatar', savedUrl);
-                              try { window.dispatchEvent(new Event('profileUpdated')); } catch (e) { /* ignore */ }
+                              setFormData((prev) => ({
+                                ...prev,
+                                avatar: savedUrl,
+                              }));
+                              localStorage.setItem("avatar", savedUrl);
+                              try {
+                                window.dispatchEvent(
+                                  new Event("profileUpdated")
+                                );
+                              } catch (e) {
+                                /* ignore */
+                              }
                             }
                             return;
                           }
 
                           // When token exists, include it explicitly to ensure Authorization header is present
-                          const config = { headers: { Authorization: `Bearer ${token}` } };
+                          const config = {
+                            headers: { Authorization: `Bearer ${token}` },
+                          };
 
                           // IMPORTANT: do NOT set Content-Type manually; let the browser/axios set the multipart boundary
-                          const res = await axiosClient.post('/profile/avatar', form, config);
+                          const res = await axiosClient.post(
+                            "/profile/avatar",
+                            form,
+                            config
+                          );
 
-                          if (res.data && res.data.data && res.data.data.avatar) {
+                          if (
+                            res.data &&
+                            res.data.data &&
+                            res.data.data.avatar
+                          ) {
                             let savedUrl = res.data.data.avatar;
-                            if (typeof savedUrl === 'string' && !savedUrl.startsWith('data:')) {
-                              const sep = savedUrl.includes('?') ? '&' : '?';
+                            if (
+                              typeof savedUrl === "string" &&
+                              !savedUrl.startsWith("data:")
+                            ) {
+                              const sep = savedUrl.includes("?") ? "&" : "?";
                               savedUrl = `${savedUrl}${sep}t=${Date.now()}`;
                             }
-                            setFormData((prev) => ({ ...prev, avatar: savedUrl }));
+                            setFormData((prev) => ({
+                              ...prev,
+                              avatar: savedUrl,
+                            }));
                             // update UI global storage
-                            localStorage.setItem('avatar', savedUrl);
+                            localStorage.setItem("avatar", savedUrl);
                             // notify other components in the same tab to refresh (storage event won't fire in same tab)
-                            try { window.dispatchEvent(new Event('profileUpdated')); } catch (e) { /* ignore */ }
+                            try {
+                              window.dispatchEvent(new Event("profileUpdated"));
+                            } catch (e) {
+                              /* ignore */
+                            }
                           }
                         } catch (err) {
-                          console.error('Avatar upload failed', err);
+                          console.error("Avatar upload failed", err);
 
                           // If auth fails, give a clear message and hint to re-login
                           if (err?.response?.status === 401) {
-                            console.warn('[Profile] Upload blocked by 401 — token invalid or expired');
-                            alert('Phiên đăng nhập không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại và thử lại.');
+                            console.warn(
+                              "[Profile] Upload blocked by 401 — token invalid or expired"
+                            );
+                            alert(
+                              "Phiên đăng nhập không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại và thử lại."
+                            );
                             return;
                           }
 
-                          const msg = err?.response?.data?.message || err.message || 'Không thể tải ảnh lên. Vui lòng thử lại.';
+                          const msg =
+                            err?.response?.data?.message ||
+                            err.message ||
+                            "Không thể tải ảnh lên. Vui lòng thử lại.";
                           alert(msg);
                         }
                       }}
                     />
-                    <span id="avatar-desc" className="sr-only">Chọn file ảnh để cập nhật ảnh đại diện</span>
+                    <span id="avatar-desc" className="sr-only">
+                      Chọn file ảnh để cập nhật ảnh đại diện
+                    </span>
                   </label>
                 </div>
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="flex justify-between flex-col sm:flex-row gap-6">
-                  <div className="flex flex-1 items-center gap-3">
-                    <label htmlFor="lastName" className="w-24 text-xl text-[#606060] font-normal">
+                <div className="flex max-lg:flex-col flex-row gap-6">
+                  <div className="flex flex-1 items-center max-lg:flex-col max-lg:items-start gap-3">
+                    <label
+                      htmlFor="lastName"
+                      className="w-24 text-xl max-lg:text-[16px] text-[#606060] font-normal"
+                    >
                       Họ:
                     </label>
                     <input
@@ -393,8 +497,11 @@ const Profile = () => {
                     />
                   </div>
 
-                  <div className="flex flex-1 items-center gap-3">
-                    <label htmlFor="firstName" className="w-24 text-xl text-[#606060] font-normal">
+                  <div className="flex flex-1 items-center max-lg:flex-col max-lg:items-start gap-3">
+                    <label
+                      htmlFor="firstName"
+                      className="w-24 text-xl max-lg:text-[16px] text-[#606060] font-normal"
+                    >
                       Tên:
                     </label>
                     <input
@@ -410,11 +517,11 @@ const Profile = () => {
                     />
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <label className="w-24 text-xl text-[#606060] font-normal">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                  <label className="w-24 text-xl max-lg:text-[16px] text-[#606060] font-normal">
                     Giới tính:
                   </label>
-                  <div className="flex gap-6 text-xl">
+                  <div className="flex gap-6 text-xl max-lg:text-[16px]">
                     {["Nam", "Nữ", "Khác"].map((g) => (
                       <label key={g} className="flex items-center gap-2">
                         <input
@@ -437,11 +544,24 @@ const Profile = () => {
                     type: "email",
                     placeholder: "Email",
                   },
-                  { label: "SĐT:", name: "phone", type: "text", placeholder: "Số điện thoại" },
-                  { label: "Địa chỉ:", name: "address", type: "text", placeholder: "Địa chỉ" },
+                  {
+                    label: "SĐT:",
+                    name: "phone",
+                    type: "text",
+                    placeholder: "Số điện thoại",
+                  },
+                  {
+                    label: "Địa chỉ:",
+                    name: "address",
+                    type: "text",
+                    placeholder: "Địa chỉ",
+                  },
                 ].map((field) => (
-                  <div key={field.name} className="flex items-center gap-3">
-                    <label htmlFor={`field-${field.name}`} className="w-24 text-xl text-[#606060] font-normal">
+                  <div
+                    key={field.name}
+                    className="flex flex-col sm:flex-row sm:items-center gap-2"
+                  >
+                    <label className="text-[#606060] font-normal w-auto sm:w-24">
                       {field.label}
                     </label>
                     <input
@@ -451,12 +571,18 @@ const Profile = () => {
                       value={formData[field.name]}
                       onChange={handleChange}
                       placeholder={field.placeholder}
-                      title={field.label.replace(':', '')}
-                        autoComplete={field.name === 'email' ? 'email' : field.name === 'phone' ? 'tel' : 'street-address'}
+                      title={field.label.replace(":", "")}
+                      autoComplete={
+                        field.name === "email"
+                          ? "email"
+                          : field.name === "phone"
+                          ? "tel"
+                          : "street-address"
+                      }
                       className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-blue-400 outline-none"
                       // make email read-only (cannot be changed from profile page)
-                      readOnly={field.name === 'email'}
-                      disabled={field.name === 'email'}
+                      readOnly={field.name === "email"}
+                      disabled={field.name === "email"}
                     />
                   </div>
                 ))}
@@ -466,11 +592,11 @@ const Profile = () => {
                   {message.text && (
                     <div
                       className={`mb-3 px-4 py-2 rounded-md text-sm ${
-                        message.type === 'success'
-                          ? 'bg-green-50 text-green-800 border border-green-200'
-                          : message.type === 'error'
-                          ? 'bg-red-50 text-red-800 border border-red-200'
-                          : 'bg-blue-50 text-blue-800 border border-blue-200'
+                        message.type === "success"
+                          ? "bg-green-50 text-green-800 border border-green-200"
+                          : message.type === "error"
+                          ? "bg-red-50 text-red-800 border border-red-200"
+                          : "bg-blue-50 text-blue-800 border border-blue-200"
                       }`}
                       role="status"
                       aria-live="polite"
@@ -486,7 +612,7 @@ const Profile = () => {
                     className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white font-normal px-6 py-2 rounded-lg transition group"
                   >
                     <FiSave className="text-xl group-hover:text-blue-100 transition" />
-                    <span className="text-xl">Lưu hồ sơ</span>
+                    <span className="text-lg sm:text-xl">Lưu hồ sơ</span>
                   </button>
                 </div>
               </form>

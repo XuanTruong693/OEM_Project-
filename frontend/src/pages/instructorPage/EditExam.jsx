@@ -77,7 +77,8 @@ const EditExam = () => {
     ) / 10;
 
   // helper to normalize text when so khớp trùng
-  const norm = (s) => (s || "").toString().trim().replace(/\s+/g, " ").toLowerCase();
+  const norm = (s) =>
+    (s || "").toString().trim().replace(/\s+/g, " ").toLowerCase();
 
   const areMCQEqual = (a, b) => {
     if (norm(a.content) !== norm(b.content)) return false;
@@ -92,7 +93,10 @@ const EditExam = () => {
   };
 
   const areEssayEqual = (a, b) => {
-    return norm(a.content) === norm(b.content) && norm(a.modelAnswer) === norm(b.modelAnswer);
+    return (
+      norm(a.content) === norm(b.content) &&
+      norm(a.modelAnswer) === norm(b.modelAnswer)
+    );
   };
 
   // ---------- Validation ----------
@@ -111,7 +115,9 @@ const EditExam = () => {
       if (!(points > 0)) add(qid, "Điểm phải lớn hơn 0.");
       if (type === "MCQ") {
         const opts = q.options || [];
-        const nonEmpty = opts.filter((o) => (o.content || "").trim().length > 0);
+        const nonEmpty = opts.filter(
+          (o) => (o.content || "").trim().length > 0
+        );
         if (nonEmpty.length < 2)
           add(qid, "Trắc nghiệm phải có ít nhất 2 đáp án không rỗng.");
         let correctCount = 0;
@@ -175,7 +181,9 @@ const EditExam = () => {
     const totalPoints = computeTotalPoints(examData.questions);
     if (totalPoints !== 10) {
       setErrorMessage(
-        `Tổng điểm hiện tại là ${totalPoints.toFixed(1)}. Tổng điểm phải bằng 10 để lưu bài thi!`
+        `Tổng điểm hiện tại là ${totalPoints.toFixed(
+          1
+        )}. Tổng điểm phải bằng 10 để lưu bài thi!`
       );
       return;
     }
@@ -191,8 +199,12 @@ const EditExam = () => {
         { ...examData, questions: updatedQuestions },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      const added = options.toast === 'added' || (examData.questions.length > lastSavedCountRef.current);
-      const msg = added ? 'Thêm câu hỏi thành công' : 'Cập nhật đề thi thành công';
+      const added =
+        options.toast === "added" ||
+        examData.questions.length > lastSavedCountRef.current;
+      const msg = added
+        ? "Thêm câu hỏi thành công"
+        : "Cập nhật đề thi thành công";
       if (options.stay) {
         showSuccess(msg);
         await reloadExam();
@@ -201,9 +213,7 @@ const EditExam = () => {
         setTimeout(() => navigate("/exam-bank"), 3200);
       }
     } catch (err) {
-      setApiError(
-        err?.response?.data?.message || "Cập nhật đề thi thất bại!"
-      );
+      setApiError(err?.response?.data?.message || "Cập nhật đề thi thất bại!");
     }
   };
 
@@ -231,54 +241,96 @@ const EditExam = () => {
       if (!c0) continue;
 
       const lower = c0.toLowerCase();
-      if (/trắc nghiệm|mcq/.test(lower)) { section = 'MCQ'; continue; }
-      if (/tự luận|essay/.test(lower)) { section = 'Essay'; continue; }
-
-      if (section === 'MCQ') {
-        // Column A: question with (đ). Columns B..H: options, one has *
-        const m = c0.match(scorePattern);
-        const points = m ? parseFloat(m[1].replace(',', '.')) : 0;
-        const content = m ? c0.replace(scorePattern, '').trim() : c0;
-        // Collect options from all non-empty cells starting col1
-        const opts = [];
-        for (let ci = 1; ci < row.length; ci++) {
-          const raw = (row[ci] || '').toString().trim();
-          if (!raw) continue;
-          const isStar = /\*+$/.test(raw);
-          opts.push({ tempId: `${r}-${ci}`, content: raw.replace(/\*+$/, '').trim(), is_correct: isStar });
-        }
-        out.push({ type: 'MCQ', content, points, options: opts, sourceRow: r + 1 });
+      if (/trắc nghiệm|mcq/.test(lower)) {
+        section = "MCQ";
+        continue;
+      }
+      if (/tự luận|essay/.test(lower)) {
+        section = "Essay";
         continue;
       }
 
-      if (section === 'Essay') {
+      if (section === "MCQ") {
+        // Column A: question with (đ). Columns B..H: options, one has *
+        const m = c0.match(scorePattern);
+        const points = m ? parseFloat(m[1].replace(",", ".")) : 0;
+        const content = m ? c0.replace(scorePattern, "").trim() : c0;
+        // Collect options from all non-empty cells starting col1
+        const opts = [];
+        for (let ci = 1; ci < row.length; ci++) {
+          const raw = (row[ci] || "").toString().trim();
+          if (!raw) continue;
+          const isStar = /\*+$/.test(raw);
+          opts.push({
+            tempId: `${r}-${ci}`,
+            content: raw.replace(/\*+$/, "").trim(),
+            is_correct: isStar,
+          });
+        }
+        out.push({
+          type: "MCQ",
+          content,
+          points,
+          options: opts,
+          sourceRow: r + 1,
+        });
+        continue;
+      }
+
+      if (section === "Essay") {
         // Column A may contain both question and answer with labels
-        const joined = row.map((c) => (c || '').toString().trim()).join(' ');
-        const qMatch = joined.match(/Câu\s*hỏi:\s*([^]+?)(?=Câu\s*trả\s*lời:|$)/i);
+        const joined = row.map((c) => (c || "").toString().trim()).join(" ");
+        const qMatch = joined.match(
+          /Câu\s*hỏi:\s*([^]+?)(?=Câu\s*trả\s*lời:|$)/i
+        );
         const aMatch = joined.match(/Câu\s*trả\s*lời:\s*([^]+)$/i);
         const m = joined.match(scorePattern);
-        const points = m ? parseFloat(m[1].replace(',', '.')) : 0;
-        const content = (qMatch?.[1] || c0).replace(scorePattern, '').trim();
-        const modelAnswer = (aMatch?.[1] || '').trim();
-        out.push({ type: 'essay', content, points, modelAnswer, sourceRow: r + 1 });
+        const points = m ? parseFloat(m[1].replace(",", ".")) : 0;
+        const content = (qMatch?.[1] || c0).replace(scorePattern, "").trim();
+        const modelAnswer = (aMatch?.[1] || "").trim();
+        out.push({
+          type: "essay",
+          content,
+          points,
+          modelAnswer,
+          sourceRow: r + 1,
+        });
         continue;
       }
 
       // Unknown section: try auto-detect (fallback)
       const m = c0.match(scorePattern);
       if (m) {
-        const points = parseFloat(m[1].replace(',', '.'));
-        const content = c0.replace(scorePattern, '').trim();
+        const points = parseFloat(m[1].replace(",", "."));
+        const content = c0.replace(scorePattern, "").trim();
         // Try read options from rest cells
         const opts = [];
         for (let ci = 1; ci < row.length; ci++) {
-          const raw = (row[ci] || '').toString().trim();
+          const raw = (row[ci] || "").toString().trim();
           if (!raw) continue;
           const isStar = /\*+$/.test(raw);
-          opts.push({ tempId: `${r}-${ci}`, content: raw.replace(/\*+$/, '').trim(), is_correct: isStar });
+          opts.push({
+            tempId: `${r}-${ci}`,
+            content: raw.replace(/\*+$/, "").trim(),
+            is_correct: isStar,
+          });
         }
-        if (opts.length) out.push({ type: 'MCQ', content, points, options: opts, sourceRow: r + 1 });
-        else out.push({ type: 'essay', content, points, modelAnswer: '', sourceRow: r + 1 });
+        if (opts.length)
+          out.push({
+            type: "MCQ",
+            content,
+            points,
+            options: opts,
+            sourceRow: r + 1,
+          });
+        else
+          out.push({
+            type: "essay",
+            content,
+            points,
+            modelAnswer: "",
+            sourceRow: r + 1,
+          });
       }
     }
 
@@ -310,7 +362,9 @@ const EditExam = () => {
         setParsedQuestions(fileQuestions);
 
         const existing = editingExam.questions || [];
-        let uniques = fileQuestions.filter((fq) => !isDuplicateAgainstExisting(fq, existing));
+        let uniques = fileQuestions.filter(
+          (fq) => !isDuplicateAgainstExisting(fq, existing)
+        );
 
         const invalids = [];
         const valids = [];
@@ -338,8 +392,8 @@ const EditExam = () => {
             duplicatesCount === fileQuestions.length
               ? "Không có câu hỏi mới nào trong file, vui lòng thêm câu hỏi để cập nhật"
               : `Tất cả câu hỏi mới đều sai định dạng: ${invalids
-                  .map((it) => `Row ${it.row}: ${it.msgs.join('; ')}`)
-                  .join(' | ')}`
+                  .map((it) => `Row ${it.row}: ${it.msgs.join("; ")}`)
+                  .join(" | ")}`
           );
           setNewQuestions([]);
           setPreviewOpen(false);
@@ -372,7 +426,7 @@ const EditExam = () => {
             setPreviewError("");
             setNewQuestions([]);
             setPreviewOpen(false);
-            handleSaveExam(nextExam, { stay: true, toast: 'added' });
+            handleSaveExam(nextExam, { stay: true, toast: "added" });
             return;
           }
         }
@@ -389,7 +443,7 @@ const EditExam = () => {
           invalids.length
             ? `Đã bỏ qua ${invalids.length} câu hỏi do sai định dạng: ${invalids
                 .map((it) => `Row ${it.row}`)
-                .join(', ')}`
+                .join(", ")}`
             : duplicatesCount === fileQuestions.length
             ? "Không có câu hỏi mới nào trong file, vui lòng thêm câu hỏi để cập nhật"
             : ""
@@ -429,7 +483,9 @@ const EditExam = () => {
     const newTotal = Math.round((currentTotal + addTotal) * 10) / 10;
     if (newTotal !== 10) {
       setPreviewError(
-        `Tổng điểm sau khi thêm sẽ là ${newTotal.toFixed(1)}. Tổng điểm của đề phải bằng 10. Vui lòng điều chỉnh điểm trước khi thêm.`
+        `Tổng điểm sau khi thêm sẽ là ${newTotal.toFixed(
+          1
+        )}. Tổng điểm của đề phải bằng 10. Vui lòng điều chỉnh điểm trước khi thêm.`
       );
       return;
     }
@@ -470,7 +526,7 @@ const EditExam = () => {
     setParsedQuestions([]);
     setSelectedFile(null);
     // Persist to DB and reload view, show success toast
-    handleSaveExam(nextExam, { stay: true, toast: 'added' });
+    handleSaveExam(nextExam, { stay: true, toast: "added" });
   };
 
   // ---------- render ----------
@@ -488,8 +544,8 @@ const EditExam = () => {
   );
 
   return (
-    <div className="min-h-screen p-4 md:p-8">
-      <div className="max-w-full mx-auto bg-white rounded-2xl shadow-2xl p-6">
+    <div className="min-h-screen p-8 max-lg:p-0 max-md:p-4 max-sm:p-0 ">
+      <div className="max-w-4xl md:max-w-6xl lg:max-w-full mx-auto bg-white rounded-2xl shadow-2xl p-6">
         {successToast && (
           <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
             <div className="bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-xl text-base font-medium">
@@ -523,13 +579,11 @@ const EditExam = () => {
             <input
               type="text"
               value={editingExam.title}
-              onChange={(e) =>
-                {
-                  setEditingExam({ ...editingExam, title: e.target.value });
-                  if (errorMessage) setErrorMessage("");
-                  if (apiError) setApiError("");
-                }
-              }
+              onChange={(e) => {
+                setEditingExam({ ...editingExam, title: e.target.value });
+                if (errorMessage) setErrorMessage("");
+                if (apiError) setApiError("");
+              }}
               className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             />
           </div>
@@ -624,18 +678,18 @@ const EditExam = () => {
               content, points, optionA..D (MCQ), correctOption (A/B/C/D),
               modelAnswer (essay)
             </p>
+          </div>
         </div>
-      </div>
 
-      {/* Thông báo phân tích file (hiển thị cả khi không mở preview) */}
-      {previewError && !previewOpen && (
-        <div className="mb-4 p-3 rounded bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm">
-          {previewError}
-        </div>
-      )}
+        {/* Thông báo phân tích file (hiển thị cả khi không mở preview) */}
+        {previewError && !previewOpen && (
+          <div className="mb-4 p-3 rounded bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm">
+            {previewError}
+          </div>
+        )}
 
-      {/* PREVIEW */}
-      {previewOpen && newQuestions.length > 0 && (
+        {/* PREVIEW */}
+        {previewOpen && newQuestions.length > 0 && (
           <div className="mb-6 border rounded-lg p-5 bg-gray-50">
             <h4 className="font-semibold mb-2">
               Preview: Các câu hỏi mới tìm được trong file
@@ -809,7 +863,7 @@ const EditExam = () => {
                 {q.options.map((opt, optIndex) => (
                   <div
                     key={opt.id}
-                    className="flex items-center gap-3 bg-white p-3 rounded-lg border"
+                    className="flex items-center gap-3 max-sm:gap-1.5 bg-white p-3 rounded-lg border"
                   >
                     <span className="font-medium text-gray-700">
                       {String.fromCharCode(65 + optIndex)}.
@@ -841,7 +895,7 @@ const EditExam = () => {
                           e.target.value;
                         setEditingExam({ ...editingExam, questions: updated });
                       }}
-                      className="flex-1 px-3 py-1 text-sm"
+                      className="flex-1 px-3 max-sm:px-1 py-1 text-sm"
                       placeholder="Nội dung đáp án"
                     />
                     <button

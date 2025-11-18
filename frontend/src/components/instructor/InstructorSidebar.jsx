@@ -1,5 +1,4 @@
 import React, { useState, useRef } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
 import {
   FiHome,
   FiFolder,
@@ -8,48 +7,82 @@ import {
   FiClipboard,
   FiSettings,
   FiChevronDown,
+  FiMenu,
+  FiX,
 } from "react-icons/fi";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useUi } from "../../context/UiContext.jsx";
 
 const InstructorSidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [openDropdown, setOpenDropdown] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState(null);
+
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const { t } = useUi();
+
   const menu = [
-    { icon: FiHome, label: t('dashboard','Bảng điều khiển','Dashboard'), path: "/instructor-dashboard" },
-    { icon: FiFolder, label: t('resources','Tài nguyên','Resources'), path: "/resources", hasDropdown: true },
-    { icon: FiFileText, label: t('exam_bank','Ngân hàng đề','Exam Bank'), path: "/exam-bank" },
-    { icon: FiEdit3, label: t('assign_exam','Assign Exam','Assign Exam'), path: "/assign-exam" },
-    { icon: FiClipboard, label: t('result','Kết quả','Result'), path: "/result" },
+    {
+      icon: FiHome,
+      label: t("dashboard", "Bảng điều khiển", "Dashboard"),
+      path: "/instructor-dashboard",
+    },
+    {
+      icon: FiFolder,
+      label: t("resources", "Tài nguyên", "Resources"),
+      path: "/resources",
+      hasDropdown: true,
+    },
+    {
+      icon: FiFileText,
+      label: t("exam_bank", "Ngân hàng đề", "Exam Bank"),
+      path: "/exam-bank",
+    },
+    {
+      icon: FiEdit3,
+      label: t("assign_exam", "Assign Exam", "Assign Exam"),
+      path: "/assign-exam",
+    },
+    {
+      icon: FiClipboard,
+      label: t("result", "Kết quả", "Result"),
+      path: "/result",
+    },
   ];
 
-  const setting = { icon: FiSettings, label: t('setting','Cài đặt','Setting'), path: "/setting" };
+  const setting = {
+    icon: FiSettings,
+    label: t("setting", "Cài đặt", "Setting"),
+    path: "/setting",
+  };
 
   const dropdownRef = useRef(null);
   const resourcesRef = useRef(null);
 
   const handleMouseEnter = (item) => {
-    if (item.hasDropdown) setOpenDropdown(true);
-  };
-
-  const handleMouseLeave = (e, item) => {
-    if (item.hasDropdown) {
-      const related = e.relatedTarget;
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(related) &&
-        resourcesRef.current &&
-        !resourcesRef.current.contains(related)
-      ) {
-        setOpenDropdown(false);
-      }
+    if (item.hasDropdown && window.innerWidth >= 768) {
+      setOpenDropdown(item.label);
     }
   };
 
-  return (
-    <aside className="w-64 h-screen bg-gradient-to-b from-[#E8F5FF] to-[#CAEAFF] rounded-tr-3xl rounded-br-3xl p-5 shadow-md flex flex-col justify-between relative text-slate-800">
+  const handleMouseLeave = (e, item) => {
+    if (!item.hasDropdown || window.innerWidth < 768) return;
+
+    const related = e.relatedTarget;
+
+    if (
+      dropdownRef.current &&
+      !dropdownRef.current.contains(related) &&
+      resourcesRef.current &&
+      !resourcesRef.current.contains(related)
+    ) {
+      setOpenDropdown(null);
+    }
+  };
+
+  const SidebarContent = () => (
+    <div className="flex flex-col w-full justify-between h-fullz p-5 text-slate-800">
       <div>
         <div
           className="flex items-center justify-center mb-8 cursor-pointer"
@@ -68,18 +101,26 @@ const InstructorSidebar = () => {
             const Icon = item.icon;
 
             return (
-              <div key={idx} className="relative">
+              <div
+                key={idx}
+                className="relative"
+                onMouseEnter={() =>
+                  item.hasDropdown && setOpenDropdown(item.label)
+                }
+                onMouseLeave={() => item.hasDropdown && setOpenDropdown(null)}
+              >
+                {/* Nav item */}
                 <button
-                  ref={item.hasDropdown ? resourcesRef : null}
                   onClick={() => {
                     if (item.hasDropdown) {
-                      setOpenDropdown((prev) => !prev);
+                      setOpenDropdown(
+                        openDropdown === item.label ? null : item.label
+                      );
                     } else {
                       navigate(item.path);
+                      setMobileOpen(false);
                     }
                   }}
-                  onMouseEnter={() => handleMouseEnter(item)}
-                  onMouseLeave={(e) => handleMouseLeave(e, item)}
                   className={`group flex items-center justify-between text-lg font-medium px-4 py-3 rounded-xl transition-all duration-200 w-full ${
                     isActive
                       ? "bg-[#0080FF]/10 border-l-4 border-[#0080FF] text-[#0080FF] shadow-sm"
@@ -96,33 +137,31 @@ const InstructorSidebar = () => {
                     />
                     <span>{item.label}</span>
                   </div>
-
-                  {/* Chevron (không xoay) */}
                   {item.hasDropdown && (
-                    <FiChevronDown className="w-5 h-5 text-gray-600 group-hover:text-[#0080FF]" />
+                    <FiChevronDown
+                      className={`w-5 h-5 text-gray-600 transition-transform ${
+                        openDropdown === item.label ? "rotate-180" : ""
+                      }`}
+                    />
                   )}
                 </button>
 
-                {item.hasDropdown && openDropdown && (
-                  <div
-                    ref={dropdownRef}
-                    onMouseLeave={(e) => handleMouseLeave(e, item)}
-                    onMouseEnter={() => setOpenDropdown(true)}
-                    className="absolute left-full top-0 ml-[1px] bg-white shadow-lg rounded-xl border border-gray-200 py-2 w-44 z-20"
-                  >
+                {/* Dropdown */}
+                {item.hasDropdown && openDropdown === item.label && (
+                  <div className="ml-6 bg-white shadow-lg rounded-xl border border-gray-200 py-2 w-44 md:absolute md:left-full md:top-0">
                     <button
                       onClick={() => navigate("/exam-bank")}
                       className="flex items-center gap-3 px-4 py-2 hover:bg-[#E8F5FF] text-gray-700 hover:text-[#0080FF] w-full text-left"
                     >
                       <FiFileText className="w-5 h-5" />
-                      {t('exam_bank','Ngân hàng đề','Exam Bank')}
+                      {t("exam_bank", "Ngân hàng đề", "Exam Bank")}
                     </button>
                     <button
                       onClick={() => navigate("/open-exam")}
                       className="flex items-center gap-3 px-4 py-2 hover:bg-[#E8F5FF] text-gray-700 hover:text-[#0080FF] w-full text-left"
                     >
                       <FiEdit3 className="w-5 h-5" />
-                      {t('open_room','Mở phòng thi','Open Room')}
+                      {t("open_room", "Mở phòng thi", "Open Room")}
                     </button>
                   </div>
                 )}
@@ -134,7 +173,10 @@ const InstructorSidebar = () => {
 
       <div className="border-t border-blue-100 pt-3 mt-3">
         <button
-          onClick={() => navigate(setting.path)}
+          onClick={() => {
+            navigate(setting.path);
+            setMobileOpen(false);
+          }}
           className={`group flex items-center gap-3 text-lg font-medium px-4 py-3 rounded-xl transition-all duration-200 w-full ${
             location.pathname === setting.path
               ? "bg-[#0080FF]/10 border-l-4 border-[#0080FF] text-[#0080FF] shadow-sm"
@@ -151,7 +193,38 @@ const InstructorSidebar = () => {
           <span>{setting.label}</span>
         </button>
       </div>
-    </aside>
+    </div>
+  );
+
+  return (
+    <>
+      <aside className="hidden md:flex w-64 h-screen bg-gradient-to-b from-[#E8F5FF] to-[#CAEAFF] shadow-md rounded-tr-3xl rounded-br-3xl">
+        <SidebarContent />
+      </aside>
+      <button
+        className="md:hidden fixed top-4 left-4 z-50 bg-white p-2 rounded-lg shadow-lg"
+        onClick={() => setMobileOpen(true)}
+      >
+        <FiMenu className="w-6 h-6 text-gray-700" />
+      </button>
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-40 md:hidden"
+          onClick={() => setMobileOpen(false)}
+        ></div>
+      )}
+      <div
+        className={`fixed top-0 left-0 h-full w-64 bg-gradient-to-b from-[#E8F5FF] to-[#CAEAFF] shadow-xl z-50 transform transition-transform duration-300 md:hidden
+                ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
+      >
+        <div className="flex justify-end p-4">
+          <button onClick={() => setMobileOpen(false)}>
+            <FiX className="w-6 h-6 text-gray-700" />
+          </button>
+        </div>
+        <SidebarContent />
+      </div>
+    </>
   );
 };
 

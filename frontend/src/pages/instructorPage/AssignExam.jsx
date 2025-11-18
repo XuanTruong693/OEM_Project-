@@ -251,7 +251,7 @@ const AssignExam = () => {
     return `${textWithoutPoint} (${point}đ)`;
   };
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    <div className="p-6 max-lg:p-4 max-sm:p-0 bg-gray-50 min-h-screen">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-800 mb-2">
@@ -371,13 +371,13 @@ const AssignExam = () => {
       {/* Preview Section */}
       {previewData && (
         <div className="bg-white rounded-xl shadow-sm p-6">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex max-lg:flex-col  items-center justify-between mb-6">
             <h2 className="text-xl font-semibold text-gray-700 flex items-center gap-2">
               <FiFile className="w-6 h-6" />
               Preview - Xem trước
             </h2>
             {/* Summary */}
-            <div className="flex gap-4">
+            <div className="flex gap-4 mt-0 max-lg:mt-4">
               <div className="text-center px-4 py-2 bg-blue-50 rounded-lg">
                 <p className="text-2xl font-bold text-blue-600">
                   {previewData.summary.total}
@@ -491,8 +491,8 @@ const AssignExam = () => {
           </div>
           {/* Commit button */}
           {previewData.summary.errors === 0 && (
-            <div className="mt-6 flex flex-col md:flex-row items-center justify-between gap-4">
-              <div className="flex-1 max-w-xl">
+            <div className="mt-6 flex max-lg:flex-col flex-row items-center justify-between gap-4">
+              <div className="flex-1 max-w-xl max-lg:w-full">
                 <input
                   id="examTitle"
                   type="text"
@@ -513,7 +513,7 @@ const AssignExam = () => {
                   onClick={handleCommit}
                   disabled={loading}
                   className="px-8 py-4 bg-green-600 text-white text-lg rounded-lg hover:bg-green-700 
-                   disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center gap-2"
+                   disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center gap-2 "
                 >
                   {loading ? (
                     <LoadingSpinner size="sm" text="Đang xử lý..." />
