@@ -125,7 +125,7 @@ const ExamBank = () => {
 
   return (
     <div className="min-h-screen p-4 md:p-8">
-      <div className="w-full mx-auto">
+      <div className="w-full mx-auto mt-0 max-lg:mt-10">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">
