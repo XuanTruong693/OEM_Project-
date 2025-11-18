@@ -12,6 +12,7 @@ const examBankRoutes = require("./routes/examBankRoutes");
 const assignBankRoutes = require("./routes/assignBankRoutes");
 const editExamRoutes = require("./routes/editExamRoutes");
 const studentExamRoutes = require("./routes/studentExamRoutes");
+const { getAppRole, setAppRole } = require("./utils/appRole");
 const app = express();
 // const profileRouter = require("./routes/profile");
 
@@ -42,7 +43,7 @@ if (process.env.NODE_ENV === "development") {
   // console.log("📦 examRoomRoutes:", typeof examRoomRoutes);
   // console.log("📦 authRoutes value:", authRoutes);
   // console.log("📦 examRoomRoutes value:", examRoomRoutes);
-  // console.log("📦 profileRoutes mounted at /api/profile");
+  // console.log("📦 profileRoutes mounted at /api/profile")
 }
 
 // ✅ Mount routes
@@ -55,6 +56,17 @@ app.use("/api/exam-bank", examBankRoutes);
 app.use("/api/assign-bank", assignBankRoutes);
 app.use("/api/edit-exam", editExamRoutes);
 app.use("/api", studentExamRoutes);
+
+// Root-level role endpoints to support http://localhost:4000/role via Vite proxy
+app.get("/role", (req, res) => {
+  res.json({ role: getAppRole() });
+});
+app.post("/role", (req, res) => {
+  const { role } = req.body || {};
+  if (!role) return res.status(400).json({ message: "Role is required" });
+  setAppRole(role);
+  res.json({ role: getAppRole() });
+});
 
 // ✅ Route test
 app.get("/", (req, res) => {

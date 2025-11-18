@@ -11,6 +11,11 @@ export default defineConfig({
     cors: true,
     allowedHosts: ["localhost", "127.0.0.1"],
     proxy: {
+      "/role": {
+        target: "http://localhost:5000",
+        changeOrigin: true,
+        secure: false,
+      },
       "/auth": {
         target: "http://localhost:5000",
         changeOrigin: true,

@@ -7,6 +7,9 @@ function verifyRole(role) {
   return (req, res, next) => {
     // Kiểm tra xem user đã được xác thực chưa
     if (!req.user) {
+      if (req.headers && req.headers.accept && req.headers.accept.includes('text/html')) {
+        return res.redirect('/');
+      }
       return res.status(401).json({ 
         message: 'Unauthorized - No user information found' 
       });
@@ -14,6 +17,9 @@ function verifyRole(role) {
 
     // Kiểm tra role
     if (req.user.role !== role) {
+      if (req.headers && req.headers.accept && req.headers.accept.includes('text/html')) {
+        return res.redirect('/');
+      }
       return res.status(403).json({ 
         message: 'Access denied - Insufficient permissions',
         required: role,
