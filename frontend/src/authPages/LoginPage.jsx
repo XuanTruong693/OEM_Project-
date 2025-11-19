@@ -143,6 +143,17 @@ const LoginPage = () => {
         console.error("📩 [Server Response]:", error.response.data);
         console.error("🔢 [Status Code]:", error.response.status);
         console.error("📡 [Headers]:", error.response.headers);
+
+        // Xử lý lỗi 403 - Sai quyền (Role mismatch)
+        if (error.response.status === 403 && error.response.data?.requiredRole) {
+          console.warn(`[Login] ⛔ Role mismatch: required=${error.response.data.requiredRole}, current=${error.response.data.currentRole}`);
+          setErrors({
+            general: `⛔ ${error.response.data.message || 'Đăng nhập sai quyền'}. Hệ thống yêu cầu role: ${error.response.data.requiredRole}`,
+          });
+          setSuccess("");
+          setLoading(false);
+          return;
+        }
       } else if (error.request) {
         console.error("📭 [No Response từ Server]:", error.request);
       } else {
@@ -238,9 +249,18 @@ const LoginPage = () => {
       }, 800);
     } catch (error) {
       console.error("❌ Lỗi Google login:", error?.response?.data || error);
-      setErrors({
-        general: error.response?.data?.message || "Đăng nhập Google thất bại",
-      });
+      
+      // Xử lý lỗi 403 - Sai quyền (Role mismatch)
+      if (error.response?.status === 403 && error.response?.data?.requiredRole) {
+        console.warn(`[Google Login] ⛔ Role mismatch: required=${error.response.data.requiredRole}, current=${error.response.data.currentRole}`);
+        setErrors({
+          general: `⛔ ${error.response.data.message || 'Đăng nhập sai quyền'}. Hệ thống yêu cầu role: ${error.response.data.requiredRole}`,
+        });
+      } else {
+        setErrors({
+          general: error.response?.data?.message || "Đăng nhập Google thất bại",
+        });
+      }
       setSuccess("");
     } finally {
       setLoading(false);

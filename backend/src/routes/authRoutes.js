@@ -542,10 +542,10 @@ router.post("/login", async (req, res) => {
     const requestedRole = role || user.role;
     if (appRole && requestedRole !== appRole) {
       console.log(
-        `[Login] ❌ Đăng nhập bị chặn do sai quyền. appRole=${appRole} requestedRole=${requestedRole} user.role=${user.role}`
+        `[Login] ⚠️Đăng nhập bị chặn do sai quyền. appRole=${appRole} requestedRole=${requestedRole} user.role=${user.role}`
       );
       return res.status(403).json({
-        message: "Đăng nhập sai quyền",
+        message: "⛔Đăng nhập sai quyền",
         status: "error",
         requiredRole: appRole,
         currentRole: requestedRole,

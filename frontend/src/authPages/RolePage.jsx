@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import axios from "axios";
 
 export default function RolePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const isLogin = location.state?.mode === "login";
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     // Không tự động redirect, để user có thể chọn role mới
@@ -17,33 +19,41 @@ export default function RolePage() {
   }, []);
 
   const handleSelectRole = async (role) => {
-  setLoading(true);
-  const selectedRole = role;
+    setLoading(true);
+    setError("");
+    const selectedRole = role;
 
-  try {
-    // Xóa tất cả dữ liệu cũ khi chọn role mới
-    localStorage.removeItem("token");
-    localStorage.removeItem("role");
-    localStorage.removeItem("verifiedRoomId");
-    localStorage.removeItem("verifiedRoomCode");
+    try {
+      // 1. POST role lên backend để set appRole (gửi trực tiếp /role, không có /api)
+      console.log(`[RolePage] 📤 POST role ${selectedRole} to backend...`);
+      const response = await axios.post("http://localhost:5000/role", { role: selectedRole });
+      console.log(`[RolePage] ✅ Backend confirmed role:`, response.data);
 
-    localStorage.setItem("selectedRole", selectedRole);
+      // 2. Xóa tất cả dữ liệu cũ khi chọn role mới
+      localStorage.removeItem("token");
+      localStorage.removeItem("role");
+      localStorage.removeItem("verifiedRoomId");
+      localStorage.removeItem("verifiedRoomCode");
 
-    if (selectedRole === "instructor") {
-      navigate("/login", {
-        state: { role: selectedRole, fromRoleSelection: true },
-      });
-    } else {
-      navigate("/verify-room", {
-        state: { role: selectedRole, fromRoleSelection: true },
-      });
+      // 3. Lưu role vào localStorage
+      localStorage.setItem("selectedRole", selectedRole);
+
+      if (selectedRole === "instructor") {
+        navigate("/login", {
+          state: { role: selectedRole, fromRoleSelection: true },
+        });
+      } else {
+        navigate("/verify-room", {
+          state: { role: selectedRole, fromRoleSelection: true },
+        });
+      }
+    } catch (error) {
+      console.error("[RolePage] ❌ Lỗi chọn role:", error);
+      setError("Lỗi khi cập nhật role. Vui lòng thử lại.");
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    console.error("Lỗi chọn role:", error);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
@@ -72,6 +82,12 @@ export default function RolePage() {
               Bạn là ai?
             </span>
           </div>
+
+          {error && (
+            <div className="w-full mb-4 p-3 bg-red-100 text-red-700 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
 
           <div className="flex w-full gap-4">
             <button
