@@ -60,32 +60,36 @@ const InstructorDashboard = () => {
     // Try to load the canonical profile endpoint which returns the avatar/fullname
     const fetchUser = async () => {
       try {
-        const res = await axiosClient.get('/profile');
+        const res = await axiosClient.get("/profile");
         const user = res.data && res.data.data;
         if (user) {
-          const avatarUrl = user.avatar || localAvatar || "/icons/UI Image/default-avatar.png";
+          const avatarUrl =
+            user.avatar || localAvatar || "/icons/UI Image/default-avatar.png";
           const fullname = user.full_name || localFullname || "Giảng viên";
           try {
-            if (avatarUrl) localStorage.setItem('avatar', avatarUrl);
-            if (fullname) localStorage.setItem('fullname', fullname);
+            if (avatarUrl) localStorage.setItem("avatar", avatarUrl);
+            if (fullname) localStorage.setItem("fullname", fullname);
           } catch (e) {}
           setUserInfo({ fullname, avatar: avatarUrl });
           return;
         }
       } catch (err) {
         // If profile endpoint fails, silently fallback to localStorage — keep console for debug
-        console.warn('Failed to load /api/profile for header avatar:', err?.response || err?.message || err);
+        console.warn(
+          "Failed to load /api/profile for header avatar:",
+          err?.response || err?.message || err
+        );
       }
     };
     fetchUser();
 
     // Listen for storage changes (avatar updated in Profile page)
     const onStorage = (e) => {
-      if (e.key === 'avatar' || e.key === 'fullname') {
+      if (e.key === "avatar" || e.key === "fullname") {
         setUserInfo((prev) => ({
           ...prev,
-          avatar: localStorage.getItem('avatar') || prev.avatar,
-          fullname: localStorage.getItem('fullname') || prev.fullname,
+          avatar: localStorage.getItem("avatar") || prev.avatar,
+          fullname: localStorage.getItem("fullname") || prev.fullname,
         }));
       }
     };
@@ -94,16 +98,16 @@ const InstructorDashboard = () => {
     const onProfileUpdated = () => {
       setUserInfo((prev) => ({
         ...prev,
-        avatar: localStorage.getItem('avatar') || prev.avatar,
-        fullname: localStorage.getItem('fullname') || prev.fullname,
+        avatar: localStorage.getItem("avatar") || prev.avatar,
+        fullname: localStorage.getItem("fullname") || prev.fullname,
       }));
     };
 
-    window.addEventListener('storage', onStorage);
-    window.addEventListener('profileUpdated', onProfileUpdated);
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("profileUpdated", onProfileUpdated);
     return () => {
-      window.removeEventListener('storage', onStorage);
-      window.removeEventListener('profileUpdated', onProfileUpdated);
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("profileUpdated", onProfileUpdated);
     };
   }, []);
 
@@ -138,8 +142,8 @@ const InstructorDashboard = () => {
   };
 
   return (
-    <div className="flex bg-gray-50 min-h-screen">
-      <main className="flex-1 p-6">
+    <div className="flex flex-col md:flex-row bg-gray-50 min-h-screen">
+      <main className="flex-1 p-4 md:p-6">
         {/* Header */}
         <div className="flex justify-end items-center mb-6">
           <div
@@ -161,7 +165,7 @@ const InstructorDashboard = () => {
           </div>
           <button
             onClick={handleLogout}
-            className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-gray-100 transition"
+            className="flex items-center justify-center w-9 h-9 md:w-10 md:h-10 rounded-full hover:bg-gray-100 transition"
             title="Đăng xuất"
           >
             <FiLogOut className="w-5 h-5 text-gray-600" />
@@ -169,7 +173,7 @@ const InstructorDashboard = () => {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {/* Tổng số đề đã tạo */}
           <div className="bg-white rounded-xl shadow-sm p-6 flex flex-col justify-between border border-slate-200">
             <div className="flex items-center gap-4">
@@ -247,10 +251,14 @@ const InstructorDashboard = () => {
         </div>
 
         {/* Charts */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
           <div className="bg-white rounded-xl shadow-sm p-4 border border-slate-200">
             <h2 className="text-gray-700 font-semibold mb-2">Total Exams</h2>
-            <ResponsiveContainer width="100%" height={250}>
+            <ResponsiveContainer
+              width="100%"
+              height={200}
+              className="md:h-[250px]"
+            >
               <BarChart data={monthlyData}>
                 <XAxis dataKey="name" />
                 <Tooltip />
@@ -261,7 +269,11 @@ const InstructorDashboard = () => {
 
           <div className="bg-white rounded-xl shadow-sm p-4 border border-slate-200">
             <h2 className="text-gray-700 font-semibold mb-2">Total Students</h2>
-            <ResponsiveContainer width="100%" height={250}>
+            <ResponsiveContainer
+              width="100%"
+              height={200}
+              className="md:h-[250px]"
+            >
               <BarChart data={monthlyData}>
                 <XAxis dataKey="name" />
                 <Tooltip />

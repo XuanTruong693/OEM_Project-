@@ -8,7 +8,8 @@ const Badge = ({ color = "slate", children }) => (
   <span
     className={cls(
       "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border",
-      color === "emerald" && "bg-emerald-50 text-emerald-700 border-emerald-200",
+      color === "emerald" &&
+        "bg-emerald-50 text-emerald-700 border-emerald-200",
       color === "amber" && "bg-amber-50 text-amber-700 border-amber-200",
       color === "rose" && "bg-rose-50 text-rose-700 border-rose-200",
       color === "slate" && "bg-slate-50 text-slate-700 border-slate-200"
@@ -19,15 +20,17 @@ const Badge = ({ color = "slate", children }) => (
 );
 
 const StatCard = ({ label, value, subtle }) => (
-  <div className="group rounded-2xl border bg-white p-4 shadow-sm hover:shadow-md transition-all">
+  <div className="group rounded-2xl border  border-slate-200 bg-white p-4 shadow-sm hover:shadow-md transition-all">
     <div className="text-slate-500 text-sm">{label}</div>
     <div className="mt-1 text-2xl font-semibold tracking-tight">{value}</div>
-    {subtle ? <div className="text-xs text-slate-400 mt-1">{subtle}</div> : null}
+    {subtle ? (
+      <div className="text-xs text-slate-400 mt-1">{subtle}</div>
+    ) : null}
   </div>
 );
 
 const Section = ({ title, right, children }) => (
-  <section className="rounded-2xl border bg-white p-4 shadow-sm">
+  <section className="rounded-2xl border   border-slate-200 bg-white p-4 shadow-sm">
     <div className="mb-3 flex items-center justify-between">
       <h3 className="text-base font-semibold text-slate-800">{title}</h3>
       {right}
@@ -45,8 +48,7 @@ const StatusPill = (v) => {
 };
 
 const fmtDate = (s) => (s ? new Date(s).toLocaleString() : "-");
-const toFinal = (r) =>
-  r.total_score ?? r.suggested_total_score ?? 0;
+const toFinal = (r) => r.total_score ?? r.suggested_total_score ?? 0;
 
 export default function Result() {
   const nav = useNavigate();
@@ -65,7 +67,6 @@ export default function Result() {
   const [passThreshold, setPassThreshold] = React.useState(50);
 
   const [drawer, setDrawer] = React.useState({ open: false, row: null });
-
 
   const load = async (id) => {
     if (!id) return;
@@ -125,7 +126,9 @@ export default function Result() {
 
     if (status !== "all")
       arr = arr.filter((r) =>
-        String(r.status || "").toLowerCase().includes(status)
+        String(r.status || "")
+          .toLowerCase()
+          .includes(status)
       );
 
     const min = minScore !== "" ? Number(minScore) : null;
@@ -140,7 +143,6 @@ export default function Result() {
 
     return sorted;
   }, [rows, q, status, sort, minScore, maxScore]);
-
 
   const exportCsv = () => {
     const header = [
@@ -239,12 +241,10 @@ export default function Result() {
     }
   };
 
- 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
-
       {/* Header + actions */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div className="flex max-xl:flex-col flex-row max-lg:justify-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Exam Results</h1>
           <p className="text-slate-500 text-sm">
@@ -254,7 +254,7 @@ export default function Result() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => nav("/results-exams")}
-            className="rounded-xl border bg-white px-3 py-2 shadow-sm hover:bg-slate-50 transition"
+            className="rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm hover:bg-slate-50 transition"
           >
             Chọn bài thi khác
           </button>
@@ -262,7 +262,7 @@ export default function Result() {
           <select
             value={examId}
             onChange={onPick}
-            className="rounded-xl border bg-white px-3 py-2 shadow-sm hover:border-slate-300"
+            className="rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm hover:border-slate-300"
           >
             <option value="">Chọn bài thi…</option>
             {examList.map((e) => (
@@ -275,13 +275,13 @@ export default function Result() {
           <div className="hidden sm:flex items-center gap-2">
             <button
               onClick={exportCsv}
-              className="rounded-xl border bg-white px-3 py-2 shadow-sm hover:bg-slate-50 transition"
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm hover:bg-slate-50 transition"
             >
               Export CSV
             </button>
             <button
               onClick={exportXlsx}
-              className="rounded-xl border bg-white px-3 py-2 shadow-sm hover:bg-slate-50 transition"
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm hover:bg-slate-50 transition"
             >
               Export Excel
             </button>
@@ -290,15 +290,12 @@ export default function Result() {
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid max-lg:grid-cols-2 grid-cols-4 gap-3">
         <StatCard
           label="Total Submissions"
-          value={(summary?.total_submissions ?? summary?.total ?? 0)}
+          value={summary?.total_submissions ?? summary?.total ?? 0}
         />
-        <StatCard
-          label="Total Students"
-          value={summary?.total_students ?? 0}
-        />
+        <StatCard label="Total Students" value={summary?.total_students ?? 0} />
         <StatCard
           label="Avg Score"
           value={
@@ -327,16 +324,18 @@ export default function Result() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Tìm tên sinh viên…"
-            className="w-56 rounded-xl border px-3 py-2 shadow-sm focus:outline-none focus:ring focus:ring-indigo-100"
+            className="w-56 rounded-xl border border-slate-300 px-3 py-2 shadow-sm focus:outline-none focus:ring focus:ring-indigo-100"
           />
-          <div className="inline-flex rounded-xl border overflow-hidden bg-white shadow-sm">
+          <div className="inline-flex rounded-xl border border-slate-300 overflow-hidden bg-white shadow-sm">
             {["all", "pending", "graded", "confirmed"].map((s) => (
               <button
                 key={s}
                 onClick={() => setStatus(s)}
                 className={cls(
                   "px-3 py-2 text-sm",
-                  status === s ? "bg-indigo-600 text-white" : "hover:bg-slate-50"
+                  status === s
+                    ? "bg-indigo-600 text-white"
+                    : "hover:bg-slate-50"
                 )}
               >
                 {s}
@@ -346,23 +345,25 @@ export default function Result() {
           <input
             type="number"
             placeholder="Min"
-            className="w-24 rounded-xl border px-3 py-2 shadow-sm"
+            className="w-24 rounded-xl border border-slate-300 border- px-3 py-2 shadow-sm"
             value={minScore}
             onChange={(e) => setMinScore(e.target.value)}
           />
           <input
             type="number"
             placeholder="Max"
-            className="w-24 rounded-xl border px-3 py-2 shadow-sm"
+            className="w-24 rounded-xl border border-slate-300 px-3 py-2 shadow-sm"
             value={maxScore}
             onChange={(e) => setMaxScore(e.target.value)}
           />
-          <div className="inline-flex rounded-xl border overflow-hidden bg-white shadow-sm">
+          <div className="inline-flex rounded-xl border border-slate-300 overflow-hidden bg-white shadow-sm">
             <button
               onClick={() => setSort("score_desc")}
               className={cls(
                 "px-3 py-2 text-sm",
-                sort === "score_desc" ? "bg-indigo-600 text-white" : "hover:bg-slate-50"
+                sort === "score_desc"
+                  ? "bg-indigo-600 text-white"
+                  : "hover:bg-slate-50  "
               )}
             >
               Điểm ↓
@@ -371,7 +372,9 @@ export default function Result() {
               onClick={() => setSort("score_asc")}
               className={cls(
                 "px-3 py-2 text-sm",
-                sort === "score_asc" ? "bg-indigo-600 text-white" : "hover:bg-slate-50"
+                sort === "score_asc"
+                  ? "bg-indigo-600 text-white"
+                  : "hover:bg-slate-50"
               )}
             >
               Điểm ↑
@@ -392,14 +395,17 @@ export default function Result() {
               <span>Ngưỡng:</span>
               <input
                 type="number"
-                className="w-20 rounded-lg border px-2 py-1 shadow-sm"
+                className="w-20 rounded-lg border border-slate-300 px-2 py-1 shadow-sm"
                 value={passThreshold}
                 onChange={(e) => setPassThreshold(e.target.value)}
               />
             </div>
           }
         >
-          <PassFail rows={filtered} passThreshold={Number(passThreshold || 0)} />
+          <PassFail
+            rows={filtered}
+            passThreshold={Number(passThreshold || 0)}
+          />
         </Section>
         <Section
           title="Xuất báo cáo"
@@ -408,13 +414,13 @@ export default function Result() {
           <div className="flex flex-wrap gap-2">
             <button
               onClick={exportCsv}
-              className="rounded-xl border bg-white px-3 py-2 shadow-sm hover:bg-slate-50 transition"
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm hover:bg-slate-50 transition"
             >
               Export CSV
             </button>
             <button
               onClick={exportXlsx}
-              className="rounded-xl border bg-white px-3 py-2 shadow-sm hover:bg-slate-50 transition"
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm hover:bg-slate-50 transition"
             >
               Export Excel
             </button>
@@ -424,7 +430,7 @@ export default function Result() {
 
       {/* Table */}
       <Section title="Danh sách bài nộp">
-        <div className="overflow-auto rounded-xl border">
+        <div className="overflow-auto rounded-xl border border-slate-300">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 sticky top-0">
               <tr className="text-left text-slate-700">
@@ -470,7 +476,11 @@ export default function Result() {
                     <td className="p-3">{r.suggested_total_score ?? "-"}</td>
                     <td className="p-3 font-semibold">
                       {(r.total_score ?? r.suggested_total_score ?? 0).toFixed
-                        ? (r.total_score ?? r.suggested_total_score ?? 0).toFixed(2)
+                        ? (
+                            r.total_score ??
+                            r.suggested_total_score ??
+                            0
+                          ).toFixed(2)
                         : r.total_score ?? r.suggested_total_score ?? 0}
                     </td>
                     <td className="p-3">{fmtDate(r.started_at)}</td>
@@ -615,16 +625,17 @@ export default function Result() {
 }
 
 function Histogram({ rows }) {
-  const finals = rows
-    .map(toFinal)
-    .filter((v) => !isNaN(Number(v)));
+  const finals = rows.map(toFinal).filter((v) => !isNaN(Number(v)));
 
   const bins = new Array(10).fill(0);
   finals.forEach((v) => {
     const i = Math.max(0, Math.min(9, Math.floor(Number(v) / 10)));
     bins[i]++;
   });
-  const data = bins.map((c, i) => ({ name: `${i * 10}-${i * 10 + 9}`, cnt: c }));
+  const data = bins.map((c, i) => ({
+    name: `${i * 10}-${i * 10 + 9}`,
+    cnt: c,
+  }));
 
   const [lib, setLib] = React.useState(null);
   React.useEffect(() => {
@@ -656,9 +667,7 @@ function Histogram({ rows }) {
 }
 
 function PassFail({ rows, passThreshold }) {
-  const finals = rows
-    .map(toFinal)
-    .filter((v) => !isNaN(Number(v)));
+  const finals = rows.map(toFinal).filter((v) => !isNaN(Number(v)));
   const pass = finals.filter((v) => Number(v) >= passThreshold).length;
   const fail = finals.length - pass;
 
