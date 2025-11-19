@@ -1,5 +1,4 @@
 # Local env files
 .env
-
 # App role persistence file
 .appRole.json
