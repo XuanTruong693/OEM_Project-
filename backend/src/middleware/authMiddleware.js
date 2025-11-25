@@ -4,8 +4,8 @@ require("dotenv").config();
 // ✅ Middleware xác thực token
 const verifyToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  // console.log("🧾 Token received:", authHeader);
-  // console.log("🧾 Token received:", req.headers.authorization);
+  //console.log("🧾 Token received:", authHeader);
+  //console.log("🧾 Token received:", req.headers.authorization);
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({ message: "Không có token" });
   }

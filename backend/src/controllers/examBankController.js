@@ -12,14 +12,81 @@ const importExamQuestions = async (req, res) => {
       await transaction.rollback();
       return res
         .status(400)
-        .json({ message: "exam_title is required", status: "error" });
+        .json({ message: "Tên đề thi là bắt buộc", status: "error" });
     }
 
     if (!Array.isArray(preview) || preview.length === 0) {
       await transaction.rollback();
       return res
         .status(400)
-        .json({ message: "No questions to import", status: "error" });
+        .json({ message: "Không có câu hỏi để import", status: "error" });
+    }
+    
+    // ✅ 1. Kiểm tra câu hỏi trùng lặp
+    const duplicateErrors = [];
+    const seenQuestions = new Map();
+    
+    preview.forEach((q, idx) => {
+      if (!q.question_text) return;
+      
+      // Loại bỏ đánh số câu tự động và normalize
+      const cleanedText = q.question_text.replace(/^Câu\s+\d+:\s*/i, "").trim();
+      const normalizedText = cleanedText.toLowerCase().replace(/\s+/g, " ").trim();
+      
+      if (seenQuestions.has(normalizedText)) {
+        const previousRows = seenQuestions.get(normalizedText);
+        duplicateErrors.push(
+          `Câu hỏi trùng lặp tại dòng ${q.row || idx + 1} và dòng ${previousRows.join(", ")}: "${cleanedText.substring(0, 50)}${cleanedText.length > 50 ? "..." : ""}"`
+        );
+        previousRows.push(q.row || idx + 1);
+      } else {
+        seenQuestions.set(normalizedText, [q.row || idx + 1]);
+      }
+    });
+    
+    if (duplicateErrors.length > 0) {
+      await transaction.rollback();
+      return res.status(400).json({
+        message: "❌ Phát hiện câu hỏi trùng lặp!\n\n" + duplicateErrors.join("\n") + "\n\nVui lòng xóa các câu hỏi trùng lặp và thử lại.",
+        status: "error",
+        duplicates: duplicateErrors
+      });
+    }
+    
+    // ✅ 2. Kiểm tra xem có câu hỏi nào chứa dữ liệu không phải text thuần túy
+    for (let i = 0; i < preview.length; i++) {
+      const q = preview[i];
+      
+      // Kiểm tra question_text
+      if (q.question_text && typeof q.question_text === 'object') {
+        await transaction.rollback();
+        return res.status(400).json({
+          message: "File chứa các file hình ảnh, âm thanh không đúng định dạng. Vui lòng sửa lại theo mẫu hướng dẫn.",
+          status: "error"
+        });
+      }
+      
+      // Kiểm tra model_answer cho Essay
+      if (q.model_answer && typeof q.model_answer === 'object') {
+        await transaction.rollback();
+        return res.status(400).json({
+          message: "File chứa các file hình ảnh, âm thanh không đúng định dạng. Vui lòng sửa lại theo mẫu hướng dẫn.",
+          status: "error"
+        });
+      }
+      
+      // Kiểm tra options cho MCQ
+      if (q.options && Array.isArray(q.options)) {
+        for (let opt of q.options) {
+          if (opt && typeof opt === 'object') {
+            await transaction.rollback();
+            return res.status(400).json({
+              message: "File chứa các file hình ảnh, âm thanh không đúng định dạng. Vui lòng sửa lại theo mẫu hướng dẫn.",
+              status: "error"
+            });
+          }
+        }
+      }
     }
 
     const safeDuration = duration || 60;
@@ -53,9 +120,9 @@ const importExamQuestions = async (req, res) => {
       if (!match) {
         await transaction.rollback();
         return res.status(400).json({
-          message: `Cannot determine the score for the question at row ${
+          message: `Không xác định được điểm số cho câu hỏi ở dòng ${
             q.row || i + 1
-          }. Please add the score in the format "(0.5đ)" or "(0,5đ)" within the question.`,
+          }. Vui lòng thêm điểm số theo định dạng "(0.5đ)" hoặc "(0,5đ)" trong nội dung câu hỏi.`,
           status: "error",
         });
       }
@@ -64,7 +131,7 @@ const importExamQuestions = async (req, res) => {
       if (isNaN(point) || point <= 0) {
         await transaction.rollback();
         return res.status(400).json({
-          message: `Invalid score at row ${q.row || i + 1}.`,
+          message: `Điểm số không hợp lệ ở dòng ${q.row || i + 1}.`,
           status: "error",
         });
       }
@@ -82,7 +149,7 @@ const importExamQuestions = async (req, res) => {
     if (mcqCount > 50) {
       await transaction.rollback();
       return res.status(400).json({
-        message: `The number of multiple-choice questions exceeds the limit (maximum 50, currently ${mcqCount}).`,
+        message: `Số câu trắc nghiệm vượt quá giới hạn (tối đa 50, hiện tại ${mcqCount}).`,
         status: "error",
       });
     }
@@ -90,7 +157,7 @@ const importExamQuestions = async (req, res) => {
     if (essayCount > 10) {
       await transaction.rollback();
       return res.status(400).json({
-        message: `The number of essay questions exceeds the limit (maximum 10, currently ${essayCount}).`,
+        message: `Số câu tự luận vượt quá giới hạn (tối đa 10, hiện tại ${essayCount}).`,
         status: "error",
       });
     }
@@ -104,8 +171,17 @@ const importExamQuestions = async (req, res) => {
       return sum + point;
     }, 0);
 
+    // Kiểm tra tổng điểm = 10 (cho phép sai số 0.01 do làm tròn)
+    if (Math.abs(totalPoints - 10) > 0.01) {
+      await transaction.rollback();
+      return res.status(400).json({
+        message: `Tổng điểm phải bằng 10đ (hiện tại: ${totalPoints.toFixed(2)}đ).`,
+        status: "error",
+      });
+    }
+
     console.log(
-      `✅ Tổng điểm hợp lệ: MCQ=${totalMCQ}, Essay=${totalEssay}, Tổng=${totalPoints}`
+      `✅ Validation hợp lệ: ${mcqCount} câu MCQ + ${essayCount} câu Essay = ${totalPoints.toFixed(2)} điểm`
     );
 
     // ✅ Lưu exam vào DB
@@ -145,7 +221,7 @@ const importExamQuestions = async (req, res) => {
         }
 
         if (!q.question_text || q.question_text.trim().length === 0) {
-          errors.push(`Row ${q.row}: Missing question text`);
+          errors.push(`Dòng ${q.row}: Thiếu nội dung câu hỏi`);
           continue;
         }
 
@@ -155,12 +231,12 @@ const importExamQuestions = async (req, res) => {
 
         if (q.type === "MCQ") {
           if (!q.options || q.options.length < 2) {
-            errors.push(`Row ${q.row}: MCQ must have at least 2 options`);
+            errors.push(`Dòng ${q.row}: Câu trắc nghiệm phải có ít nhất 2 đáp án`);
             continue;
           }
 
           if (q.correct_option === null || q.correct_option === undefined) {
-            errors.push(`Row ${q.row}: MCQ must have correct answer marked`);
+            errors.push(`Dòng ${q.row}: Câu trắc nghiệm phải có đáp án đúng được đánh dấu`);
             continue;
           }
 
@@ -234,7 +310,7 @@ const importExamQuestions = async (req, res) => {
           importedCount++;
         } else if (q.type === "Essay") {
           if (!q.model_answer || q.model_answer.trim().length === 0) {
-            errors.push(`Row ${q.row}: Essay must have model answer`);
+            errors.push(`Dòng ${q.row}: Câu tự luận phải có câu trả lời mẫu`);
             continue;
           }
 
@@ -290,18 +366,18 @@ const importExamQuestions = async (req, res) => {
 
           importedCount++;
         } else {
-          errors.push(`Row ${q.row}: Unknown question type ${q.type}`);
+          errors.push(`Dòng ${q.row}: Loại câu hỏi không xác định ${q.type}`);
         }
       } catch (err) {
-        console.error(`❌ Error importing row ${q.row}:`, err);
-        errors.push(`Row ${q.row}: ${err.message}`);
+        console.error(`❌ Lỗi import dòng ${q.row}:`, err);
+        errors.push(`Dòng ${q.row}: ${err.message}`);
       }
     }
 
     if (errors.length > 0) {
       await transaction.rollback();
       return res.status(400).json({
-        message: "Import failed, some rows invalid",
+        message: "Import thất bại, một số dòng không hợp lệ",
         errors,
         status: "error",
       });
@@ -310,7 +386,7 @@ const importExamQuestions = async (req, res) => {
     await transaction.commit();
 
     return res.status(200).json({
-      message: `✅ Imported ${importedCount} questions successfully.`,
+      message: `✅ Import thành công ${importedCount} câu hỏi.`,
       exam_id: examId,
       imported: importedCount,
       total_points: totalPoints,
@@ -321,7 +397,7 @@ const importExamQuestions = async (req, res) => {
     await transaction.rollback();
     console.error("❌ Import error:", err);
     return res.status(500).json({
-      message: "Server error during import: " + err.message,
+      message: "Lỗi máy chủ khi import: " + err.message,
       status: "error",
     });
   }

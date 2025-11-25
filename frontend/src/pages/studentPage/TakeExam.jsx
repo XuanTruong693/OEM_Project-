@@ -24,6 +24,8 @@ export default function TakeExam() {
   const [aiScore, setAiScore] = useState(null);
   const [totalScore, setTotalScore] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false); // Modal xác nhận nộp bài
+  const [unansweredQuestions, setUnansweredQuestions] = useState([]); // Danh sách câu bỏ trống
 
   const qRefs = useRef({});
   const toastTimerRef = useRef(null);
@@ -178,6 +180,18 @@ export default function TakeExam() {
     if (el?.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  const checkUnanswered = () => {
+    const unanswered = questions.filter(q => !q.__answered);
+    return unanswered;
+  };
+
+  const handleSubmitClick = () => {
+    // Kiểm tra câu bỏ trống
+    const unanswered = checkUnanswered();
+    setUnansweredQuestions(unanswered);
+    setShowConfirmModal(true);
+  };
+
   const handleSubmit = async (auto = false) => {
     if (submitting) return;
     setSubmitting(true);
@@ -256,7 +270,7 @@ export default function TakeExam() {
               ⏳ {fmt}
             </div>
             <button
-              onClick={() => handleSubmit(false)}
+              onClick={handleSubmitClick}
               disabled={submitting}
               className="px-4 py-2 rounded-xl text-white font-bold shadow-[0_8px_20px_rgba(24,201,100,.28),_inset_0_-2px_0_rgba(0,0,0,.2)] disabled:opacity-60"
               style={{ background: "linear-gradient(180deg,#00cf7f,#17a55c)" }}
@@ -429,6 +443,121 @@ export default function TakeExam() {
           >
             Về trang chủ
           </button>
+        </div>
+      </div>
+
+      {/* MODAL XÁC NHẬN NỘP BÀI */}
+      <div className={`fixed inset-0 z-50 ${showConfirmModal ? "grid" : "hidden"} place-items-center bg-black/60 backdrop-blur-sm`}>
+        <div
+          className="w-[min(520px,94vw)] p-6 rounded-2xl border border-slate-200 shadow-2xl bg-white"
+          style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
+        >
+          {unansweredQuestions.length > 0 ? (
+            <>
+              <div className="flex items-start gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center flex-shrink-0">
+                  <span className="text-2xl">⚠️</span>
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800">Cảnh báo: Có câu hỏi bỏ trống</h2>
+                  <p className="text-sm text-slate-600 mt-1">
+                    Bạn đang bỏ trống <strong className="text-red-600">{unansweredQuestions.length} câu hỏi</strong>:
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4 max-h-32 overflow-y-auto">
+                <div className="flex flex-wrap gap-2">
+                  {unansweredQuestions.map((q, idx) => {
+                    const qIndex = questions.findIndex(qq => qq.question_id === q.question_id) + 1;
+                    return (
+                      <button
+                        key={q.question_id}
+                        onClick={() => {
+                          scrollTo(q.question_id);
+                          setShowConfirmModal(false);
+                        }}
+                        className="px-3 py-1 bg-red-100 border border-red-300 rounded-lg text-red-700 font-semibold text-sm hover:bg-red-200 transition"
+                      >
+                        Câu {qIndex}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <p className="text-sm text-slate-700 mb-4">
+                Bạn có muốn tiếp tục nộp bài không? Các câu bỏ trống sẽ không được tính điểm.
+              </p>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowConfirmModal(false)}
+                  className="flex-1 px-4 py-3 rounded-xl border-2 border-slate-300 text-slate-700 font-bold hover:bg-slate-50 transition"
+                >
+                  Quay lại làm tiếp
+                </button>
+                <button
+                  onClick={() => {
+                    setShowConfirmModal(false);
+                    handleSubmit(false);
+                  }}
+                  disabled={submitting}
+                  className="flex-1 px-4 py-3 rounded-xl text-white font-bold shadow-lg disabled:opacity-60 transition"
+                  style={{ background: "linear-gradient(180deg,#ff6b6b,#ee5a52)" }}
+                >
+                  Bỏ qua và nộp bài
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-start gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                  <span className="text-2xl">✋</span>
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800">Xác nhận nộp bài</h2>
+                  <p className="text-sm text-slate-600 mt-1">
+                    Bạn đã hoàn thành <strong className="text-green-600">{counts.answered}/{counts.total} câu hỏi</strong>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                <p className="text-sm text-slate-700">
+                  ⏰ Thời gian còn lại: <strong className="text-blue-600 font-mono">{fmt}</strong>
+                </p>
+                <p className="text-sm text-slate-600 mt-2">
+                  Sau khi nộp bài, bạn sẽ không thể chỉnh sửa câu trả lời.
+                </p>
+              </div>
+
+              <p className="text-base text-slate-800 font-semibold mb-4">
+                Bạn có chắc chắn muốn nộp bài không?
+              </p>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowConfirmModal(false)}
+                  className="flex-1 px-4 py-3 rounded-xl border-2 border-slate-300 text-slate-700 font-bold hover:bg-slate-50 transition"
+                >
+                  Quay lại làm tiếp
+                </button>
+                <button
+                  onClick={() => {
+                    setShowConfirmModal(false);
+                    handleSubmit(false);
+                  }}
+                  disabled={submitting}
+                  className="flex-1 px-4 py-3 rounded-xl text-white font-bold shadow-lg disabled:opacity-60 transition"
+                  style={{ background: "linear-gradient(180deg,#00cf7f,#17a55c)" }}
+                >
+                  Nộp bài
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
