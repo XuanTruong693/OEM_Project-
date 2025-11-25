@@ -16,9 +16,12 @@ const AssignExam = () => {
   const [examTitle, setExamTitle] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [jobId, setJobId] = useState(null);
   const [duration, setDuration] = useState("");
   const [message, setMessage] = useState("");
+  const [showSheetSelector, setShowSheetSelector] = useState(false);
+  const [availableSheets, setAvailableSheets] = useState([]);
+  const [selectedSheetName, setSelectedSheetName] = useState(null);
+  
   // Handle file selection
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
@@ -30,18 +33,21 @@ const AssignExam = () => {
     setUploadedFile(file);
     setError(null);
     setPreviewData(null);
-    setJobId(null);
   };
   // Parse Excel and classify questions
-  const parseExcelFile = async (file) => {
+  const parseExcelFile = async (file, forcedSheetName = null) => {
     try {
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: "array" });
       if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
         throw new Error("File Excel không có sheet nào");
       }
-      const sheetName = workbook.SheetNames[0];
+      
+      // ✅ SỬ DỤNG SHEET ĐÃ ĐƯỢC BACKEND XÁC ĐỊNH
+      const sheetName = forcedSheetName || workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
+      
+      console.log("📌 Đang parse sheet:", sheetName);
 
       // ✅ KIỂM TRA MEDIA TRƯỚC KHI PARSE - Kiểm tra workbook metadata
       console.log("🔍 Bắt đầu kiểm tra media trong file Excel...");
@@ -376,7 +382,7 @@ const AssignExam = () => {
       throw new Error(`Lỗi parse file Excel: ${err.message}`);
     }
   };
-  // Handle file upload
+  // Handle file upload - Gọi BE kiểm tra sheets trước
   const handleUpload = async () => {
     if (!uploadedFile) {
       setError("⚠️ Vui lòng chọn file trước khi upload");
@@ -384,15 +390,63 @@ const AssignExam = () => {
     }
     setLoading(true);
     setError(null);
+    
     try {
-      const result = await parseExcelFile(uploadedFile);
-      setPreviewData(result);
+      // ✅ BƯỚC 1: Gọi Backend kiểm tra sheets
+      const formData = new FormData();
+      formData.append("file", uploadedFile);
+      
+      const token = localStorage.getItem("token");
+      const response = await axios.post(
+        "http://localhost:5000/api/exam-bank/check-sheets",
+        formData,
+        {
+          headers: { 
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "multipart/form-data"
+          },
+        }
+      );
+      
+      if (response.data.status === "single_sheet") {
+        // Chỉ có 1 sheet → Parse ngay với sheet đó
+        console.log("✅ Backend xác định sheet:", response.data.selectedSheet);
+        const result = await parseExcelFile(uploadedFile, response.data.selectedSheet);
+        if (result) {
+          setPreviewData(result);
+        }
+      } else if (response.data.status === "multiple_sheets") {
+        // Nhiều sheets → Hiện modal cho user chọn
+        setAvailableSheets(response.data.sheets);
+        setShowSheetSelector(true);
+      } else {
+        setError(response.data.message || "Lỗi kiểm tra file");
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Handle chọn sheet từ modal
+  const handleSheetSelection = async (sheetName) => {
+    setShowSheetSelector(false);
+    setLoading(true);
+    setError(null);
+    try {
+      // Parse với sheet đã chọn
+      const result = await parseExcelFile(uploadedFile, sheetName);
+      if (result) {
+        setPreviewData(result);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
   };
+  
   // Handle commit to database
   const handleCommit = async () => {
     if (!previewData) {
@@ -873,6 +927,64 @@ const AssignExam = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+      
+      {/* MODAL CHỌN SHEET */}
+      {showSheetSelector && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 backdrop-blur-sm">
+          <div className="w-[min(600px,94vw)] p-6 rounded-2xl border border-slate-200 shadow-2xl bg-white">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                <span className="text-2xl">📗</span>
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">Chọn Sheet để Import</h2>
+                <p className="text-sm text-slate-600 mt-1">
+                  File Excel có <strong className="text-blue-600">{availableSheets.length} sheets</strong> chứa dữ liệu. Vui lòng chọn sheet bạn muốn import:
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {availableSheets.map((sheet, idx) => (
+                <button
+                  key={sheet.name}
+                  onClick={() => handleSheetSelection(sheet.name)}
+                  className="w-full p-4 border-2 border-slate-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition text-left group"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-semibold text-slate-800 group-hover:text-blue-600">
+                      📄 {sheet.name}
+                    </span>
+                    <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded">
+                      {sheet.rowCount} dòng
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-600 bg-slate-50 p-2 rounded">
+                    <strong>Preview:</strong>
+                    <div className="mt-1 space-y-1">
+                      {sheet.preview.slice(0, 2).map((row, i) => (
+                        <div key={i} className="truncate">
+                          {row.filter(cell => cell).slice(0, 3).join(" | ")}...
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => {
+                setShowSheetSelector(false);
+                setAvailableSheets([]);
+              }}
+              className="w-full mt-4 px-4 py-3 rounded-lg border-2 border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 transition"
+            >
+              Hủy
+            </button>
+          </div>
         </div>
       )}
     </div>

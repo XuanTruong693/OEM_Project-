@@ -1,4 +1,87 @@
 const sequelize = require("../config/db");
+const XLSX = require("xlsx");
+
+// Endpoint kiểm tra sheets trong file Excel
+const checkExcelSheets = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        message: "Vui lòng tải lên file Excel",
+        status: "error"
+      });
+    }
+
+    // Đọc file Excel
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    
+    if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+      return res.status(400).json({
+        message: "File Excel không có sheet nào",
+        status: "error"
+      });
+    }
+
+    console.log("📊 File có", workbook.SheetNames.length, "sheets:", workbook.SheetNames);
+
+    // ✅ KIỂM TRA TẤT CẢ SHEETS - Tìm sheets có dữ liệu
+    const sheetsWithData = [];
+    
+    for (const shName of workbook.SheetNames) {
+      const ws = workbook.Sheets[shName];
+      const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+      
+      // Kiểm tra sheet có dữ liệu thực sự không (ít nhất 2 dòng có nội dung)
+      const nonEmptyRows = jsonData.filter(row => 
+        row && row.some(cell => cell !== "" && cell !== null && cell !== undefined)
+      );
+      
+      if (nonEmptyRows.length > 0) {
+        sheetsWithData.push({
+          name: shName,
+          rowCount: nonEmptyRows.length,
+          preview: nonEmptyRows.slice(0, 3).map(row => 
+            row.filter(cell => cell !== "" && cell !== null && cell !== undefined).slice(0, 5)
+          )
+        });
+      }
+    }
+    
+    console.log("📄 Sheets có dữ liệu:", sheetsWithData.length, sheetsWithData.map(s => s.name));
+
+    // Nếu không có sheet nào có dữ liệu
+    if (sheetsWithData.length === 0) {
+      return res.status(400).json({
+        message: "File Excel không chứa dữ liệu trong bất kỳ sheet nào",
+        status: "error"
+      });
+    }
+
+    // Nếu chỉ có 1 sheet có dữ liệu → Trả về sheet đó để FE parse
+    if (sheetsWithData.length === 1) {
+      return res.status(200).json({
+        status: "single_sheet",
+        message: "File có 1 sheet chứa dữ liệu",
+        selectedSheet: sheetsWithData[0].name,
+        data: null
+      });
+    }
+
+    // Nếu có nhiều hơn 1 sheet có dữ liệu → Yêu cầu user chọn
+    return res.status(200).json({
+      status: "multiple_sheets",
+      message: `File có ${sheetsWithData.length} sheets chứa dữ liệu. Vui lòng chọn sheet cần import.`,
+      sheets: sheetsWithData,
+      data: null
+    });
+
+  } catch (error) {
+    console.error("Error checking Excel sheets:", error);
+    return res.status(500).json({
+      message: "Lỗi khi kiểm tra file Excel: " + error.message,
+      status: "error"
+    });
+  }
+};
 
 const importExamQuestions = async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -403,4 +486,4 @@ const importExamQuestions = async (req, res) => {
   }
 };
 
-module.exports = { importExamQuestions };
+module.exports = { checkExcelSheets, importExamQuestions };
