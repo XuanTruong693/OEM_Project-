@@ -4,13 +4,11 @@
   "main": "app.js",
   "private": true,
   "type": "commonjs",
-  "directories": {
-    "test": "tests"
-  },
   "scripts": {
     "start": "node src/app.js",
     "server": "node src/app.js",
     "dev": "nodemon src/app.js",
+    "test": "jest --runInBand",
     "taoTK": "node scripts/createAdmin.js"
   },
   "keywords": [],
@@ -35,7 +33,9 @@
     "sequelize": "^6.37.7"
   },
   "devDependencies": {
+    "jest": "^29.7.0",
     "nodemon": "^3.1.10",
+    "supertest": "^6.3.3",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }
