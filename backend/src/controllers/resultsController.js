@@ -76,28 +76,29 @@ async function getResults(req, res) {
       if (Array.isArray(rows)) data = Array.isArray(rows[0]) ? rows[0] : rows;
       return res.json(data);
     } catch (e) {
+      // Fallback query: Hiển thị ĐIỂM CAO NHẤT của mỗi student
       const [rows] = await sequelize.query(
         `SELECT 
             u.full_name AS student_name,
             s.user_id AS student_id,
-            s.status,
-            s.ai_score,
-            s.total_score,
-            COALESCE(SUM(CASE WHEN q.type='MCQ' THEN COALESCE(sa.score,0) ELSE 0 END),0) AS mcq_score,
-            COALESCE(s.suggested_total_score, COALESCE(SUM(CASE WHEN q.type='MCQ' THEN COALESCE(sa.score,0) ELSE 0 END),0) + COALESCE(s.ai_score,0)) AS suggested_total_score,
-            s.started_at,
-            s.submitted_at,
-            TIMESTAMPDIFF(MINUTE, s.started_at, s.submitted_at) AS duration_minutes,
-            s.proctor_flags,
-            s.face_image_url,
-            s.student_card_url
+            COUNT(DISTINCT s.id) AS total_attempts,
+            MAX(s.total_score) AS best_score,
+            MAX(s.total_score) AS total_score,
+            GROUP_CONCAT(DISTINCT s.id ORDER BY s.total_score DESC SEPARATOR ',') AS submission_ids,
+            GROUP_CONCAT(DISTINCT s.attempt_no ORDER BY s.total_score DESC SEPARATOR ',') AS attempt_numbers,
+            (SELECT status FROM submissions WHERE user_id = s.user_id AND exam_id = s.exam_id ORDER BY total_score DESC, submitted_at DESC LIMIT 1) AS status,
+            (SELECT ai_score FROM submissions WHERE user_id = s.user_id AND exam_id = s.exam_id ORDER BY total_score DESC, submitted_at DESC LIMIT 1) AS ai_score,
+            (SELECT suggested_total_score FROM submissions WHERE user_id = s.user_id AND exam_id = s.exam_id ORDER BY total_score DESC, submitted_at DESC LIMIT 1) AS suggested_total_score,
+            (SELECT started_at FROM submissions WHERE user_id = s.user_id AND exam_id = s.exam_id ORDER BY total_score DESC, submitted_at DESC LIMIT 1) AS started_at,
+            (SELECT submitted_at FROM submissions WHERE user_id = s.user_id AND exam_id = s.exam_id ORDER BY total_score DESC, submitted_at DESC LIMIT 1) AS submitted_at,
+            (SELECT face_image_url FROM submissions WHERE user_id = s.user_id AND exam_id = s.exam_id ORDER BY total_score DESC, submitted_at DESC LIMIT 1) AS face_image_url,
+            (SELECT student_card_url FROM submissions WHERE user_id = s.user_id AND exam_id = s.exam_id ORDER BY total_score DESC, submitted_at DESC LIMIT 1) AS student_card_url,
+            (SELECT proctor_flags FROM submissions WHERE user_id = s.user_id AND exam_id = s.exam_id ORDER BY total_score DESC, submitted_at DESC LIMIT 1) AS proctor_flags
          FROM submissions s 
          JOIN users u ON u.id = s.user_id
-         LEFT JOIN student_answers sa ON sa.submission_id = s.id
-         LEFT JOIN exam_questions q ON q.id = sa.question_id
-         WHERE s.exam_id = ?
-         GROUP BY s.id
-         ORDER BY u.full_name`, { replacements: [examId] }
+         WHERE s.exam_id = ? AND s.status = 'graded'
+         GROUP BY s.user_id, u.full_name
+         ORDER BY best_score DESC, u.full_name`, { replacements: [examId] }
       );
       return res.json(rows || []);
     }
@@ -125,22 +126,51 @@ async function updateScore(req, res) {
     const ai = ai_score != null ? Number(ai_score) : null;
     if ((mcq != null && isNaN(mcq)) || (ai != null && isNaN(ai))) return res.status(400).json({ message: 'score must be number' });
 
-    try {
-      await sequelize.query(`CALL sp_update_student_exam_record(?, ?, ?, ?, ?);`, { replacements: [examId, studentId, student_name || null, mcq, ai] });
-    } catch (e) {
-      await sequelize.query(
-        `UPDATE submissions s SET total_score = ?, ai_score = ?, suggested_total_score = COALESCE(?,0) + COALESCE(?,0), instructor_confirmed = 1, status='confirmed'
-         WHERE s.exam_id = ? AND s.user_id = ?`,
-        { replacements: [mcq, ai, mcq, ai, examId, studentId] }
-      );
+    // LOGIC: Chỉ cập nhật nếu điểm mới cao hơn điểm hiện tại
+    const newTotalScore = (mcq || 0) + (ai || 0);
+    
+    const [currentBest] = await sequelize.query(
+      `SELECT MAX(total_score) AS best_score 
+       FROM submissions 
+       WHERE exam_id = ? AND user_id = ? AND status = 'graded'`,
+      { replacements: [examId, studentId] }
+    );
+    
+    const currentBestScore = currentBest[0]?.best_score || 0;
+    
+    console.log(`📊 [updateScore] Instructor updating score:`, {
+      exam_id: examId,
+      student_id: studentId,
+      new_score: newTotalScore,
+      current_best: currentBestScore,
+      will_update: newTotalScore > currentBestScore
+    });
+
+    if (newTotalScore > currentBestScore) {
       try {
+        await sequelize.query(`CALL sp_update_student_exam_record(?, ?, ?, ?, ?);`, { replacements: [examId, studentId, student_name || null, mcq, ai] });
+      } catch (e) {
         await sequelize.query(
-          `UPDATE results r SET total_score = (SELECT total_score FROM submissions WHERE exam_id=? AND user_id=?), status='confirmed'
-           WHERE r.exam_id = ? AND r.student_id = ?`,
-          { replacements: [examId, studentId, examId, studentId] }
+          `UPDATE submissions s 
+           SET total_score = ?, ai_score = ?, suggested_total_score = COALESCE(?,0) + COALESCE(?,0), instructor_confirmed = 1, status='confirmed'
+           WHERE s.exam_id = ? AND s.user_id = ?
+           ORDER BY total_score DESC, submitted_at DESC
+           LIMIT 1`,
+          { replacements: [mcq, ai, mcq, ai, examId, studentId] }
         );
-      } catch {}
+        try {
+          await sequelize.query(
+            `UPDATE results r SET total_score = (SELECT MAX(total_score) FROM submissions WHERE exam_id=? AND user_id=?), status='confirmed'
+             WHERE r.exam_id = ? AND r.student_id = ?`,
+            { replacements: [examId, studentId, examId, studentId] }
+          );
+        } catch {}
+      }
+      console.log(`✅ [updateScore] Score updated to ${newTotalScore} (previous best: ${currentBestScore})`);
+    } else {
+      console.log(`ℹ️ [updateScore] Score NOT updated. New score ${newTotalScore} <= current best ${currentBestScore}`);
     }
+
     try {
       const [rows] = await sequelize.query(`CALL sp_get_exam_results(?, 'instructor', ?);`, { replacements: [examId, req.user.id] });
       const data = Array.isArray(rows) ? (Array.isArray(rows[0])? rows[0] : rows) : [];

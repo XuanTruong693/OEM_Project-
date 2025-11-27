@@ -471,17 +471,13 @@ export default function Result() {
                     <td className="p-3 font-medium text-slate-800">
                       {r.student_name}
                     </td>
-                    <td className="p-3">{r.mcq_score ?? "-"}</td>
-                    <td className="p-3">{r.ai_score ?? "-"}</td>
-                    <td className="p-3">{r.suggested_total_score ?? "-"}</td>
+                    <td className="p-3">{r.mcq_score != null ? Number(r.mcq_score).toFixed(1) : "-"}</td>
+                    <td className="p-3">{r.ai_score != null ? Number(r.ai_score).toFixed(1) : "-"}</td>
+                    <td className="p-3">{r.suggested_total_score != null ? Number(r.suggested_total_score).toFixed(1) : "-"}</td>
                     <td className="p-3 font-semibold">
-                      {(r.total_score ?? r.suggested_total_score ?? 0).toFixed
-                        ? (
-                            r.total_score ??
-                            r.suggested_total_score ??
-                            0
-                          ).toFixed(2)
-                        : r.total_score ?? r.suggested_total_score ?? 0}
+                      {(r.total_score ?? r.suggested_total_score) != null
+                        ? Number(r.total_score ?? r.suggested_total_score).toFixed(1)
+                        : "-"}
                     </td>
                     <td className="p-3">{fmtDate(r.started_at)}</td>
                     <td className="p-3">{fmtDate(r.submitted_at)}</td>
@@ -571,9 +567,12 @@ export default function Result() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-sm text-slate-600">Điểm MCQ</label>
+                  <label className="text-sm text-slate-600">Điểm MCQ (0-10)</label>
                   <input
                     type="number"
+                    step="0.1"
+                    min="0"
+                    max="10"
                     className="mt-1 w-full rounded-lg border px-3 py-2 shadow-sm focus:outline-none focus:ring focus:ring-indigo-100"
                     value={drawer.row.mcq_score ?? 0}
                     onChange={(e) =>
@@ -585,9 +584,12 @@ export default function Result() {
                   />
                 </div>
                 <div>
-                  <label className="text-sm text-slate-600">Điểm AI</label>
+                  <label className="text-sm text-slate-600">Điểm AI (0-10)</label>
                   <input
                     type="number"
+                    step="0.1"
+                    min="0"
+                    max="10"
                     className="mt-1 w-full rounded-lg border px-3 py-2 shadow-sm focus:outline-none focus:ring focus:ring-indigo-100"
                     value={drawer.row.ai_score ?? 0}
                     onChange={(e) =>
@@ -601,12 +603,12 @@ export default function Result() {
               </div>
 
               <div className="rounded-xl border bg-slate-50 p-3">
-                <div className="text-sm text-slate-600">Final Preview</div>
+                <div className="text-sm text-slate-600">Tổng điểm</div>
                 <div className="mt-1 text-xl font-semibold">
                   {(
                     Number(drawer.row.mcq_score ?? 0) +
                     Number(drawer.row.ai_score ?? 0)
-                  ).toFixed(2)}
+                  ).toFixed(1)} / 10
                 </div>
               </div>
 

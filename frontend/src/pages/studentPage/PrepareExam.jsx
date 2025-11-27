@@ -123,6 +123,15 @@ export default function PrepareExam() {
         // Load exam info
         const examRes = await axiosClient.get(`/exams/${examId}/public-info`);
         setExamInfo(examRes.data);
+        
+        // Load requirements từ exam API thay vì sessionStorage
+        const examReqs = {
+          face: !!examRes.data?.require_face_check,
+          card: !!examRes.data?.require_student_card,
+          monitor: !!examRes.data?.monitor_screen
+        };
+        setReqs(examReqs);
+        sessionStorage.setItem("exam_flags", JSON.stringify(examReqs));
 
         // Load submission verification status
         const subRes = await axiosClient.get(`/submissions/${submissionId}/status`);

@@ -6,6 +6,9 @@ import { useNavigate } from "react-router-dom";
 const Profile = () => {
   const navigate = useNavigate();
 
+  // Detect user role to determine which dashboard to return to
+  const userRole = localStorage.getItem("role");
+
   const [userInfo, setUserInfo] = useState({
     fullname: "Giảng viên",
     avatar: "/icons/UI Image/default-avatar.png",
@@ -267,7 +270,7 @@ const Profile = () => {
           <div className="w-full max-w-xl lg:max-w-4xl ">
             <div className="flex items-center bg-[#1BA4FF] rounded-[17px] px-3 py-3 mb-6 gap-3">
               <button
-                onClick={() => navigate("/instructor-dashboard")}
+                onClick={() => navigate(userRole === "student" ? "/student-dashboard" : "/instructor-dashboard")}
                 className="flex items-center text-white hover:opacity-80 transition"
               >
                 <img

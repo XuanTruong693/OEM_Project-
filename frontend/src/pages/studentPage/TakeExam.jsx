@@ -26,12 +26,36 @@ export default function TakeExam() {
   const [aiScore, setAiScore] = useState(null);
   const [totalScore, setTotalScore] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false); // Đánh dấu đã nộp bài
   const [showConfirmModal, setShowConfirmModal] = useState(false); // Modal xác nhận nộp bài
   const [unansweredQuestions, setUnansweredQuestions] = useState([]); // Danh sách câu bỏ trống
 
   const qRefs = useRef({});
   const toastTimerRef = useRef(null);
   const tickRef = useRef(null);
+
+  // ===== Block navigation after submit =====
+  useEffect(() => {
+    if (!submitted) return;
+    
+    const handlePopState = (e) => {
+      e.preventDefault();
+      console.warn("⚠️ [TakeExam] Navigation blocked - exam already submitted");
+      
+      // Logout và xóa toàn bộ token
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      sessionStorage.clear();
+      
+      // Redirect về verify-room
+      window.location.href = "/verify-room";
+    };
+    
+    window.addEventListener("popstate", handlePopState);
+    window.history.pushState(null, "", window.location.href);
+    
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [submitted]);
 
   // ===== Theme persist =====
   useEffect(() => {
@@ -49,6 +73,26 @@ export default function TakeExam() {
         navigate("/verify-room");
         return;
       }
+      
+      // GUARD: Kiểm tra submission đã nộp chưa
+      try {
+        const checkRes = await axiosClient.get(`/submissions/${submissionId}/status`);
+        if (checkRes.data?.submitted_at || ['submitted', 'graded'].includes(checkRes.data?.status)) {
+          console.warn("⚠️ [TakeExam] Submission already submitted, logging out...");
+          
+          // Logout và xóa token
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          sessionStorage.clear();
+          
+          // Redirect về verify-room
+          window.location.href = "/verify-room";
+          return;
+        }
+      } catch (err) {
+        console.error("❌ [TakeExam] Error checking submission status:", err);
+      }
+      
       try {
         const res = await axiosClient.post(
           `/submissions/${submissionId}/start`
@@ -91,8 +135,12 @@ export default function TakeExam() {
 
         if (document.documentElement.requestFullscreen) {
           try {
-            await document.documentElement.requestFullscreen();
-          } catch {}
+            await document.documentElement.requestFullscreen().catch(() => {
+              console.log("ℹ️ [TakeExam] Fullscreen request ignored (need user gesture)");
+            });
+          } catch (err) {
+            console.log("ℹ️ [TakeExam] Fullscreen not available:", err.message);
+          }
         }
         setLoading(false);
       } catch (error) {
@@ -128,9 +176,9 @@ export default function TakeExam() {
           !document.fullscreenElement &&
           document.documentElement.requestFullscreen
         ) {
-          try {
-            document.documentElement.requestFullscreen();
-          } catch {}
+          document.documentElement.requestFullscreen().catch((err) => {
+            console.log("ℹ️ [TakeExam] Cannot re-enter fullscreen:", err.message);
+          });
         }
         return nv;
       });
@@ -275,10 +323,20 @@ export default function TakeExam() {
         setTotalScore(mcq + (beAi || 0));
       }
       setShowModal(true);
+      setSubmitted(true);
+      
+      sessionStorage.removeItem("pending_exam_duration");
+      sessionStorage.removeItem("exam_flags");
+      sessionStorage.removeItem(`exam_${examId}_started`);
+      localStorage.removeItem("examTheme");
+      
+      console.log("✅ [TakeExam] Exam submitted, session cleared");
+      
       try {
         await document.exitFullscreen?.();
       } catch {}
-    } catch {
+    } catch (err) {
+      console.error("❌ [TakeExam] Submit error:", err);
       setShowModal(true);
     } finally {
       setSubmitting(false);
@@ -582,7 +640,7 @@ export default function TakeExam() {
             }`}
           >
             <div>Điểm trắc nghiệm (MCQ)</div>
-            <strong>{mcqScore ?? "-"}</strong>
+            <strong>{mcqScore != null ? Number(mcqScore).toFixed(1) : "-"}/10</strong>
           </div>
           <div
             className={`flex items-center justify-between py-2 border-b ${
@@ -592,11 +650,11 @@ export default function TakeExam() {
             }`}
           >
             <div>Điểm tự luận (AI)</div>
-            <strong>{aiScore ?? "—"}</strong>
+            <strong>{aiScore != null ? Number(aiScore).toFixed(1) : "—"}/10</strong>
           </div>
           <div className="flex items-center justify-between py-2">
             <div>Tổng tạm</div>
-            <strong>{totalScore ?? mcqScore ?? "-"}</strong>
+            <strong>{totalScore != null ? Number(totalScore).toFixed(1) : (mcqScore != null ? Number(mcqScore).toFixed(1) : "-")}/10</strong>
           </div>
           <div
             className={`${
@@ -611,7 +669,7 @@ export default function TakeExam() {
             style={{ background: "linear-gradient(180deg,#6aa3ff,#5b82ff)" }}
             onClick={() => {
               setShowModal(false);
-              navigate("/student-dashboard");
+              navigate("/student-dashboard", { replace: true });
             }}
           >
             Về trang chủ
@@ -751,7 +809,7 @@ export default function TakeExam() {
                     background: "linear-gradient(180deg,#00cf7f,#17a55c)",
                   }}
                 >
-                  Nộp bài
+                  {submitting ? "Đang nộp..." : "Xác nhận nộp bài"}
                 </button>
               </div>
             </>

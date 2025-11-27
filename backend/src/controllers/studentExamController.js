@@ -194,24 +194,26 @@ async function joinExam(req, res) {
       // ignore if table not exists
     }
 
-    // Ensure a submission exists in 'pending' or 'in_progress'
-    // Tìm submission cho lần thi đầu tiên (attempt_no = 1) hoặc chưa có
-    let submissionId;
-    const [existing] = await sequelize.query(
-      `SELECT id FROM submissions WHERE exam_id = ? AND user_id = ? AND attempt_no = 1 LIMIT 1`,
+    // Tạo submission mới mỗi lần thi với attempt_no tăng dần
+    // Lấy attempt_no cao nhất hiện tại
+    const [maxAttempt] = await sequelize.query(
+      `SELECT COALESCE(MAX(attempt_no), 0) AS max_attempt 
+       FROM submissions 
+       WHERE exam_id = ? AND user_id = ?`,
       { replacements: [exam_id, userId] }
     );
-
-    if (Array.isArray(existing) && existing.length > 0) {
-      submissionId = existing[0].id; // dùng submission đã có
-    } else {
-      const [ins] = await sequelize.query(
-        `INSERT INTO submissions (exam_id, user_id, status, attempt_no, submitted_at) 
-     VALUES (?, ?, 'pending', 1, NULL)`,
-        { replacements: [exam_id, userId] }
-      );
-      submissionId = ins?.insertId || ins;
-    }
+    
+    const nextAttempt = (maxAttempt[0]?.max_attempt || 0) + 1;
+    
+    // Tạo submission mới cho lần thi này
+    const [ins] = await sequelize.query(
+      `INSERT INTO submissions (exam_id, user_id, status, attempt_no, submitted_at) 
+       VALUES (?, ?, 'pending', ?, NULL)`,
+      { replacements: [exam_id, userId, nextAttempt] }
+    );
+    const submissionId = ins?.insertId || ins;
+    
+    console.log(`✅ [joinExam] Created new submission ${submissionId} for user ${userId}, exam ${exam_id}, attempt ${nextAttempt}`);
 
     // load flags from exams if available
     let flags = { face: false, card: false, monitor: false };
@@ -247,7 +249,7 @@ async function joinExam(req, res) {
     return res.json({
       exam_id,
       submission_id: submissionId,
-      attempt_no: 1, // fallback (no attempt_no column yet)
+      attempt_no: nextAttempt,
       flags,
     });
   } catch (err) {
@@ -444,9 +446,31 @@ async function startExam(req, res) {
       });
     }
 
-    // 3) Kiểm tra status
-    if (!['pending', 'in_progress'].includes(sub.status)) {
-      return res.status(400).json({ message: 'Cannot start exam (already submitted or invalid status)' });
+    // 3) Kiểm tra status - CHỈ CHẶN nếu đã nộp bài (có submitted_at)
+    console.log(`🔍 [startExam] Submission ${submissionId} status check:`, {
+      status: sub.status,
+      submitted_at: sub.submitted_at,
+      user_id: userId
+    });
+    
+    // CHẶN nếu submission này đã được nộp (có submitted_at)
+    if (sub.submitted_at) {
+      console.warn(`❌ [startExam] Submission already submitted at ${sub.submitted_at}`);
+      return res.status(400).json({ 
+        message: 'Bài thi này đã được nộp. Vui lòng tạo lần thi mới từ trang chủ.',
+        submitted_at: sub.submitted_at,
+        shouldCreateNewAttempt: true
+      });
+    }
+    
+    // CHẶN nếu status là 'submitted' hoặc 'graded' (phải tạo submission mới)
+    if (['submitted', 'graded'].includes(sub.status)) {
+      console.warn(`❌ [startExam] Cannot restart - status is ${sub.status}`);
+      return res.status(400).json({ 
+        message: `Bài thi này đã ${sub.status === 'graded' ? 'có kết quả' : 'được nộp'}. Vui lòng tạo lần thi mới.`,
+        status: sub.status,
+        shouldCreateNewAttempt: true
+      });
     }
 
     // Kiểm tra các cột có tồn tại hay không để tránh lỗi trên các DB chưa migrate đủ
@@ -751,7 +775,7 @@ async function submitExam(req, res) {
       }
     });
 
-    // essay score left as NULL (AI async)
+    // Cập nhật điểm submission hiện tại
     await sequelize.query(
       `UPDATE submissions SET total_score = ?, suggested_total_score = total_score + COALESCE(ai_score,0), status='graded', submitted_at = NOW() WHERE id = ?`,
       { replacements: [totalScore, submissionId] }
@@ -764,6 +788,39 @@ async function submitExam(req, res) {
       });
     } catch (e) {
       /* ignore if SP missing */
+    }
+
+    // LOGIC TỰ ĐỘNG SO SÁNH ĐIỂM CAO NHẤT
+    try {
+      const [allScores] = await sequelize.query(
+        `SELECT id, total_score, attempt_no 
+         FROM submissions 
+         WHERE exam_id = ? AND user_id = ? AND status = 'graded' AND total_score IS NOT NULL
+         ORDER BY total_score DESC, submitted_at DESC`,
+        { replacements: [sub.exam_id, userId] }
+      );
+      
+      if (allScores && allScores.length > 0) {
+        const bestSubmission = allScores[0];
+        const currentScore = totalScore;
+        
+        console.log(`📊 [submitExam] Score comparison:`, {
+          user_id: userId,
+          exam_id: sub.exam_id,
+          current_score: currentScore,
+          best_score: bestSubmission.total_score,
+          best_submission_id: bestSubmission.id,
+          total_attempts: allScores.length
+        });
+        
+        if (bestSubmission.id === submissionId) {
+          console.log(`🏆 [submitExam] NEW BEST SCORE! User ${userId} achieved ${currentScore} points (attempt ${bestSubmission.attempt_no})`);
+        } else {
+          console.log(`ℹ️ [submitExam] Not best score. Current: ${currentScore}, Best: ${bestSubmission.total_score} (submission ${bestSubmission.id})`);
+        }
+      }
+    } catch (e) {
+      console.warn("⚠️ [submitExam] Could not analyze best score:", e.message);
     }
 
     const [finalRows] = await sequelize.query(
