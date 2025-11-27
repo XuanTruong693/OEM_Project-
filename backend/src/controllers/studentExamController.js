@@ -1,7 +1,7 @@
 const jwt = require("jsonwebtoken");
 const sequelize = require("../config/db");
-const fs = require('fs');
-const path = require('path');
+const fs = require("fs");
+const path = require("path");
 
 // Helper: sign a short-lived room token
 function signRoomToken(payload, ttlSeconds = 15 * 60) {
@@ -32,7 +32,8 @@ async function hasColumn(table, column) {
 async function verifyRoom(req, res) {
   try {
     const { room_code } = req.body || {};
-    if (!room_code) return res.status(400).json({ message: "room_code is required" });
+    if (!room_code)
+      return res.status(400).json({ message: "room_code is required" });
 
     // Check exam exists and is published
     const base = await sequelize.query(
@@ -42,30 +43,44 @@ async function verifyRoom(req, res) {
     const [rows] = base;
 
     const exam = Array.isArray(rows) ? rows[0] : rows;
-    if (!exam) return res.status(404).json({ message: "Mã không đúng hoặc phòng chưa mở" });
+    if (!exam)
+      return res
+        .status(404)
+        .json({ message: "Mã không đúng hoặc phòng chưa mở" });
 
     // Optional columns
-    const [hasDurMin, hasOpen, hasClose, hasFace, hasCard, hasMonitor, hasMax] = await Promise.all([
-      hasColumn('exams', 'duration_minutes'),
-      hasColumn('exams', 'time_open'),
-      hasColumn('exams', 'time_close'),
-      hasColumn('exams', 'require_face_check'),
-      hasColumn('exams', 'require_student_card'),
-      hasColumn('exams', 'monitor_screen'),
-      hasColumn('exams', 'max_points'),
-    ]);
+    const [hasDurMin, hasOpen, hasClose, hasFace, hasCard, hasMonitor, hasMax] =
+      await Promise.all([
+        hasColumn("exams", "duration_minutes"),
+        hasColumn("exams", "time_open"),
+        hasColumn("exams", "time_close"),
+        hasColumn("exams", "require_face_check"),
+        hasColumn("exams", "require_student_card"),
+        hasColumn("exams", "monitor_screen"),
+        hasColumn("exams", "max_points"),
+      ]);
 
     let extra = {};
-    if (hasDurMin || hasOpen || hasClose || hasFace || hasCard || hasMonitor || hasMax) {
+    if (
+      hasDurMin ||
+      hasOpen ||
+      hasClose ||
+      hasFace ||
+      hasCard ||
+      hasMonitor ||
+      hasMax
+    ) {
       const cols = [
-        hasDurMin ? 'duration_minutes' : null,
-        hasOpen ? 'time_open' : null,
-        hasClose ? 'time_close' : null,
-        hasFace ? 'require_face_check' : null,
-        hasCard ? 'require_student_card' : null,
-        hasMonitor ? 'monitor_screen' : null,
-        hasMax ? 'max_points' : null,
-      ].filter(Boolean).join(', ');
+        hasDurMin ? "duration_minutes" : null,
+        hasOpen ? "time_open" : null,
+        hasClose ? "time_close" : null,
+        hasFace ? "require_face_check" : null,
+        hasCard ? "require_student_card" : null,
+        hasMonitor ? "monitor_screen" : null,
+        hasMax ? "max_points" : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
       if (cols.length > 0) {
         const [erows] = await sequelize.query(
           `SELECT ${cols} FROM exams WHERE id = ? LIMIT 1`,
@@ -77,7 +92,7 @@ async function verifyRoom(req, res) {
 
     // time window check, if available (chuẩn hoá timezone theo ENV để tránh lệch TZ giữa DB và cột lưu)
     if (extra.time_open || extra.time_close) {
-      const tz = process.env.APP_TZ || '+07:00';
+      const tz = process.env.APP_TZ || "+07:00";
       const [checkRows] = await sequelize.query(
         `SELECT 
             CONVERT_TZ(NOW(), @@session.time_zone, ?) AS now_ts,
@@ -86,18 +101,42 @@ async function verifyRoom(req, res) {
             (CASE WHEN ? IS NOT NULL AND CONVERT_TZ(NOW(), @@session.time_zone, ?) < ? THEN 1 ELSE 0 END) AS before_open,
             (CASE WHEN ? IS NOT NULL AND CONVERT_TZ(NOW(), @@session.time_zone, ?) > ? THEN 1 ELSE 0 END) AS after_close
          `,
-        { replacements: [tz, extra.time_open || null, extra.time_close || null, extra.time_open || null, tz, extra.time_open || null, extra.time_close || null, tz, extra.time_close || null] }
+        {
+          replacements: [
+            tz,
+            extra.time_open || null,
+            extra.time_close || null,
+            extra.time_open || null,
+            tz,
+            extra.time_open || null,
+            extra.time_close || null,
+            tz,
+            extra.time_close || null,
+          ],
+        }
       );
       const tw = Array.isArray(checkRows) ? checkRows[0] : checkRows;
       if (tw && Number(tw.before_open) === 1) {
-        return res.status(403).json({ message: 'Chưa đến giờ mở phòng', now: tw.now_ts, time_open: tw.open_ts, time_close: tw.close_ts, reason: 'before_open' });
+        return res.status(403).json({
+          message: "Chưa đến giờ mở phòng",
+          now: tw.now_ts,
+          time_open: tw.open_ts,
+          time_close: tw.close_ts,
+          reason: "before_open",
+        });
       }
       if (tw && Number(tw.after_close) === 1) {
-        return res.status(403).json({ message: 'Đã hết giờ làm bài', now: tw.now_ts, time_open: tw.open_ts, time_close: tw.close_ts, reason: 'after_close' });
+        return res.status(403).json({
+          message: "Đã hết giờ làm bài",
+          now: tw.now_ts,
+          time_open: tw.open_ts,
+          time_close: tw.close_ts,
+          reason: "after_close",
+        });
       }
     }
 
-    const durationMinutes = (extra.duration_minutes || exam.duration || 60);
+    const durationMinutes = extra.duration_minutes || exam.duration || 60;
     const flags = {
       require_face_check: !!extra.require_face_check,
       require_student_card: !!extra.require_student_card,
@@ -124,10 +163,12 @@ async function verifyRoom(req, res) {
 async function joinExam(req, res) {
   try {
     const { room_token } = req.body || {};
-    if (!room_token) return res.status(400).json({ message: "room_token is required" });
+    if (!room_token)
+      return res.status(400).json({ message: "room_token is required" });
 
     const claims = verifyRoomToken(room_token);
-    if (!claims) return res.status(401).json({ message: "room_token invalid or expired" });
+    if (!claims)
+      return res.status(401).json({ message: "room_token invalid or expired" });
 
     const userId = req.user.id;
     const { exam_id, room_code } = claims;
@@ -136,8 +177,8 @@ async function joinExam(req, res) {
     const [rows] = await sequelize.query(
       `SELECT id, exam_room_code, status, duration
        FROM exams
-       WHERE id = ? AND exam_room_code = ? AND status = 'published'`
-      , { replacements: [exam_id, room_code] }
+       WHERE id = ? AND exam_room_code = ? AND status = 'published'`,
+      { replacements: [exam_id, room_code] }
     );
     const exam = Array.isArray(rows) ? rows[0] : rows;
     if (!exam) return res.status(404).json({ message: "Exam not available" });
@@ -154,16 +195,19 @@ async function joinExam(req, res) {
     }
 
     // Ensure a submission exists in 'pending' or 'in_progress'
-    const [subRows] = await sequelize.query(
-      `SELECT id, status FROM submissions WHERE exam_id = ? AND user_id = ? AND status IN ('pending','in_progress') LIMIT 1`,
+    // Tìm submission cho lần thi đầu tiên (attempt_no = 1) hoặc chưa có
+    let submissionId;
+    const [existing] = await sequelize.query(
+      `SELECT id FROM submissions WHERE exam_id = ? AND user_id = ? AND attempt_no = 1 LIMIT 1`,
       { replacements: [exam_id, userId] }
     );
-    let submissionId;
-    if (Array.isArray(subRows) && subRows.length > 0) {
-      submissionId = subRows[0].id;
+
+    if (Array.isArray(existing) && existing.length > 0) {
+      submissionId = existing[0].id; // dùng submission đã có
     } else {
       const [ins] = await sequelize.query(
-        `INSERT INTO submissions (exam_id, user_id, status, submitted_at) VALUES (?, ?, 'pending', NULL)`,
+        `INSERT INTO submissions (exam_id, user_id, status, attempt_no, submitted_at) 
+     VALUES (?, ?, 'pending', 1, NULL)`,
         { replacements: [exam_id, userId] }
       );
       submissionId = ins?.insertId || ins;
@@ -173,21 +217,32 @@ async function joinExam(req, res) {
     let flags = { face: false, card: false, monitor: false };
     try {
       const [hasFace, hasCard, hasMonitor] = await Promise.all([
-        hasColumn('exams', 'require_face_check'),
-        hasColumn('exams', 'require_student_card'),
-        hasColumn('exams', 'monitor_screen'),
+        hasColumn("exams", "require_face_check"),
+        hasColumn("exams", "require_student_card"),
+        hasColumn("exams", "monitor_screen"),
       ]);
       if (hasFace || hasCard || hasMonitor) {
         const cols = [
-          hasFace ? 'require_face_check' : null,
-          hasCard ? 'require_student_card' : null,
-          hasMonitor ? 'monitor_screen' : null,
-        ].filter(Boolean).join(', ');
-        const [frows] = await sequelize.query(`SELECT ${cols} FROM exams WHERE id = ? LIMIT 1`, { replacements: [exam_id] });
+          hasFace ? "require_face_check" : null,
+          hasCard ? "require_student_card" : null,
+          hasMonitor ? "monitor_screen" : null,
+        ]
+          .filter(Boolean)
+          .join(", ");
+        const [frows] = await sequelize.query(
+          `SELECT ${cols} FROM exams WHERE id = ? LIMIT 1`,
+          { replacements: [exam_id] }
+        );
         const er = Array.isArray(frows) ? frows[0] : frows || {};
-        flags = { face: !!er.require_face_check, card: !!er.require_student_card, monitor: !!er.monitor_screen };
+        flags = {
+          face: !!er.require_face_check,
+          card: !!er.require_student_card,
+          monitor: !!er.monitor_screen,
+        };
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
 
     return res.json({
       exam_id,
@@ -224,66 +279,119 @@ async function uploadVerifyAssets(req, res) {
       return Array.isArray(rows) && rows.length > 0;
     };
 
-    const faceFile = req.files && req.files["face_image"] && req.files["face_image"][0];
-    const cardFile = req.files && req.files["student_card_image"] && req.files["student_card_image"][0];
+    const faceFile =
+      req.files && req.files["face_image"] && req.files["face_image"][0];
+    const cardFile =
+      req.files &&
+      req.files["student_card_image"] &&
+      req.files["student_card_image"][0];
     const faceUploaded = !!faceFile;
     const cardUploaded = !!cardFile;
 
     try {
-      if (faceUploaded && await hasCol('submissions', 'face_verified')) {
-        await sequelize.query(`UPDATE submissions SET face_verified = 1 WHERE id = ?`, { replacements: [submissionId] });
+      if (faceUploaded && (await hasCol("submissions", "face_verified"))) {
+        await sequelize.query(
+          `UPDATE submissions SET face_verified = 1 WHERE id = ?`,
+          { replacements: [submissionId] }
+        );
       }
-      if (cardUploaded && await hasCol('submissions', 'card_verified')) {
-        await sequelize.query(`UPDATE submissions SET card_verified = 1 WHERE id = ?`, { replacements: [submissionId] });
+      if (cardUploaded && (await hasCol("submissions", "card_verified"))) {
+        await sequelize.query(
+          `UPDATE submissions SET card_verified = 1 WHERE id = ?`,
+          { replacements: [submissionId] }
+        );
       }
-    } catch (e) { /* ignore if columns missing */ }
+    } catch (e) {
+      /* ignore if columns missing */
+    }
 
     // Persist binary/photo if columns are available
     try {
       if (faceUploaded) {
-        const hasBlob = await hasCol('submissions', 'face_image_blob');
-        const hasMime = await hasCol('submissions', 'face_image_mimetype');
-        const hasUrl  = await hasCol('submissions', 'face_image_url');
+        const hasBlob = await hasCol("submissions", "face_image_blob");
+        const hasMime = await hasCol("submissions", "face_image_mimetype");
+        const hasUrl = await hasCol("submissions", "face_image_url");
         if (hasBlob && hasMime) {
           await sequelize.query(
             `UPDATE submissions SET face_image_blob = ?, face_image_mimetype = ? WHERE id = ?`,
-            { replacements: [faceFile.buffer, faceFile.mimetype || null, submissionId] }
+            {
+              replacements: [
+                faceFile.buffer,
+                faceFile.mimetype || null,
+                submissionId,
+              ],
+            }
           );
         } else if (hasUrl) {
-          const uploadsDir = path.resolve(__dirname, '..', 'uploads', 'submissions', String(submissionId));
+          const uploadsDir = path.resolve(
+            __dirname,
+            "..",
+            "uploads",
+            "submissions",
+            String(submissionId)
+          );
           fs.mkdirSync(uploadsDir, { recursive: true });
           const outPath = path.join(uploadsDir, `face_${Date.now()}.jpg`);
           fs.writeFileSync(outPath, faceFile.buffer);
-          const rel = outPath.split(path.resolve(__dirname, '..'))[1].replace(/\\/g,'/');
+          const rel = outPath
+            .split(path.resolve(__dirname, ".."))[1]
+            .replace(/\\/g, "/");
           await sequelize.query(
             `UPDATE submissions SET face_image_url = ? WHERE id = ?`,
-            { replacements: [rel.startsWith('/')?rel:`/${rel}`, submissionId] }
+            {
+              replacements: [
+                rel.startsWith("/") ? rel : `/${rel}`,
+                submissionId,
+              ],
+            }
           );
         }
       }
       if (cardUploaded) {
-        const hasBlob = await hasCol('submissions', 'student_card_blob');
-        const hasMime = await hasCol('submissions', 'student_card_mimetype');
-        const hasUrl  = await hasCol('submissions', 'student_card_url');
+        const hasBlob = await hasCol("submissions", "student_card_blob");
+        const hasMime = await hasCol("submissions", "student_card_mimetype");
+        const hasUrl = await hasCol("submissions", "student_card_url");
         if (hasBlob && hasMime) {
           await sequelize.query(
             `UPDATE submissions SET student_card_blob = ?, student_card_mimetype = ? WHERE id = ?`,
-            { replacements: [cardFile.buffer, cardFile.mimetype || null, submissionId] }
+            {
+              replacements: [
+                cardFile.buffer,
+                cardFile.mimetype || null,
+                submissionId,
+              ],
+            }
           );
         } else if (hasUrl) {
-          const uploadsDir = path.resolve(__dirname, '..', 'uploads', 'submissions', String(submissionId));
+          const uploadsDir = path.resolve(
+            __dirname,
+            "..",
+            "uploads",
+            "submissions",
+            String(submissionId)
+          );
           fs.mkdirSync(uploadsDir, { recursive: true });
           const outPath = path.join(uploadsDir, `card_${Date.now()}.jpg`);
           fs.writeFileSync(outPath, cardFile.buffer);
-          const rel = outPath.split(path.resolve(__dirname, '..'))[1].replace(/\\/g,'/');
+          const rel = outPath
+            .split(path.resolve(__dirname, ".."))[1]
+            .replace(/\\/g, "/");
           await sequelize.query(
             `UPDATE submissions SET student_card_url = ? WHERE id = ?`,
-            { replacements: [rel.startsWith('/')?rel:`/${rel}`, submissionId] }
+            {
+              replacements: [
+                rel.startsWith("/") ? rel : `/${rel}`,
+                submissionId,
+              ],
+            }
           );
         }
       }
     } catch (persistErr) {
-      console.warn('[uploadVerifyAssets] persist image error:', persistErr?.message || persistErr);
+      console.warn(
+        "[uploadVerifyAssets] persist image error:",
+        persistErr?.message || persistErr
+      );
     }
 
     return res.json({ ok: true, face: faceUploaded, card: cardUploaded });
@@ -342,29 +450,63 @@ async function startExam(req, res) {
     }
 
     // Kiểm tra các cột có tồn tại hay không để tránh lỗi trên các DB chưa migrate đủ
-    let hasStartedAt = false, hasDurMin = false, hasOrderIndex = false;
-    try { hasStartedAt = await hasColumn('submissions','started_at'); } catch(e) {}
-    try { hasDurMin   = await hasColumn('exams','duration_minutes'); } catch(e) {}
-    try { hasOrderIndex = await hasColumn('exam_questions','order_index'); } catch(e) {}
+    let hasStartedAt = false,
+      hasDurMin = false,
+      hasOrderIndex = false;
+    try {
+      hasStartedAt = await hasColumn("submissions", "started_at");
+    } catch (e) {}
+    try {
+      hasDurMin = await hasColumn("exams", "duration_minutes");
+    } catch (e) {}
+    try {
+      hasOrderIndex = await hasColumn("exam_questions", "order_index");
+    } catch (e) {}
 
-    // Lấy thông tin exam duration
-    let sel = 'SELECT e.duration';
+    let sel = 'SELECT s.id, s.status, s.exam_id';
+    if (hasStartedAt) sel += ', s.started_at';
+    sel += ', e.duration';
     if (hasDurMin) sel += ', e.duration_minutes';
-    sel += ' FROM exams e WHERE e.id = ? LIMIT 1';
+    sel += ' FROM submissions s JOIN exams e ON e.id = s.exam_id';
+    sel += ' WHERE s.id = ? AND s.user_id = ? LIMIT 1';
 
-    const [examRows] = await sequelize.query(sel, { replacements: [sub.exam_id] });
-    const exam = Array.isArray(examRows) ? examRows[0] : examRows;
-    if (!exam) return res.status(404).json({ message: "Exam not found" });
+    const [subRows] = await sequelize.query(sel, { replacements: [submissionId, userId] });
+    const sub = Array.isArray(subRows) ? subRows[0] : subRows;
+    if (!sub) return res.status(404).json({ message: "Submission not found" });
+    if (!['pending','in_progress'].includes(sub.status)) return res.status(400).json({ message: "Invalid state" });
+
+    // Siết chặt: nếu có các cột xác minh thì bắt buộc đủ trước khi bắt đầu (nếu status còn pending)
+    try {
+      const [flags] = await sequelize.query(
+        `SELECT 
+           COALESCE(face_verified, 1) AS face_verified,
+           COALESCE(card_verified, 1) AS card_verified,
+           COALESCE(monitor_agreed, 1) AS monitor_agreed
+         FROM submissions WHERE id = ? AND user_id = ?`,
+        { replacements: [submissionId, userId] }
+      );
+      const row = Array.isArray(flags) ? flags[0] : flags;
+      if (row && sub.status === 'pending') {
+        if (Number(row.face_verified) !== 1 || Number(row.card_verified) !== 1 || Number(row.monitor_agreed) !== 1) {
+          return res.status(400).json({ message: 'Chưa hoàn tất xác minh (ảnh/giám sát)' });
+        }
+      }
+    } catch (e) { /* ignore if columns missing */ }
 
     // nếu chưa có started_at, set ngay bây giờ (nếu cột tồn tại). Tránh lỗi ENUM khi DB chưa có giá trị 'in_progress'
-    const canInProgress = await (async ()=>{
+    const canInProgress = await (async () => {
       try {
         const [rows] = await sequelize.query(
           `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME='submissions' AND COLUMN_NAME='status' LIMIT 1`
         );
-        const ct = Array.isArray(rows) && rows[0] ? String(rows[0].COLUMN_TYPE || '') : '';
+        const ct =
+          Array.isArray(rows) && rows[0]
+            ? String(rows[0].COLUMN_TYPE || "")
+            : "";
         return ct.includes("'in_progress'");
-      } catch (e) { return false; }
+      } catch (e) {
+        return false;
+      }
     })();
 
     try {
@@ -379,39 +521,57 @@ async function startExam(req, res) {
           { replacements: [submissionId] }
         );
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
 
     // Load questions + options
-    let qSel = 'SELECT q.id AS question_id, q.question_text, q.type, q.points';
-    if (hasOrderIndex) qSel += ', q.order_index';
-    qSel += ' FROM exam_questions q WHERE q.exam_id = ?';
-    qSel += hasOrderIndex ? ' ORDER BY COALESCE(q.order_index, q.id) ASC' : ' ORDER BY q.id ASC';
-    const [qRows] = await sequelize.query(qSel, { replacements: [sub.exam_id || sub.examId || sub.EXAM_ID] });
+    let qSel = "SELECT q.id AS question_id, q.question_text, q.type, q.points";
+    if (hasOrderIndex) qSel += ", q.order_index";
+    qSel += " FROM exam_questions q WHERE q.exam_id = ?";
+    qSel += hasOrderIndex
+      ? " ORDER BY COALESCE(q.order_index, q.id) ASC"
+      : " ORDER BY q.id ASC";
+    const [qRows] = await sequelize.query(qSel, {
+      replacements: [sub.exam_id || sub.examId || sub.EXAM_ID],
+    });
     const questions = Array.isArray(qRows) ? qRows : [];
 
     // Load options for MCQ
-    const ids = questions.filter(q => q.type === 'MCQ').map(q => q.question_id);
+    const ids = questions
+      .filter((q) => q.type === "MCQ")
+      .map((q) => q.question_id);
     let optionsByQ = {};
     if (ids.length > 0) {
       const [oRows] = await sequelize.query(
-        `SELECT question_id, id AS option_id, option_text FROM exam_options WHERE question_id IN (${ids.map(()=>'?').join(',')}) ORDER BY id ASC`,
+        `SELECT question_id, id AS option_id, option_text FROM exam_options WHERE question_id IN (${ids
+          .map(() => "?")
+          .join(",")}) ORDER BY id ASC`,
         { replacements: ids }
       );
-      (Array.isArray(oRows) ? oRows : []).forEach(o => {
+      (Array.isArray(oRows) ? oRows : []).forEach((o) => {
         if (!optionsByQ[o.question_id]) optionsByQ[o.question_id] = [];
-        optionsByQ[o.question_id].push({ option_id: o.option_id, option_text: o.option_text });
+        optionsByQ[o.question_id].push({
+          option_id: o.option_id,
+          option_text: o.option_text,
+        });
       });
     }
 
-    const enriched = questions.map(q => (
-      q.type === 'MCQ' ? { ...q, options: optionsByQ[q.question_id] || [] } : q
-    ));
+    const enriched = questions.map((q) =>
+      q.type === "MCQ" ? { ...q, options: optionsByQ[q.question_id] || [] } : q
+    );
 
     // get exam title + instructor + server now + started_at
-    let exSel = 'SELECT e.title AS exam_title, u.full_name AS instructor_name,';
-    exSel += hasDurMin ? ' e.duration_minutes AS duration_minutes' : ' e.duration AS duration_minutes';
-    exSel += ' FROM exams e LEFT JOIN users u ON u.id = e.instructor_id WHERE e.id = ? LIMIT 1';
-    const [exRows] = await sequelize.query(exSel, { replacements: [sub.exam_id] });
+    let exSel = "SELECT e.title AS exam_title, u.full_name AS instructor_name,";
+    exSel += hasDurMin
+      ? " e.duration_minutes AS duration_minutes"
+      : " e.duration AS duration_minutes";
+    exSel +=
+      " FROM exams e LEFT JOIN users u ON u.id = e.instructor_id WHERE e.id = ? LIMIT 1";
+    const [exRows] = await sequelize.query(exSel, {
+      replacements: [sub.exam_id],
+    });
     const ex = Array.isArray(exRows) ? exRows[0] : exRows || {};
     const [tRows] = await sequelize.query(`SELECT NOW() AS server_now`);
     const nowRow = Array.isArray(tRows) ? tRows[0] : tRows;
@@ -420,18 +580,26 @@ async function startExam(req, res) {
     let started = nowRow.server_now;
     try {
       if (hasStartedAt) {
-        const [s2] = await sequelize.query(`SELECT started_at FROM submissions WHERE id = ?`, { replacements: [submissionId] });
-        started = (Array.isArray(s2) && s2[0] && s2[0].started_at) ? s2[0].started_at : (sub.started_at || nowRow.server_now);
+        const [s2] = await sequelize.query(
+          `SELECT started_at FROM submissions WHERE id = ?`,
+          { replacements: [submissionId] }
+        );
+        started =
+          Array.isArray(s2) && s2[0] && s2[0].started_at
+            ? s2[0].started_at
+            : sub.started_at || nowRow.server_now;
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
 
     return res.json({
       questions: enriched,
       duration_minutes: ex.duration_minutes || sub.duration || 60,
       started_at: started,
       server_now: nowRow.server_now,
-      exam_title: ex.exam_title || '',
-      instructor_name: ex.instructor_name || '',
+      exam_title: ex.exam_title || "",
+      instructor_name: ex.instructor_name || "",
     });
   } catch (err) {
     console.error("startExam error:", err);
@@ -444,15 +612,17 @@ async function saveAnswer(req, res) {
   try {
     const submissionId = parseInt(req.params.id, 10);
     const userId = req.user.id;
-    let { question_id, type, answer, selected_option_id, answer_text } = req.body || {};
+    let { question_id, type, answer, selected_option_id, answer_text } =
+      req.body || {};
     // Chuẩn hóa payload theo loại câu hỏi
-    if (type === 'MCQ' && selected_option_id != null) {
+    if (type === "MCQ" && selected_option_id != null) {
       answer = selected_option_id;
     }
-    if (type !== 'MCQ' && answer_text != null) {
+    if (type !== "MCQ" && answer_text != null) {
       answer = answer_text;
     }
-    if (!question_id) return res.status(400).json({ message: "question_id required" });
+    if (!question_id)
+      return res.status(400).json({ message: "question_id required" });
 
     // verify submission belongs to user
     const [subRows] = await sequelize.query(
@@ -477,9 +647,12 @@ async function saveAnswer(req, res) {
           { replacements: [Number(tm.duration_minutes) + 0.25, tm.started_at] } // grace 15s ~ 0.25 min
         );
         const over = Array.isArray(chk) ? chk[0]?.overdue : chk?.overdue;
-        if (Number(over) === 1) return res.status(403).json({ message: 'Hết thời gian làm bài' });
+        if (Number(over) === 1)
+          return res.status(403).json({ message: "Hết thời gian làm bài" });
       }
-    } catch (e) { /* ignore if columns missing */ }
+    } catch (e) {
+      /* ignore if columns missing */
+    }
 
     // find existing answer
     const [aRows] = await sequelize.query(
@@ -488,7 +661,7 @@ async function saveAnswer(req, res) {
     );
     if (Array.isArray(aRows) && aRows.length > 0) {
       const ansId = aRows[0].id;
-      if (type === 'MCQ') {
+      if (type === "MCQ") {
         await sequelize.query(
           `UPDATE student_answers SET selected_option_id = ?, answer_text = NULL WHERE id = ?`,
           { replacements: [answer, ansId] }
@@ -500,7 +673,7 @@ async function saveAnswer(req, res) {
         );
       }
     } else {
-      if (type === 'MCQ') {
+      if (type === "MCQ") {
         await sequelize.query(
           `INSERT INTO student_answers(submission_id, question_id, student_id, selected_option_id) VALUES (?, ?, ?, ?)`,
           { replacements: [submissionId, question_id, userId, answer] }
@@ -514,7 +687,7 @@ async function saveAnswer(req, res) {
     }
 
     // Optional: cập nhật tổng MCQ nhanh
-    if (type === 'MCQ') {
+    if (type === "MCQ") {
       try {
         await sequelize.query(
           `UPDATE student_answers sa
@@ -531,7 +704,9 @@ async function saveAnswer(req, res) {
            ) WHERE id = ?`,
           { replacements: [submissionId, submissionId] }
         );
-      } catch (e) { /* ignore */ }
+      } catch (e) {
+        /* ignore */
+      }
     }
     return res.json({ ok: true });
   } catch (err) {
@@ -552,10 +727,15 @@ async function proctorEvent(req, res) {
         `SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'submissions' AND COLUMN_NAME = 'monitor_agreed'`
       );
       const hasMonitor = Array.isArray(rows) && rows.length > 0;
-      if (hasMonitor && event_type === 'monitor_start') {
-        await sequelize.query(`UPDATE submissions SET monitor_agreed = 1 WHERE id = ? AND user_id = ?`, { replacements: [submissionId, userId] });
+      if (hasMonitor && event_type === "monitor_start") {
+        await sequelize.query(
+          `UPDATE submissions SET monitor_agreed = 1 WHERE id = ? AND user_id = ?`,
+          { replacements: [submissionId, userId] }
+        );
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
 
     return res.json({ ok: true });
   } catch (err) {
@@ -591,8 +771,12 @@ async function submitExam(req, res) {
     );
 
     let totalScore = 0;
-    (Array.isArray(mcqRows) ? mcqRows : []).forEach(r => {
-      if (r.selected_option_id && r.option_id && r.selected_option_id === r.option_id) {
+    (Array.isArray(mcqRows) ? mcqRows : []).forEach((r) => {
+      if (
+        r.selected_option_id &&
+        r.option_id &&
+        r.selected_option_id === r.option_id
+      ) {
         totalScore += Number(r.points || 0);
       }
     });
@@ -605,15 +789,24 @@ async function submitExam(req, res) {
 
     // Try stored procedure if exists
     try {
-      await sequelize.query(`CALL sp_submit_exam(?, ?)`, { replacements: [sub.exam_id, userId] });
-    } catch (e) { /* ignore if SP missing */ }
+      await sequelize.query(`CALL sp_submit_exam(?, ?)`, {
+        replacements: [sub.exam_id, userId],
+      });
+    } catch (e) {
+      /* ignore if SP missing */
+    }
 
     const [finalRows] = await sequelize.query(
       `SELECT total_score, ai_score, suggested_total_score, status FROM submissions WHERE id = ?`,
       { replacements: [submissionId] }
     );
     const resp = Array.isArray(finalRows) ? finalRows[0] : finalRows;
-    return res.json({ status: resp?.status || 'graded', total_score: resp?.total_score || 0, ai_score: resp?.ai_score || null, suggested_total_score: resp?.suggested_total_score || totalScore });
+    return res.json({
+      status: resp?.status || "graded",
+      total_score: resp?.total_score || 0,
+      ai_score: resp?.ai_score || null,
+      suggested_total_score: resp?.suggested_total_score || totalScore,
+    });
   } catch (err) {
     console.error("submitExam error:", err);
     return res.status(500).json({ message: "Server error" });
@@ -664,11 +857,14 @@ async function getExamPublicInfo(req, res) {
       { replacements: [examId] }
     );
     const info = Array.isArray(rows) ? rows[0] : rows;
-    if (!info) return res.status(404).json({ message: 'Exam not found or not published' });
+    if (!info)
+      return res
+        .status(404)
+        .json({ message: "Exam not found or not published" });
     return res.json(info);
   } catch (err) {
-    console.error('getExamPublicInfo error:', err);
-    return res.status(500).json({ message: 'Server error' });
+    console.error("getExamPublicInfo error:", err);
+    return res.status(500).json({ message: "Server error" });
   }
 }
 
