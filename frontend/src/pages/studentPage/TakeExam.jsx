@@ -75,7 +75,7 @@ export default function TakeExam() {
           try { await document.documentElement.requestFullscreen(); } catch {}
         }
         setLoading(false);
-      } catch {
+      } catch (error) {
         navigate("/verify-room");
       }
     };
@@ -229,7 +229,6 @@ export default function TakeExam() {
     answered: questions.filter(q => q.__answered).length,
   }), [questions]);
 
-  // ===== Styles (Tailwind + arbitrary) =====
   const shellBg =
     theme === "dark"
       ? "bg-[radial-gradient(1200px_600px_at_15%_-10%,#1b2a52_0,transparent_60%),radial-gradient(1200px_800px_at_120%_10%,#1a1e3b_0,transparent_55%),linear-gradient(180deg,#070b14_0%,#0b1220_100%)]"

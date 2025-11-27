@@ -30,6 +30,7 @@ export default function PrepareExam() {
   const offCanvasRef = useRef(null);
   const facePreviewBlobRef = useRef(null);
   const stableOkCountRef = useRef(0);
+  const isVerifyingRef = useRef(false); // Tránh verify nhiều lần
   
   const loadFaceApi = async () => {
     if (faceApiRef.current.loaded) return true;
@@ -71,6 +72,23 @@ export default function PrepareExam() {
     else document.documentElement.classList.add("dark");
   }, [theme]);
 
+  useEffect(() => {
+    if (!submissionId || !examId || isVerifyingRef.current) return;
+    isVerifyingRef.current = true;
+
+    (async () => {
+      try {
+        // Gọi API yêu cầu verify room - nếu chưa verify sẽ bị 403
+        await axiosClient.get(`/exams/${examId}/public-info`);
+        // OK - đã verify room, không làm gì
+      } catch (error) {
+        if (error?.response?.status === 403 && error?.response?.data?.needVerifyRoom) {
+          navigate("/verify-room", { replace: true });
+        }
+      }
+    })();
+  }, [examId, submissionId, navigate]);
+
   // Load flags & auto-join if thiếu submissionId
   useEffect(() => {
     try {
@@ -96,15 +114,32 @@ export default function PrepareExam() {
     }
   }, [submissionId, navigate]);
 
-  // Load exam public info
+  // Load exam public info + submission verification status
   useEffect(() => {
+    if (!submissionId || !examId) return;
+    
     (async () => {
       try {
-        const res = await axiosClient.get(`/exams/${examId}/public-info`);
-        setExamInfo(res.data);
-      } catch {}
+        // Load exam info
+        const examRes = await axiosClient.get(`/exams/${examId}/public-info`);
+        setExamInfo(examRes.data);
+
+        // Load submission verification status
+        const subRes = await axiosClient.get(`/submissions/${submissionId}/status`);
+        if (subRes.data) {
+          if (subRes.data.face_image_url || subRes.data.face_verified) {
+            setFaceOk(true);
+            setFaceErr("");
+          }
+          if (subRes.data.student_card_url || subRes.data.card_verified) {
+            setCardOk(true);
+            setCardErr("");
+          }
+        }
+      } catch (error) {
+      }
     })();
-  }, [examId]);
+  }, [examId, submissionId]);
 
   // Keyboard & focus monitoring
   useEffect(() => {
