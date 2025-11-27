@@ -463,36 +463,6 @@ async function startExam(req, res) {
       hasOrderIndex = await hasColumn("exam_questions", "order_index");
     } catch (e) {}
 
-    let sel = 'SELECT s.id, s.status, s.exam_id';
-    if (hasStartedAt) sel += ', s.started_at';
-    sel += ', e.duration';
-    if (hasDurMin) sel += ', e.duration_minutes';
-    sel += ' FROM submissions s JOIN exams e ON e.id = s.exam_id';
-    sel += ' WHERE s.id = ? AND s.user_id = ? LIMIT 1';
-
-    const [subRows] = await sequelize.query(sel, { replacements: [submissionId, userId] });
-    const sub = Array.isArray(subRows) ? subRows[0] : subRows;
-    if (!sub) return res.status(404).json({ message: "Submission not found" });
-    if (!['pending','in_progress'].includes(sub.status)) return res.status(400).json({ message: "Invalid state" });
-
-    // Siết chặt: nếu có các cột xác minh thì bắt buộc đủ trước khi bắt đầu (nếu status còn pending)
-    try {
-      const [flags] = await sequelize.query(
-        `SELECT 
-           COALESCE(face_verified, 1) AS face_verified,
-           COALESCE(card_verified, 1) AS card_verified,
-           COALESCE(monitor_agreed, 1) AS monitor_agreed
-         FROM submissions WHERE id = ? AND user_id = ?`,
-        { replacements: [submissionId, userId] }
-      );
-      const row = Array.isArray(flags) ? flags[0] : flags;
-      if (row && sub.status === 'pending') {
-        if (Number(row.face_verified) !== 1 || Number(row.card_verified) !== 1 || Number(row.monitor_agreed) !== 1) {
-          return res.status(400).json({ message: 'Chưa hoàn tất xác minh (ảnh/giám sát)' });
-        }
-      }
-    } catch (e) { /* ignore if columns missing */ }
-
     // nếu chưa có started_at, set ngay bây giờ (nếu cột tồn tại). Tránh lỗi ENUM khi DB chưa có giá trị 'in_progress'
     const canInProgress = await (async () => {
       try {
