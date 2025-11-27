@@ -80,9 +80,11 @@ sequelize
   .authenticate()
   .then(() => {
     console.log("✅ DB connected successfully");
-    app.listen(PORT, () => {
+    if (process.env.NODE_ENV !== "test") {
+      app.listen(PORT, () => {
       console.log(`🚀 Server running at http://localhost:${PORT}`);
-    });
+      });
+    }
   })
   .catch((err) => {
     console.error("❌ DB connection error:", err);
