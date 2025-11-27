@@ -12,7 +12,8 @@ export default function StudentDashboard() {
     (async () => {
       try {
         const res = await axiosClient.get('/results/my');
-        setResults((res.data || []).slice(0, 6));
+        // Lấy TẤT CẢ kết quả để tính toán chart, không slice
+        setResults(res.data || []);
       } catch (e) {
         setResults([]);
       } finally { setLoading(false); }
@@ -41,6 +42,112 @@ export default function StudentDashboard() {
     })();
   }, []);
 
+  // Calculate statistics
+  const stats = React.useMemo(() => {
+    const n = results.length;
+    const best = results.reduce((m, r) => Math.max(m, Number(r.suggested_total_score ?? r.total_score ?? 0)), 0);
+    const avg = n ? (results.reduce((s, r) => s + Number(r.suggested_total_score ?? r.total_score ?? 0), 0) / n) : 0;
+    const passCount = results.filter(r => Number(r.suggested_total_score ?? r.total_score ?? 0) >= 5).length;
+    const passRate = n ? Math.round((passCount / n) * 100) : 0;
+    
+    // Lấy 7 bài thi gần nhất
+    const recent7 = results.slice(0, Math.min(7, results.length));
+    
+    // 1. Chart Tổng bài thi: Số bài thi theo 7 NGÀY gần nhất (không phải tuần)
+    const now = new Date();
+    const chartDataTotal = [6, 5, 4, 3, 2, 1, 0].map(daysAgo => {
+      const targetDate = new Date(now);
+      targetDate.setDate(now.getDate() - daysAgo);
+      targetDate.setHours(0, 0, 0, 0);
+      
+      const nextDate = new Date(targetDate);
+      nextDate.setDate(targetDate.getDate() + 1);
+      
+      const count = results.filter(r => {
+        if (!r.submitted_at) return false;
+        const submitDate = new Date(r.submitted_at);
+        return submitDate >= targetDate && submitDate < nextDate;
+      }).length;
+      
+      return count; // Số bài thi trong ngày đó
+    });
+
+    // 2. Chart Điểm TB: Điểm trung bình cộng theo 7 ngày
+    const chartDataAvg = [6, 5, 4, 3, 2, 1, 0].map(daysAgo => {
+      const targetDate = new Date(now);
+      targetDate.setDate(now.getDate() - daysAgo);
+      targetDate.setHours(0, 0, 0, 0);
+      
+      const nextDate = new Date(targetDate);
+      nextDate.setDate(targetDate.getDate() + 1);
+      
+      const dayResults = results.filter(r => {
+        if (!r.submitted_at) return false;
+        const submitDate = new Date(r.submitted_at);
+        return submitDate >= targetDate && submitDate < nextDate;
+      });
+      
+      if (dayResults.length === 0) return 0;
+      
+      const sum = dayResults.reduce((s, r) => s + Number(r.suggested_total_score ?? r.total_score ?? 0), 0);
+      return sum / dayResults.length; // Trung bình cộng trong ngày
+    });
+
+    // 3. Chart Cao nhất: Điểm cao nhất trong mỗi ngày (7 ngày gần nhất, thang 1-10)
+    const chartDataBest = [6, 5, 4, 3, 2, 1, 0].map(daysAgo => {
+      const targetDate = new Date(now);
+      targetDate.setDate(now.getDate() - daysAgo);
+      targetDate.setHours(0, 0, 0, 0);
+      
+      const nextDate = new Date(targetDate);
+      nextDate.setDate(targetDate.getDate() + 1);
+      
+      const dayResults = results.filter(r => {
+        if (!r.submitted_at) return false;
+        const submitDate = new Date(r.submitted_at);
+        return submitDate >= targetDate && submitDate < nextDate;
+      });
+      
+      if (dayResults.length === 0) return 0;
+      
+      return Math.max(...dayResults.map(r => Number(r.suggested_total_score ?? r.total_score ?? 0)));
+    });
+
+    // 4. Chart Tỷ lệ đạt: Điểm bài thi gần nhất trong mỗi ngày (7 ngày, thang 1-10)
+    const chartDataPass = [6, 5, 4, 3, 2, 1, 0].map(daysAgo => {
+      const targetDate = new Date(now);
+      targetDate.setDate(now.getDate() - daysAgo);
+      targetDate.setHours(0, 0, 0, 0);
+      
+      const nextDate = new Date(targetDate);
+      nextDate.setDate(targetDate.getDate() + 1);
+      
+      const dayResults = results.filter(r => {
+        if (!r.submitted_at) return false;
+        const submitDate = new Date(r.submitted_at);
+        return submitDate >= targetDate && submitDate < nextDate;
+      });
+      
+      if (dayResults.length === 0) return 0;
+      
+      // Lấy bài gần nhất trong ngày đó
+      return Number(dayResults[0].suggested_total_score ?? dayResults[0].total_score ?? 0);
+    });
+    
+    const finalStats = { 
+      n, 
+      best, 
+      avg: avg.toFixed(1), 
+      passRate,
+      chartDataTotal,
+      chartDataAvg,
+      chartDataBest,
+      chartDataPass
+    };
+    
+    return finalStats;
+  }, [results]);
+
   const logout = () => {
     try { localStorage.clear(); sessionStorage.clear(); } catch {}
     navigate('/login');
@@ -60,6 +167,120 @@ export default function StudentDashboard() {
       <div className="mt-3 text-sm font-medium text-blue-600">{action} →</div>
     </button>
   );
+
+  const StatCard = ({ icon, iconBg, title, value, subtitle, chartData, barColor }) => {
+    const [animated, setAnimated] = React.useState(false);
+    const [lineProgress, setLineProgress] = React.useState(0);
+
+    React.useEffect(() => {
+      // Animation cho line chạy
+      const lineTimer = setTimeout(() => {
+        setLineProgress(100);
+      }, 50);
+      
+      // Animation cho bars
+      const barTimer = setTimeout(() => {
+        setAnimated(true);
+      }, 400); // Sau khi line chạy xong
+      
+      return () => {
+        clearTimeout(lineTimer);
+        clearTimeout(barTimer);
+      };
+    }, []);
+
+    // Tìm giá trị max để scale
+    const maxHeight = chartData && chartData.length > 0 ? Math.max(...chartData, 1) : 1;
+
+    return (
+      <div className="bg-white rounded-2xl p-5 border border-slate-200 hover:shadow-lg transition-all">
+        <div className="flex items-start justify-between mb-3">
+          <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${iconBg} shadow-sm`}>
+            <span className="text-xl">{icon}</span>
+          </div>
+          <span className="text-xs font-medium text-slate-500 bg-slate-50 px-2.5 py-1 rounded-full">{title}</span>
+        </div>
+        
+        <div className="mb-3">
+          <div className="text-3xl font-bold text-slate-800 mb-1">{value}</div>
+          <p className="text-xs text-slate-500">{subtitle}</p>
+        </div>
+
+        {/* Mini bar chart với 7 cột */}
+        <div className="relative flex items-end gap-1 h-16 bg-slate-100/50 rounded-lg px-1.5 pb-1 pt-2 overflow-hidden">
+          {/* SVG Line chạy theo đường nối các đỉnh bars - nằm phía sau */}
+          {chartData && chartData.length > 0 && (
+            <svg 
+              className="absolute inset-0 pointer-events-none z-0" 
+              viewBox="0 0 100 100" 
+              preserveAspectRatio="none"
+              style={{ width: '100%', height: 'calc(100% - 12px)' }}
+            >
+              <defs>
+                <linearGradient id={`gradient-${title.replace(/\s/g, '')}`} x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="#60a5fa" />
+                  <stop offset="50%" stopColor="#a78bfa" />
+                  <stop offset="100%" stopColor="#f472b6" />
+                </linearGradient>
+              </defs>
+              <polyline
+                points={chartData.map((height, index) => {
+                  const x = ((index + 0.5) / chartData.length) * 100;
+                  const barHeightPercent = maxHeight > 0 ? (height / maxHeight) * 100 : 0;
+                  const y = 100 - barHeightPercent;
+                  return `${x},${y}`;
+                }).join(' ')}
+                fill="none"
+                stroke={`url(#gradient-${title.replace(/\s/g, '')})`}
+                strokeWidth="0.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity="0.7"
+                pathLength="1"
+                style={{
+                  strokeDasharray: '1',
+                  strokeDashoffset: lineProgress === 100 ? 0 : 1,
+                  transition: 'stroke-dashoffset 1200ms ease-in-out'
+                }}
+              />
+            </svg>
+          )}
+          
+          {chartData && chartData.length > 0 ? (
+            chartData.map((height, index) => {
+              const barHeight = maxHeight > 0 ? (height / maxHeight) * 100 : 0;
+              const finalHeight = barHeight;
+              
+              return (
+                <div key={index} className="flex-1 flex flex-col items-center justify-end gap-0.5 relative z-10" style={{ height: '100%' }}>
+                  {/* Bar */}
+                  <div className="w-full flex items-end" style={{ flex: 1 }}>
+                    <div 
+                      className={`w-full rounded-t ${barColor}`}
+                      style={{ 
+                        height: animated ? `${finalHeight}%` : '0%',
+                        transition: 'height 700ms ease-out',
+                        transitionDelay: `${index * 80}ms`,
+                        minWidth: '6px'
+                      }}
+                    />
+                  </div>
+                  {/* Label - chỉ hiển thị khi có giá trị */}
+                  {height > 0 && (
+                    <div className="text-[8px] text-slate-500 font-medium">
+                      {height.toFixed(0)}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          ) : (
+            <div className="text-xs text-slate-400">Không có dữ liệu</div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
@@ -86,20 +307,100 @@ export default function StudentDashboard() {
         {/* Hero */}
         <section className="rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 p-6 mb-6">
           <h2 className="text-xl font-bold text-slate-800">Chào mừng bạn trở lại 👋</h2>
-          <p className="text-slate-600">Bắt đầu bằng cách xác minh mã phòng thi hoặc xem kết quả gần đây.</p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <button onClick={() => navigate('/student-dashboard/results')} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:border-slate-400">Kết quả của tôi</button>
-          </div>
+          <p className="text-slate-600">Theo dõi điểm số và tiến độ của bạn</p>
+        </section>
+
+        {/* Stats Cards - Mini Bar Charts */}
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <StatCard
+            icon="🎓"
+            iconBg="bg-gradient-to-br from-blue-100 to-blue-200"
+            title="Tổng bài thi"
+            value={stats.n}
+            subtitle="Bài đã hoàn thành"
+            chartData={stats.chartDataTotal}
+            barColor="bg-gradient-to-t from-blue-500 to-blue-400"
+          />
+          <StatCard
+            icon="📈"
+            iconBg="bg-gradient-to-br from-emerald-100 to-emerald-200"
+            title="Điểm TB"
+            value={stats.avg}
+            subtitle="Trung bình cộng"
+            chartData={stats.chartDataAvg}
+            barColor="bg-gradient-to-t from-emerald-500 to-emerald-400"
+          />
+          <StatCard
+            icon="🏆"
+            iconBg="bg-gradient-to-br from-violet-100 to-violet-200"
+            title="Cao nhất"
+            value={`${Number(stats.best).toFixed(1)}/10`}
+            subtitle="Điểm tốt nhất"
+            chartData={stats.chartDataBest}
+            barColor="bg-gradient-to-t from-violet-500 to-violet-400"
+          />
+          <StatCard
+            icon="📊"
+            iconBg="bg-gradient-to-br from-amber-100 to-amber-200"
+            title="Tỷ lệ đạt"
+            value={`${stats.passRate}%`}
+            subtitle="Bài đạt ≥ 5.0đ"
+            chartData={stats.chartDataPass}
+            barColor="bg-gradient-to-t from-amber-500 to-amber-400"
+          />
         </section>
 
         {/* Quick actions mapped to user stories */}
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-          <Card title="Vào thi" desc="Nhập mã phòng được giảng viên cung cấp." action="Xác minh ngay" onClick={() => navigate('/verify-room')} icon="🔐" />
-          <Card title="Kết quả & lịch sử" desc="Xem điểm các bài đã thi." action="Xem bảng điểm" onClick={() => navigate('/student-dashboard/results')} icon="📊" />
-          <Card title="Khoá học" desc="Duyệt các khoá học mở." action="Xem khoá học" onClick={() => alert('Tính năng duyệt khoá học (US12) — sẽ tích hợp sau.')} icon="📚" />
-          <Card title="Hồ sơ" desc="Cập nhật thông tin cá nhân, avatar." action="Cập nhật" onClick={() => navigate('/profile')} icon="👤" />
-          <Card title="Hướng dẫn làm bài" desc="Quy tắc & chống gian lận." action="Xem hướng dẫn" onClick={() => alert('Hiển thị hướng dẫn/FAQ chống gian lận.')} icon="🛡️" />
-          <Card title="Trợ giúp" desc="Liên hệ hỗ trợ khi gặp lỗi." action="Gửi yêu cầu" onClick={() => alert('Liên hệ hỗ trợ qua email/Zalo theo hướng dẫn.')} icon="❓" />
+          <Card 
+            title="Vào thi" 
+            desc="Nhập mã phòng được giảng viên cung cấp." 
+            action="Xác minh ngay" 
+            onClick={() => {
+              // Xóa token trước khi vào verify room
+              try {
+                sessionStorage.removeItem('room_token');
+                sessionStorage.removeItem('exam_flags');
+                sessionStorage.removeItem('pending_exam_duration');
+              } catch {}
+              navigate('/verify-room');
+            }} 
+            icon="🔐" 
+          />
+          <Card 
+            title="Kết quả & lịch sử" 
+            desc="Xem điểm các bài đã thi." 
+            action="Xem bảng điểm" 
+            onClick={() => navigate('/student-dashboard/results')} 
+            icon="📊" 
+          />
+          <Card 
+            title="Hồ sơ" 
+            desc="Cập nhật thông tin cá nhân, avatar." 
+            action="Cập nhật" 
+            onClick={() => navigate('/profile')} 
+            icon="👤" 
+          />
+        </section>
+
+        {/* Centered bottom cards */}
+        <section className="flex justify-center mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl w-full">
+            <Card 
+              title="Hướng dẫn & Trợ giúp" 
+              desc="Quy tắc chống gian lận & liên hệ hỗ trợ." 
+              action="Xem hướng dẫn" 
+              onClick={() => navigate('/student-dashboard/guidelines')} 
+              icon="🛡️" 
+            />
+            <Card 
+              title="Trợ giúp" 
+              desc="Liên hệ hỗ trợ khi gặp lỗi." 
+              action="Gửi yêu cầu" 
+              onClick={() => navigate('/student-dashboard/support')} 
+              icon="❓" 
+            />
+          </div>
         </section>
 
         {/* Recent results */}
@@ -129,12 +430,12 @@ export default function StudentDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {results.map((r) => (
+                  {results.slice(0, 6).map((r) => (
                     <tr key={r.submission_id} className="border-t border-slate-100">
                       <td className="py-2 pr-4 font-medium text-slate-700">{r.exam_title || r.exam_id}</td>
-                      <td className="py-2 pr-4">{(r.total_score ?? r.mcq_score) ?? '-'}</td>
-                      <td className="py-2 pr-4">{r.essay_score ?? '-'}</td>
-                      <td className="py-2 pr-4">{r.suggested_total_score ?? '-'}</td>
+                      <td className="py-2 pr-4">{(r.total_score ?? r.mcq_score) != null ? Number(r.total_score ?? r.mcq_score).toFixed(1) : '-'}</td>
+                      <td className="py-2 pr-4">{r.essay_score != null ? Number(r.essay_score).toFixed(1) : '-'}</td>
+                      <td className="py-2 pr-4">{r.suggested_total_score != null ? Number(r.suggested_total_score).toFixed(1) : '-'}</td>
                       <td className="py-2 pr-4">{r.submitted_at ? new Date(r.submitted_at).toLocaleString() : '-'}</td>
                     </tr>
                   ))}

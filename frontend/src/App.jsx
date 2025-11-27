@@ -39,10 +39,12 @@ import StudentDashboard from "./pages/studentPage/StudentDashboard.jsx";
 import PrepareExam from "./pages/studentPage/PrepareExam.jsx";
 import TakeExam from "./pages/studentPage/TakeExam.jsx";
 import ResultsDashboard from "./pages/studentPage/ResultsDashboard.jsx";
+import ExamGuidelines from "./pages/studentPage/ExamGuidelines.jsx";
+import SupportPage from "./pages/studentPage/SupportPage.jsx";
 
 import InstructorSidebar from "./components/instructor/InstructorSidebar.jsx";
 import { UiProvider } from "./context/UiContext.jsx";
-import Profile from "./pages/instructorPage/Profile.jsx";
+import Profile from "./pages/instructorPage/Profile.jsx"; // Shared for both roles
 
 import AdminDashboard from "./pages/adminPage/AdminDashboard.jsx";
 
@@ -172,7 +174,6 @@ const App = () => {
           <Route path="/results-exams" element={<PublishedResultsList />} />
           <Route path="/result" element={<Result />} />
           <Route path="/setting" element={<Setting />} />
-          <Route path="/profile" element={<Profile />} />
           <Route path="/instructor/exams/:id/edit" element={<EditExam />} />
         </Route>
 
@@ -181,6 +182,33 @@ const App = () => {
           element={
             <ProtectedRoute requiredRole="student">
               <ResultsDashboard />
+            </ProtectedRoute>
+          }
+        />
+        
+        <Route
+          path="/student-dashboard/guidelines"
+          element={
+            <ProtectedRoute requiredRole="student">
+              <ExamGuidelines />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/student-dashboard/support"
+          element={
+            <ProtectedRoute requiredRole="student">
+              <SupportPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <Profile />
             </ProtectedRoute>
           }
         />

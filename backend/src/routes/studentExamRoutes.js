@@ -12,28 +12,29 @@ const {
   uploadVerifyAssets,
   myResults,
   getExamPublicInfo,
+  getSubmissionStatus,
 } = require("../controllers/studentExamController");
 
 const { verifyToken } = require("../middleware/authMiddleware");
-
-// Use memory storage for small verification images (face/card)
+const { requireRoomVerification } = require("../middleware/verifyRoomMiddleware");
 const upload = multer({ storage: multer.memoryStorage() });
 
 // Exams
-router.post("/exams/verify-room", verifyRoom); // no auth required
-router.post("/exams/join", verifyToken, joinExam);
-router.get("/exams/:id/public-info", verifyToken, getExamPublicInfo);
+router.post("/exams/verify-room", verifyRoom); 
+router.post("/exams/join", verifyToken, joinExam); 
+router.get("/exams/:id/public-info", verifyToken, requireRoomVerification, getExamPublicInfo);
 
-// Submissions
-router.post("/submissions/:id/verify", verifyToken, upload.fields([
+// Submissions - Tất cả đều cần verify room
+router.get("/submissions/:id/status", verifyToken, requireRoomVerification, getSubmissionStatus);
+router.post("/submissions/:id/verify", verifyToken, requireRoomVerification, upload.fields([
   { name: "face_image", maxCount: 1 },
   { name: "student_card_image", maxCount: 1 },
 ]), uploadVerifyAssets);
 
-router.post("/submissions/:id/start", verifyToken, startExam);
-router.post("/submissions/:id/answer", verifyToken, saveAnswer);
-router.post("/submissions/:id/proctor-event", verifyToken, proctorEvent);
-router.post("/submissions/:id/submit", verifyToken, submitExam);
+router.post("/submissions/:id/start", verifyToken, requireRoomVerification, startExam);
+router.post("/submissions/:id/answer", verifyToken, requireRoomVerification, saveAnswer);
+router.post("/submissions/:id/proctor-event", verifyToken, requireRoomVerification, proctorEvent);
+router.post("/submissions/:id/submit", verifyToken, requireRoomVerification, submitExam);
 
 // Results
 router.get("/results/my", verifyToken, myResults);

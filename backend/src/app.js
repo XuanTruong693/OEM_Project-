@@ -2,7 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const sequelize = require("./config/db");
-const path = require('path');
+const path = require("path");
 const authRoutes = require("./routes/authRoutes");
 const examRoomRoutes = require("./routes/examRoomRoutes");
 const instructorRoutes = require("./routes/instructorRoutes");
@@ -12,6 +12,7 @@ const examBankRoutes = require("./routes/examBankRoutes");
 const assignBankRoutes = require("./routes/assignBankRoutes");
 const editExamRoutes = require("./routes/editExamRoutes");
 const studentExamRoutes = require("./routes/studentExamRoutes");
+const submissionRoutes = require("./routes/submissionRoutes");
 const { getAppRole, setAppRole } = require("./utils/appRole");
 const app = express();
 // const profileRouter = require("./routes/profile");
@@ -35,7 +36,7 @@ app.use(
 app.use(express.json());
 
 // Serve uploaded verification images if *_url columns are used
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // ✅ Log debug chỉ khi chạy dev
 if (process.env.NODE_ENV === "development") {
@@ -56,6 +57,8 @@ app.use("/api/exam-bank", examBankRoutes);
 app.use("/api/assign-bank", assignBankRoutes);
 app.use("/api/edit-exam", editExamRoutes);
 app.use("/api", studentExamRoutes);
+
+app.use("/api/instructor", submissionRoutes);
 
 // Root-level role endpoints to support http://localhost:4000/role via Vite proxy
 app.get("/role", (req, res) => {

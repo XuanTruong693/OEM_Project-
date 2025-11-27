@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, Line, XAxis, Tooltip, ResponsiveContainer, ComposedChart } from "recharts";
 import { FiLogOut } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
@@ -259,11 +259,27 @@ const InstructorDashboard = () => {
               height={200}
               className="md:h-[250px]"
             >
-              <BarChart data={monthlyData}>
+              <ComposedChart data={monthlyData}>
+                <defs>
+                  <linearGradient id="gradientBlue" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#60a5fa" />
+                    <stop offset="50%" stopColor="#a78bfa" />
+                    <stop offset="100%" stopColor="#f472b6" />
+                  </linearGradient>
+                </defs>
                 <XAxis dataKey="name" />
                 <Tooltip />
+                <Line 
+                  type="monotone" 
+                  dataKey="exams" 
+                  stroke="url(#gradientBlue)" 
+                  strokeWidth={2.5} 
+                  dot={false}
+                  animationDuration={1200}
+                  animationBegin={0}
+                />
                 <Bar dataKey="exams" fill="#7AB8FF" radius={[6, 6, 0, 0]} />
-              </BarChart>
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
 
@@ -274,11 +290,27 @@ const InstructorDashboard = () => {
               height={200}
               className="md:h-[250px]"
             >
-              <BarChart data={monthlyData}>
+              <ComposedChart data={monthlyData}>
+                <defs>
+                  <linearGradient id="gradientPink" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#f472b6" />
+                    <stop offset="50%" stopColor="#a78bfa" />
+                    <stop offset="100%" stopColor="#60a5fa" />
+                  </linearGradient>
+                </defs>
                 <XAxis dataKey="name" />
                 <Tooltip />
+                <Line 
+                  type="monotone" 
+                  dataKey="students" 
+                  stroke="url(#gradientPink)" 
+                  strokeWidth={2.5} 
+                  dot={false}
+                  animationDuration={1200}
+                  animationBegin={0}
+                />
                 <Bar dataKey="students" fill="#F88FA1" radius={[6, 6, 0, 0]} />
-              </BarChart>
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
         </div>

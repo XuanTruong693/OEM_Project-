@@ -16,9 +16,12 @@ const AssignExam = () => {
   const [examTitle, setExamTitle] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [jobId, setJobId] = useState(null);
   const [duration, setDuration] = useState("");
   const [message, setMessage] = useState("");
+  const [showSheetSelector, setShowSheetSelector] = useState(false);
+  const [availableSheets, setAvailableSheets] = useState([]);
+  const [selectedSheetName, setSelectedSheetName] = useState(null);
+  
   // Handle file selection
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
@@ -30,43 +33,148 @@ const AssignExam = () => {
     setUploadedFile(file);
     setError(null);
     setPreviewData(null);
-    setJobId(null);
   };
   // Parse Excel and classify questions
-  const parseExcelFile = async (file) => {
+  const parseExcelFile = async (file, forcedSheetName = null) => {
     try {
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: "array" });
       if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
         throw new Error("File Excel không có sheet nào");
       }
-      const sheetName = workbook.SheetNames[0];
+      
+      // ✅ SỬ DỤNG SHEET ĐÃ ĐƯỢC BACKEND XÁC ĐỊNH
+      const sheetName = forcedSheetName || workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
+      
+      console.log("📌 Đang parse sheet:", sheetName);
+
+      // ✅ KIỂM TRA MEDIA TRƯỚC KHI PARSE - Kiểm tra workbook metadata
+      console.log("🔍 Bắt đầu kiểm tra media trong file Excel...");
+
+      // 1. Kiểm tra workbook có chứa media không
+      if (workbook.Sheets) {
+        Object.keys(workbook.Sheets).forEach((sheetName) => {
+          const sheet = workbook.Sheets[sheetName];
+
+          // Kiểm tra các thuộc tính media trong sheet
+          if (sheet["!images"]) {
+            console.error("❌ Phát hiện images trong sheet:", sheet["!images"]);
+            throw new Error(
+              `❌ File chứa hình ảnh!\n\n` +
+                `Sheet "${sheetName}" có ${sheet["!images"].length} hình ảnh.\n\n` +
+                `File Excel KHÔNG được chứa hình ảnh, âm thanh, video.\n` +
+                `Vui lòng xóa tất cả media và thử lại.`
+            );
+          }
+
+          if (sheet["!drawings"]) {
+            console.error(
+              "❌ Phát hiện drawings trong sheet:",
+              sheet["!drawings"]
+            );
+            throw new Error(
+              `❌ File chứa hình vẽ/biểu đồ!\n\n` +
+                `Sheet "${sheetName}" có drawing objects.\n\n` +
+                `Vui lòng xóa tất cả hình vẽ, biểu đồ và thử lại.`
+            );
+          }
+
+          if (sheet["!objects"]) {
+            console.error(
+              "❌ Phát hiện objects trong sheet:",
+              sheet["!objects"]
+            );
+            throw new Error(
+              `❌ File chứa objects không hợp lệ!\n\n` +
+                `Sheet "${sheetName}" có embedded objects.\n\n` +
+                `Vui lòng xóa tất cả objects và thử lại.`
+            );
+          }
+        });
+      }
+
+      // 2. Kiểm tra workbook-level media
+      if (workbook.Media && workbook.Media.length > 0) {
+        console.error("❌ Phát hiện Media trong workbook:", workbook.Media);
+        throw new Error(
+          `❌ File chứa ${workbook.Media.length} file media!\n\n` +
+            `File Excel KHÔNG được chứa hình ảnh, âm thanh, video.\n` +
+            `Vui lòng xóa tất cả media và thử lại.`
+        );
+      }
+
+      console.log("✅ Kiểm tra workbook metadata - Không phát hiện media");
+
       const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
       if (jsonData.length < 2) {
         throw new Error("File Excel phải có ít nhất 1 dòng dữ liệu");
       }
-      // Parse data by sections
+
+      // ✅ KIỂM TRA CELLS - Quét từng cell trong jsonData
+      console.log("🔍 Kiểm tra từng cell trong data...");
+      for (let i = 0; i < jsonData.length; i++) {
+        const row = jsonData[i];
+        if (!row || row.length === 0) continue;
+
+        for (let j = 0; j < row.length; j++) {
+          const cell = row[j];
+
+          // Log để debug
+          if (cell && typeof cell === "object") {
+            console.log(
+              `Cell [${i + 1}, ${j + 1}] type:`,
+              typeof cell,
+              cell.constructor?.name,
+              cell
+            );
+          }
+
+          // Kiểm tra object (không phải Date, không phải null)
+          if (cell && typeof cell === "object" && !(cell instanceof Date)) {
+            console.error(
+              `❌ Phát hiện object tại dòng ${i + 1}, cột ${j + 1}:`,
+              cell
+            );
+            throw new Error(
+              `❌ File chứa dữ liệu không hợp lệ!\n\n` +
+                `Vị trí: Dòng ${i + 1}, Cột ${j + 1}\n` +
+                `Loại: ${cell.constructor?.name || "Object"}\n\n` +
+                `File Excel chỉ được chứa văn bản thuần túy.\n` +
+                `Vui lòng xóa tất cả media/objects và thử lại.`
+            );
+          }
+        }
+      }
+      console.log("✅ Kiểm tra cells hoàn tất - File hợp lệ");
+
+      // Parse data by sections - Support multiple markers
       const questions = [];
       let currentSection = null;
       let rowIndex = 0;
+      let hasMCQMarker = false;
+      let hasEssayMarker = false;
+
       for (let i = 0; i < jsonData.length; i++) {
         const row = jsonData[i];
         if (!row || row.length === 0) {
           rowIndex++;
           continue;
         }
+
         // Convert row to text
         const rowText = row
           .map((cell) => cell?.toString().trim() || "")
           .join(" ");
-        // Check for section markers
+        // Check for section markers (có thể xuất hiện nhiều lần)
         if (rowText.includes("Trắc nghiệm") && rowText.includes("MCQ")) {
           currentSection = "MCQ";
+          hasMCQMarker = true;
           rowIndex++;
           continue;
         } else if (rowText.includes("Tự luận") && rowText.includes("Essay")) {
           currentSection = "Essay";
+          hasEssayMarker = true;
           rowIndex++;
           continue;
         }
@@ -83,6 +191,12 @@ const AssignExam = () => {
             rowIndex++;
             continue;
           }
+
+          // Loại bỏ đánh số câu tự động (Câu 1:, Câu 2:, etc.)
+          const cleanedQuestionText = questionText
+            .replace(/^Câu\s+\d+:\s*/i, "")
+            .trim();
+
           const options = [];
           for (let j = 1; j <= 4; j++) {
             const opt = row[j]?.toString().trim() || "";
@@ -92,7 +206,8 @@ const AssignExam = () => {
           }
           const questionData = {
             row: rowIndex + 1,
-            question_text: questionText,
+            question_text: cleanedQuestionText,
+            original_question_text: questionText, // Lưu câu hỏi gốc để so sánh
             type: "MCQ",
             errors: [],
           };
@@ -126,13 +241,21 @@ const AssignExam = () => {
           const fullText = row
             .map((cell) => cell?.toString().trim() || "")
             .join(" ");
-          // Try to find question and answer pattern
-          const questionMatch = fullText.match(/Câu hỏi:\s*([^\n]+)/i);
-          const answerMatch = fullText.match(/Câu trả lời:\s*([^\n]+)/i);
+
+          // Loại bỏ đánh số câu tự động
+          const cleanedFullText = fullText
+            .replace(/^Câu\s+\d+:\s*/i, "")
+            .trim();
+          const questionMatch = cleanedFullText.match(
+            /Câu hỏi:\s*(.+?)(?=Câu trả lời:|$)/i
+          );
+          const answerMatch = cleanedFullText.match(/Câu trả lời:\s*(.+)/i);
+
           if (questionMatch || answerMatch) {
             const questionData = {
               row: rowIndex + 1,
               question_text: questionMatch ? questionMatch[1].trim() : "",
+              original_question_text: fullText, // Lưu câu hỏi gốc để so sánh
               type: "Essay",
               model_answer: answerMatch ? answerMatch[1].trim() : "",
               errors: [],
@@ -152,18 +275,114 @@ const AssignExam = () => {
         }
         rowIndex++;
       }
+
+      // ✅ KIỂM TRA TRÙNG LẶP TRƯỚC KHI GỘP VÀ ĐÁNH SỐ
+      const duplicateErrors = [];
+      const seenQuestions = new Map();
+
+      questions.forEach((q) => {
+        if (!q.question_text) return;
+
+        // Normalize: lowercase, loại bỏ khoảng trắng thừa
+        const normalizedText = q.question_text
+          .toLowerCase()
+          .replace(/\s+/g, " ")
+          .trim();
+
+        if (seenQuestions.has(normalizedText)) {
+          const firstRow = seenQuestions.get(normalizedText);
+          duplicateErrors.push(
+            `Câu hỏi trùng lặp tại dòng ${
+              q.row
+            } và dòng ${firstRow}: "${q.question_text.substring(0, 60)}${
+              q.question_text.length > 60 ? "..." : ""
+            }"`
+          );
+        } else {
+          seenQuestions.set(normalizedText, q.row);
+        }
+      });
+
+      if (duplicateErrors.length > 0) {
+        throw new Error(
+          "❌ Phát hiện câu hỏi trùng lặp!\n\n" +
+            duplicateErrors.join("\n") +
+            "\n\nVui lòng xóa các câu hỏi trùng lặp và thử lại."
+        );
+      }
+
+      // ✅ Gộp và sắp xếp câu hỏi theo loại
+      const mcqQuestions = questions.filter((q) => q.type === "MCQ");
+      const essayQuestions = questions.filter((q) => q.type === "Essay");
+
+      // Tự động đánh số lại
+      mcqQuestions.forEach((q, idx) => {
+        q.autoNumber = idx + 1;
+        q.question_text = `Câu ${idx + 1}: ${q.question_text}`;
+      });
+
+      essayQuestions.forEach((q, idx) => {
+        q.autoNumber = idx + 1;
+        q.question_text = `Câu ${idx + 1}: ${q.question_text}`;
+      });
+
+      // Gộp lại: MCQ trước, Essay sau
+      const sortedQuestions = [...mcqQuestions, ...essayQuestions];
+
+      const mcqCount = mcqQuestions.length;
+      const essayCount = essayQuestions.length;
+      const totalQuestions = sortedQuestions.length;
+      const errorCount = sortedQuestions.filter(
+        (q) => q.errors.length > 0
+      ).length;
+
+      // ✅ Kiểm tra xem file có marker phân loại không
+      if (!hasMCQMarker && !hasEssayMarker) {
+        throw new Error(
+          "❌ File thiếu marker phân loại!\n\n" +
+            "File Excel của bạn PHẢI có ít nhất 1 trong 2 marker sau:\n" +
+            "• 'Trắc nghiệm (MCQ)' - cho phần câu hỏi trắc nghiệm\n" +
+            "• 'Tự luận (Essay)' - cho phần câu hỏi tự luận\n\n" +
+            "Vui lòng thêm dòng marker vào đầu mỗi phần câu hỏi để hệ thống có thể nhận biết loại câu hỏi.\n\n" +
+            "Ví dụ:\n" +
+            "Dòng 1: Trắc nghiệm (MCQ)\n" +
+            "Dòng 2: Câu 1: What is AI? | Option A | Option B* | ...\n" +
+            "Dòng 8: Tự luận (Essay)\n" +
+            "Dòng 9: Câu hỏi: ... Câu trả lời: ..."
+        );
+      }
+
+      // ✅ Kiểm tra nếu không có câu hỏi nào được parse
+      if (totalQuestions === 0) {
+        if (hasMCQMarker || hasEssayMarker) {
+          throw new Error(
+            "⚠️ File có marker nhưng không tìm thấy câu hỏi!\n\n" +
+              "Hệ thống đã phát hiện marker phân loại nhưng không đọc được câu hỏi nào.\n\n" +
+              "Kiểm tra lại:\n" +
+              "• Các câu hỏi có nằm DƯỚI dòng marker không?\n" +
+              "• Format câu hỏi có đúng theo hướng dẫn không?\n" +
+              "• MCQ: Câu hỏi + 4 đáp án (có dấu * cho đáp án đúng)\n" +
+              "• Essay: 'Câu hỏi: ...' và 'Câu trả lời: ...'"
+          );
+        } else {
+          throw new Error("File không có dữ liệu câu hỏi hợp lệ.");
+        }
+      }
+      const validationErrors = [];
       const summary = {
-        total: questions.length,
-        mcq: questions.filter((q) => q.type === "MCQ").length,
-        essay: questions.filter((q) => q.type === "Essay").length,
-        errors: questions.filter((q) => q.errors.length > 0).length,
+        total: totalQuestions,
+        mcq: mcqCount,
+        essay: essayCount,
+        errors: errorCount,
+        validationErrors: validationErrors,
       };
-      return { preview: questions, summary };
+
+      return { preview: sortedQuestions, summary, validationErrors };
     } catch (err) {
       throw new Error(`Lỗi parse file Excel: ${err.message}`);
     }
   };
-  // Handle file upload
+  // Handle file upload - Gọi BE kiểm tra sheets trước
   const handleUpload = async () => {
     if (!uploadedFile) {
       setError("⚠️ Vui lòng chọn file trước khi upload");
@@ -171,15 +390,63 @@ const AssignExam = () => {
     }
     setLoading(true);
     setError(null);
+    
     try {
-      const result = await parseExcelFile(uploadedFile);
-      setPreviewData(result);
+      // ✅ BƯỚC 1: Gọi Backend kiểm tra sheets
+      const formData = new FormData();
+      formData.append("file", uploadedFile);
+      
+      const token = localStorage.getItem("token");
+      const response = await axios.post(
+        "http://localhost:5000/api/exam-bank/check-sheets",
+        formData,
+        {
+          headers: { 
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "multipart/form-data"
+          },
+        }
+      );
+      
+      if (response.data.status === "single_sheet") {
+        // Chỉ có 1 sheet → Parse ngay với sheet đó
+        console.log("✅ Backend xác định sheet:", response.data.selectedSheet);
+        const result = await parseExcelFile(uploadedFile, response.data.selectedSheet);
+        if (result) {
+          setPreviewData(result);
+        }
+      } else if (response.data.status === "multiple_sheets") {
+        // Nhiều sheets → Hiện modal cho user chọn
+        setAvailableSheets(response.data.sheets);
+        setShowSheetSelector(true);
+      } else {
+        setError(response.data.message || "Lỗi kiểm tra file");
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Handle chọn sheet từ modal
+  const handleSheetSelection = async (sheetName) => {
+    setShowSheetSelector(false);
+    setLoading(true);
+    setError(null);
+    try {
+      // Parse với sheet đã chọn
+      const result = await parseExcelFile(uploadedFile, sheetName);
+      if (result) {
+        setPreviewData(result);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
   };
+  
   // Handle commit to database
   const handleCommit = async () => {
     if (!previewData) {
@@ -190,9 +457,41 @@ const AssignExam = () => {
       setError("⚠️ Vui lòng nhập tên đề thi trước khi lưu");
       return;
     }
+
+    // Check for validation errors
+    if (
+      previewData.validationErrors &&
+      previewData.validationErrors.length > 0
+    ) {
+      setError(
+        `❌ Không thể lưu đề thi:\n${previewData.validationErrors.join("\n")}`
+      );
+      return;
+    }
+
+    // Check for question-level errors
     const hasErrors = previewData.preview.some((q) => q.errors.length > 0);
     if (hasErrors) {
       setError("⚠️ Có câu hỏi bị lỗi. Vui lòng kiểm tra lại trước khi commit");
+      return;
+    }
+
+    // Final validation check
+    const mcqCount = previewData.summary.mcq;
+    const essayCount = previewData.summary.essay;
+    const totalCount = previewData.summary.total;
+
+    if (mcqCount > 50) {
+      setError(
+        `❌ Số câu trắc nghiệm không được vượt quá 50 câu (hiện có ${mcqCount} câu)`
+      );
+      return;
+    }
+
+    if (essayCount > 10) {
+      setError(
+        `❌ Số câu tự luận không được vượt quá 10 câu (hiện có ${essayCount} câu)`
+      );
       return;
     }
     setLoading(true);
@@ -303,12 +602,36 @@ const AssignExam = () => {
             📋 Hướng dẫn format file Excel:
           </p>
           <div className="text-sm text-blue-700 space-y-2">
+            <div className="bg-yellow-50 p-2 rounded border border-yellow-300">
+              <p className="font-semibold text-yellow-800">
+                🔖 BẮT BUỘC - Marker phân loại:
+              </p>
+              <p className="text-yellow-700">
+                • File <strong>PHẢI CÓ</strong> dòng marker để hệ thống nhận
+                biết loại câu hỏi
+              </p>
+              <p className="text-yellow-700">
+                • Marker MCQ: <strong>"Trắc nghiệm (MCQ)"</strong> (viết đúng
+                chính tả)
+              </p>
+              <p className="text-yellow-700">
+                • Marker Essay: <strong>"Tự luận (Essay)"</strong> (viết đúng
+                chính tả)
+              </p>
+              <p className="text-yellow-700 font-semibold mt-1">
+                ⚠️ Thiếu marker = File bị từ chối!
+              </p>
+            </div>
             <div>
               <p className="font-semibold">📝 Phần Trắc nghiệm (MCQ):</p>
               <p>
-                • Thêm tiêu đề: <strong>"Trắc nghiệm (MCQ)"</strong>
+                • <strong>Bước 1:</strong> Thêm dòng marker:{" "}
+                <strong>"Trắc nghiệm (MCQ)"</strong>
               </p>
-              <p>• Mỗi dòng: Câu hỏi (cột 1) + 4 đáp án (cột 2-5)</p>
+              <p>
+                • <strong>Bước 2:</strong> Mỗi dòng tiếp theo: Câu hỏi (cột 1) +
+                4 đáp án (cột 2-5)
+              </p>
               <p>• Đánh dấu * ở cuối đáp án đúng</p>
               <p>
                 • Ví dụ: "What is AI?" | "Option A" | "Option B*" | "Option C" |
@@ -318,10 +641,12 @@ const AssignExam = () => {
             <div className="mt-2 border-t pt-2">
               <p className="font-semibold">✍️ Phần Tự luận (Essay):</p>
               <p>
-                • Thêm tiêu đề: <strong>"Tự luận (Essay):"</strong>
+                • <strong>Bước 1:</strong> Thêm dòng marker:{" "}
+                <strong>"Tự luận (Essay)"</strong>
               </p>
               <p>
-                • Format trong Excel: <strong>"Câu hỏi: ..."</strong> và{" "}
+                • <strong>Bước 2:</strong> Format mỗi câu:{" "}
+                <strong>"Câu hỏi: ..."</strong> và{" "}
                 <strong>"Câu trả lời: ..."</strong>
               </p>
               <p>
@@ -347,7 +672,7 @@ const AssignExam = () => {
               </>
             )}
           </button>
-          {previewData && (
+          {(uploadedFile || previewData) && (
             <button
               onClick={handleReset}
               className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition flex items-center gap-2"
@@ -363,14 +688,42 @@ const AssignExam = () => {
         </div>
         {/* Error message */}
         {error && (
-          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-700">{error}</p>
+          <div className="mt-4 p-4 bg-red-50 border-2 border-red-300 rounded-lg">
+            <div className="flex items-start gap-2">
+              <span className="text-red-600 text-xl">⚠️</span>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-red-800 mb-1">
+                  Lỗi phân tích file
+                </p>
+                <pre className="text-sm text-red-700 whitespace-pre-wrap font-sans">
+                  {error}
+                </pre>
+              </div>
+            </div>
           </div>
         )}
       </div>
       {/* Preview Section */}
       {previewData && (
         <div className="bg-white rounded-xl shadow-sm p-6">
+          {/* Validation Errors Alert */}
+          {previewData.validationErrors &&
+            previewData.validationErrors.length > 0 && (
+              <div className="mb-4 p-4 bg-red-50 border-2 border-red-300 rounded-lg">
+                <p className="text-sm font-bold text-red-800 mb-2">
+                  ❌ Lỗi kiểm tra định dạng:
+                </p>
+                <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
+                  {previewData.validationErrors.map((err, idx) => (
+                    <li key={idx}>{err}</li>
+                  ))}
+                </ul>
+                <p className="text-xs text-red-600 mt-2 font-semibold">
+                  ⚠️ File không hợp lệ. Vui lòng sửa lại và upload lại.
+                </p>
+              </div>
+            )}
+
           <div className="flex max-lg:flex-col  items-center justify-between mb-6">
             <h2 className="text-xl font-semibold text-gray-700 flex items-center gap-2">
               <FiFile className="w-6 h-6" />
@@ -378,23 +731,53 @@ const AssignExam = () => {
             </h2>
             {/* Summary */}
             <div className="flex gap-4 mt-0 max-lg:mt-4">
-              <div className="text-center px-4 py-2 bg-blue-50 rounded-lg">
+              <div className="text-center px-4 py-2 rounded-lg bg-blue-50">
                 <p className="text-2xl font-bold text-blue-600">
                   {previewData.summary.total}
                 </p>
                 <p className="text-xs text-blue-600">Tổng cộng</p>
               </div>
               <div className="text-center px-4 py-2 bg-green-50 rounded-lg">
-                <p className="text-2xl font-bold text-green-600">
+                <p
+                  className={`text-2xl font-bold ${
+                    previewData.summary.mcq > 50
+                      ? "text-red-600"
+                      : "text-green-600"
+                  }`}
+                >
                   {previewData.summary.mcq}
                 </p>
-                <p className="text-xs text-green-600">Trắc nghiệm</p>
+                <p
+                  className={`text-xs ${
+                    previewData.summary.mcq > 50
+                      ? "text-red-600"
+                      : "text-green-600"
+                  }`}
+                >
+                  Trắc nghiệm{" "}
+                  {previewData.summary.mcq > 50 ? "(Vượt giới hạn!)" : ""}
+                </p>
               </div>
               <div className="text-center px-4 py-2 bg-purple-50 rounded-lg">
-                <p className="text-2xl font-bold text-purple-600">
+                <p
+                  className={`text-2xl font-bold ${
+                    previewData.summary.essay > 10
+                      ? "text-red-600"
+                      : "text-purple-600"
+                  }`}
+                >
                   {previewData.summary.essay}
                 </p>
-                <p className="text-xs text-purple-600">Tự luận</p>
+                <p
+                  className={`text-xs ${
+                    previewData.summary.essay > 10
+                      ? "text-red-600"
+                      : "text-purple-600"
+                  }`}
+                >
+                  Tự luận{" "}
+                  {previewData.summary.essay > 10 ? "(Vượt giới hạn!)" : ""}
+                </p>
               </div>
               {previewData.summary.errors > 0 && (
                 <div className="text-center px-4 py-2 bg-red-50 rounded-lg">
@@ -505,28 +888,103 @@ const AssignExam = () => {
                   className="w-full border border-gray-300 rounded-lg px-5 py-4 text-lg text-gray-800
                    focus:outline-none focus:ring-1 focus:ring-emerald-400 focus:border-emerald-400
                    placeholder-gray-400 transition"
+                  disabled={
+                    previewData.validationErrors &&
+                    previewData.validationErrors.length > 0
+                  }
                 />
               </div>
               {/* Nút lưu */}
               <div className="shrink-0">
                 <button
                   onClick={handleCommit}
-                  disabled={loading}
+                  disabled={
+                    loading ||
+                    (previewData.validationErrors &&
+                      previewData.validationErrors.length > 0)
+                  }
                   className="px-8 py-4 bg-green-600 text-white text-lg rounded-lg hover:bg-green-700 
                    disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center gap-2 "
+                  title={
+                    previewData.validationErrors &&
+                    previewData.validationErrors.length > 0
+                      ? "Không thể lưu do file không hợp lệ"
+                      : ""
+                  }
                 >
                   {loading ? (
                     <LoadingSpinner size="sm" text="Đang xử lý..." />
                   ) : (
                     <>
                       <FiCheck className="w-5 h-5" />
-                      Xác nhận & lưu
+                      {previewData.validationErrors &&
+                      previewData.validationErrors.length > 0
+                        ? "Không thể lưu (File lỗi)"
+                        : "Xác nhận & lưu"}
                     </>
                   )}
                 </button>
               </div>
             </div>
           )}
+        </div>
+      )}
+      
+      {/* MODAL CHỌN SHEET */}
+      {showSheetSelector && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 backdrop-blur-sm">
+          <div className="w-[min(600px,94vw)] p-6 rounded-2xl border border-slate-200 shadow-2xl bg-white">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                <span className="text-2xl">📗</span>
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">Chọn Sheet để Import</h2>
+                <p className="text-sm text-slate-600 mt-1">
+                  File Excel có <strong className="text-blue-600">{availableSheets.length} sheets</strong> chứa dữ liệu. Vui lòng chọn sheet bạn muốn import:
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {availableSheets.map((sheet, idx) => (
+                <button
+                  key={sheet.name}
+                  onClick={() => handleSheetSelection(sheet.name)}
+                  className="w-full p-4 border-2 border-slate-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition text-left group"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-semibold text-slate-800 group-hover:text-blue-600">
+                      📄 {sheet.name}
+                    </span>
+                    <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded">
+                      {sheet.rowCount} dòng
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-600 bg-slate-50 p-2 rounded">
+                    <strong>Preview:</strong>
+                    <div className="mt-1 space-y-1">
+                      {sheet.preview.slice(0, 2).map((row, i) => (
+                        <div key={i} className="truncate">
+                          {row.filter(cell => cell).slice(0, 3).join(" | ")}...
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => {
+                setShowSheetSelector(false);
+                setAvailableSheets([]);
+              }}
+              className="w-full mt-4 px-4 py-3 rounded-lg border-2 border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 transition"
+            >
+              Hủy
+            </button>
+          </div>
         </div>
       )}
     </div>

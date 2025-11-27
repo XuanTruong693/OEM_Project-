@@ -1,115 +1,263 @@
 import React from 'react';
 import axiosClient from '../../api/axiosClient';
+import { useNavigate } from 'react-router-dom';
+import { FiArrowLeft, FiSearch, FiTrendingUp, FiAward, FiCalendar } from 'react-icons/fi';
 
 export default function ResultsDashboard() {
+  const navigate = useNavigate();
   const [rows, setRows] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [q, setQ] = React.useState('');
-  const [sort, setSort] = React.useState('date_desc'); // date_desc | score_desc | score_asc
+  const [sort, setSort] = React.useState('date_desc');
 
-  React.useEffect(()=>{
-    (async ()=>{
+  React.useEffect(() => {
+    (async () => {
       try {
         const res = await axiosClient.get('/results/my');
         setRows(res.data || []);
       } catch (e) {
         setRows([]);
-      } finally { setLoading(false); }
+      } finally { 
+        setLoading(false); 
+      }
     })();
   }, []);
 
-  const filtered = React.useMemo(()=>{
-    const norm = (s)=> String(s||'').toLowerCase();
-    let arr = (rows||[]).filter(r => norm(r.exam_title||r.exam_id).includes(norm(q)));
+  const filtered = React.useMemo(() => {
+    const norm = (s) => String(s || '').toLowerCase();
+    let arr = (rows || []).filter(r => norm(r.exam_title || r.exam_id).includes(norm(q)));
     if (sort === 'score_desc') {
-      arr = arr.sort((a,b)=> ((b.suggested_total_score ?? b.total_score ?? 0) - (a.suggested_total_score ?? a.total_score ?? 0)));
+      arr = arr.sort((a, b) => ((b.suggested_total_score ?? b.total_score ?? 0) - (a.suggested_total_score ?? a.total_score ?? 0)));
     } else if (sort === 'score_asc') {
-      arr = arr.sort((a,b)=> ((a.suggested_total_score ?? a.total_score ?? 0) - (b.suggested_total_score ?? b.total_score ?? 0)));
-    } else { // date_desc
-      arr = arr.sort((a,b)=> new Date(b.submitted_at||0) - new Date(a.submitted_at||0));
+      arr = arr.sort((a, b) => ((a.suggested_total_score ?? a.total_score ?? 0) - (b.suggested_total_score ?? b.total_score ?? 0)));
+    } else {
+      arr = arr.sort((a, b) => new Date(b.submitted_at || 0) - new Date(a.submitted_at || 0));
     }
     return arr;
   }, [rows, q, sort]);
 
-  const stats = React.useMemo(()=>{
+  const stats = React.useMemo(() => {
     const n = rows.length;
-    const best = rows.reduce((m,r)=> Math.max(m, Number(r.suggested_total_score ?? r.total_score ?? 0)), 0);
-    const avg = n ? Math.round(rows.reduce((s,r)=> s + Number(r.suggested_total_score ?? r.total_score ?? 0), 0) / n) : 0;
-    return { n, best, avg };
+    const best = rows.reduce((m, r) => Math.max(m, Number(r.suggested_total_score ?? r.total_score ?? 0)), 0);
+    const avg = n ? (rows.reduce((s, r) => s + Number(r.suggested_total_score ?? r.total_score ?? 0), 0) / n).toFixed(1) : 0;
+    const passCount = rows.filter(r => Number(r.suggested_total_score ?? r.total_score ?? 0) >= 5).length;
+    const passRate = n ? Math.round((passCount / n) * 100) : 0;
+    return { n, best, avg, passRate };
   }, [rows]);
 
-  const badge = (v)=> {
-    if (v == null) return <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600">-</span>;
-    const s = Number(v);
-    if (s >= 80) return <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 font-semibold">{s}</span>;
-    if (s >= 50) return <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">{s}</span>;
-    return <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold">{s}</span>;
+  const getScoreBadge = (score) => {
+    if (score == null) return { label: '-', color: 'slate', icon: '○' };
+    const s = Number(score);
+    if (s >= 8) return { label: s.toFixed(1), color: 'emerald', icon: '🏆', grade: 'Xuất sắc' };
+    if (s >= 5) return { label: s.toFixed(1), color: 'amber', icon: '⭐', grade: 'Đạt' };
+    return { label: s.toFixed(1), color: 'rose', icon: '○', grade: 'Chưa đạt' };
   };
 
   return (
-    <div className="p-4">
-      {/* Hero */}
-      <div className="rounded-2xl p-5 mb-5 border shadow-sm bg-[radial-gradient(900px_500px_at_-10%_-10%,#c7d2fe_0,transparent_60%),radial-gradient(900px_600px_at_120%_10%,#a7f3d0_0,transparent_55%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-slate-800">Kết quả của tôi</h1>
-            <p className="text-slate-600">Xem điểm các bài thi đã nộp</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="px-3 py-1 rounded-lg bg-blue-50 text-blue-700 text-sm shadow">{stats.n} bài</div>
-            <div className="px-3 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-sm shadow">TB: {stats.avg}</div>
-            <div className="px-3 py-1 rounded-lg bg-violet-50 text-violet-700 text-sm shadow">Cao nhất: {stats.best}</div>
-          </div>
-        </div>
-        <div className="mt-4 flex flex-wrap gap-2 items-center">
-          <input
-            type="text"
-            placeholder="Tìm bài thi..."
-            className="px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
-            value={q}
-            onChange={(e)=> setQ(e.target.value)}
-          />
-          <div className="inline-flex rounded-xl border border-slate-200 overflow-hidden">
-            <button onClick={()=> setSort('date_desc')} className={`px-3 py-2 text-sm ${sort==='date_desc'?'bg-blue-600 text-white':'bg-white hover:bg-slate-50'}`}>Mới nhất</button>
-            <button onClick={()=> setSort('score_desc')} className={`px-3 py-2 text-sm ${sort==='score_desc'?'bg-blue-600 text-white':'bg-white hover:bg-slate-50'}`}>Điểm ↓</button>
-            <button onClick={()=> setSort('score_asc')} className={`px-3 py-2 text-sm ${sort==='score_asc'?'bg-blue-600 text-white':'bg-white hover:bg-slate-50'}`}>Điểm ↑</button>
-          </div>
-        </div>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/40 p-4 sm:p-6 lg:p-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <button
+            onClick={() => navigate("/student-dashboard")}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white text-slate-700 rounded-xl hover:bg-slate-50 transition-all shadow-sm border border-slate-200 hover:shadow-md"
+          >
+            <FiArrowLeft className="w-5 h-5" />
+            <span className="font-semibold">Quay lại</span>
+          </button>
 
-      {loading ? (
-        <p>Đang tải...</p>
-      ) : (
-        <div className="overflow-auto rounded-2xl border border-slate-200 shadow">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gradient-to-r from-blue-50 to-indigo-50 text-slate-700">
-              <tr className="text-left">
-                <th className="p-3">Bài thi</th>
-                <th className="p-3">MCQ</th>
-                <th className="p-3">Tự luận</th>
-                <th className="p-3">Tổng tạm</th>
-                <th className="p-3">Ngày thi</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r, i)=> {
-                const mcq = (r.total_score ?? r.mcq_score);
-                const essay = r.essay_score;
-                const total = r.suggested_total_score ?? (Number(mcq||0) + Number(essay||0));
-                return (
-                  <tr key={r.submission_id} className={`border-t hover:bg-indigo-50/30 transition ${i%2?'bg-slate-50/40':''}`}>
-                    <td className="p-3 font-medium text-slate-800">{r.exam_title || r.exam_id}</td>
-                    <td className="p-3">{badge(mcq)}</td>
-                    <td className="p-3">{badge(essay)}</td>
-                    <td className="p-3">{badge(total)}</td>
-                    <td className="p-3 text-slate-600">{r.submitted_at ? new Date(r.submitted_at).toLocaleString() : '-'}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-slate-200 shadow-sm">
+              <FiCalendar className="w-4 h-4 text-slate-500" />
+              <span className="text-sm text-slate-600">{new Date().toLocaleDateString('vi-VN')}</span>
+            </div>
+          </div>
         </div>
-      )}
+
+        {/* Page Title */}
+        <div className="mb-8">
+          <h1 className="text-3xl sm:text-4xl font-bold text-slate-800 mb-2">
+            Kết quả học tập
+          </h1>
+          <p className="text-slate-600 text-lg">
+            Theo dõi điểm số và tiến độ của bạn
+          </p>
+        </div>
+
+        {/* Search & Filter */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 mb-6">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1 relative">
+              <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Tìm kiếm bài thi..."
+                className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+              />
+            </div>
+            
+            <div className="flex gap-2 bg-slate-100 rounded-xl p-1">
+              <button
+                onClick={() => setSort('date_desc')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  sort === 'date_desc'
+                    ? 'bg-white text-slate-800 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-800'
+                }`}
+              >
+                Mới nhất
+              </button>
+              <button
+                onClick={() => setSort('score_desc')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  sort === 'score_desc'
+                    ? 'bg-white text-slate-800 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-800'
+                }`}
+              >
+                Điểm cao
+              </button>
+              <button
+                onClick={() => setSort('score_asc')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  sort === 'score_asc'
+                    ? 'bg-white text-slate-800 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-800'
+                }`}
+              >
+                Điểm thấp
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Results Table/Cards */}
+        {loading ? (
+          <div className="bg-white rounded-2xl p-12 shadow-sm border border-slate-200">
+            <div className="flex flex-col items-center justify-center">
+              <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+              <p className="text-slate-600">Đang tải kết quả...</p>
+            </div>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="bg-white rounded-2xl p-12 shadow-sm border border-slate-200">
+            <div className="text-center">
+              <div className="text-6xl mb-4">📭</div>
+              <h3 className="text-xl font-semibold text-slate-800 mb-2">
+                {q ? 'Không tìm thấy kết quả' : 'Chưa có bài thi nào'}
+              </h3>
+              <p className="text-slate-600">
+                {q ? 'Thử tìm kiếm với từ khóa khác' : 'Các bài thi đã hoàn thành sẽ hiển thị ở đây'}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {filtered.map((r, i) => {
+              const mcq = r.total_score ?? r.mcq_score;
+              const essay = r.essay_score;
+              const total = r.suggested_total_score ?? (Number(mcq || 0) + Number(essay || 0));
+              const totalBadge = getScoreBadge(total);
+              const mcqBadge = getScoreBadge(mcq);
+              const essayBadge = getScoreBadge(essay);
+
+              return (
+                <div
+                  key={r.submission_id}
+                  className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all"
+                >
+                  <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                    {/* Left: Exam Info */}
+                    <div className="flex-1">
+                      <div className="flex items-start gap-3">
+                        <div className="p-2 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-xl text-2xl">
+                          {totalBadge.icon}
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="text-lg font-semibold text-slate-800 mb-1">
+                            {r.exam_title || `Bài thi #${r.exam_id}`}
+                          </h3>
+                          <div className="flex items-center gap-3 text-sm text-slate-500">
+                            <span className="flex items-center gap-1">
+                              <FiCalendar className="w-4 h-4" />
+                              {r.submitted_at ? new Date(r.submitted_at).toLocaleDateString('vi-VN', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              }) : '-'}
+                            </span>
+                            {totalBadge.grade && (
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                totalBadge.color === 'emerald' ? 'bg-emerald-100 text-emerald-700' :
+                                totalBadge.color === 'amber' ? 'bg-amber-100 text-amber-700' :
+                                'bg-rose-100 text-rose-700'
+                              }`}>
+                                {totalBadge.grade}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right: Scores */}
+                    <div className="flex items-center gap-4 lg:gap-6">
+                      <div className="text-center">
+                        <div className="text-xs text-slate-500 mb-1">Trắc nghiệm</div>
+                        <div className={`text-2xl font-bold ${
+                          mcqBadge.color === 'emerald' ? 'text-emerald-600' :
+                          mcqBadge.color === 'amber' ? 'text-amber-600' :
+                          mcqBadge.color === 'rose' ? 'text-rose-600' :
+                          'text-slate-400'
+                        }`}>
+                          {mcqBadge.label}
+                        </div>
+                      </div>
+
+                      <div className="text-center">
+                        <div className="text-xs text-slate-500 mb-1">Tự luận</div>
+                        <div className={`text-2xl font-bold ${
+                          essayBadge.color === 'emerald' ? 'text-emerald-600' :
+                          essayBadge.color === 'amber' ? 'text-amber-600' :
+                          essayBadge.color === 'rose' ? 'text-rose-600' :
+                          'text-slate-400'
+                        }`}>
+                          {essayBadge.label}
+                        </div>
+                      </div>
+
+                      <div className="h-12 w-px bg-slate-200"></div>
+
+                      <div className="text-center">
+                        <div className="text-xs text-slate-500 mb-1">Tổng điểm</div>
+                        <div className={`text-3xl font-bold ${
+                          totalBadge.color === 'emerald' ? 'text-emerald-600' :
+                          totalBadge.color === 'amber' ? 'text-amber-600' :
+                          totalBadge.color === 'rose' ? 'text-rose-600' :
+                          'text-slate-400'
+                        }`}>
+                          {totalBadge.label}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Footer Info */}
+        {!loading && filtered.length > 0 && (
+          <div className="mt-6 text-center text-sm text-slate-500">
+            Hiển thị {filtered.length} / {rows.length} bài thi
+          </div>
+        )}
+      </div>
     </div>
   );
 }
