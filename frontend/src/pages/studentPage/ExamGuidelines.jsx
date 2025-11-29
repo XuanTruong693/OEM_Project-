@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { FiCalendar } from 'react-icons/fi';
 
 export default function ExamGuidelines() {
   const navigate = useNavigate();
@@ -29,17 +30,25 @@ export default function ExamGuidelines() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      {/* Header */}
-      <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-slate-200">
+      {/* Sticky Header */}
+      <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
           <button 
             onClick={() => navigate('/student-dashboard')}
-            className="flex items-center gap-2 text-slate-600 hover:text-slate-800 transition"
+            className="flex items-center gap-2 px-3 py-2 text-slate-700 rounded-lg hover:bg-slate-100 transition-all"
           >
             <span className="text-xl">←</span>
-            <span className="font-medium">Quay lại Dashboard</span>
+            <span className="font-semibold">Quay lại</span>
           </button>
-          <img src="/Logo.png" alt="Logo" className="h-8 w-auto" />
+
+          <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-2">
+            <img src="/Logo.png" alt="Logo" className="h-15 w-auto" />
+          </div>
+
+          <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
+            <FiCalendar className="w-4 h-4 text-slate-500" />
+            <span className="text-sm text-slate-600">{new Date().toLocaleDateString('vi-VN')}</span>
+          </div>
         </div>
       </header>
 

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { BarChart, Bar, Line, XAxis, Tooltip, ResponsiveContainer, ComposedChart } from "recharts";
 import { FiLogOut } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
 import axiosClient from "../../api/axiosClient";
 
 const InstructorDashboard = () => {
@@ -24,18 +23,12 @@ const InstructorDashboard = () => {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const token = localStorage.getItem("token");
-        const res = await axios.get(
-          "http://localhost:5000/api/instructor/dashboard",
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
+        const res = await axiosClient.get("/instructor/dashboard");
         setStats({
-          total_exams_created: res.data.total_exams_created || 0,
-          total_tests_submitted: res.data.total_tests_submitted || 0,
+          total_exams_created: Number(res.data?.total_exams_created) || 0,
+          total_tests_submitted: Number(res.data?.total_tests_submitted) || 0,
           total_students_participated:
-            res.data.total_students_participated || 0,
+            Number(res.data?.total_students_participated) || 0,
         });
       } catch (err) {
         console.error("❌ Lỗi lấy dữ liệu thống kê:", err);
@@ -115,14 +108,10 @@ const InstructorDashboard = () => {
   useEffect(() => {
     const fetchMonthly = async () => {
       try {
-        const token = localStorage.getItem("token");
-        const res = await axios.get(
-          "http://localhost:5000/api/instructor/dashboard/monthly",
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
+        const res = await axiosClient.get(
+          "/instructor/dashboard/monthly"
         );
-        const formatted = res.data.map((item) => ({
+        const formatted = (res.data || []).map((item) => ({
           name: `T${item.month}`,
           exams: item.exams_created,
           students: item.students_participated,
@@ -191,12 +180,13 @@ const InstructorDashboard = () => {
                 <p className="text-gray-500">Tổng số đề đã tạo</p>
               </div>
             </div>
-            <a
-              href="#"
+            <button
+              onClick={() => navigate("/instructor-dashboard/exams")}
               className="text-gray-400 hover:text-gray-600 text-sm mt-4 self-end"
+              type="button"
             >
               Xem →
-            </a>
+            </button>
           </div>
 
           {/* Tổng số bài kiểm tra */}
@@ -216,12 +206,13 @@ const InstructorDashboard = () => {
                 <p className="text-gray-500">Tổng số bài kiểm tra</p>
               </div>
             </div>
-            <a
-              href="#"
+            <button
+              onClick={() => navigate("/instructor-dashboard/submissions")}
               className="text-gray-400 hover:text-gray-600 text-sm mt-4 self-end"
+              type="button"
             >
               Xem →
-            </a>
+            </button>
           </div>
 
           {/* Tổng số thí sinh đã thi */}
@@ -241,12 +232,13 @@ const InstructorDashboard = () => {
                 <p className="text-gray-500">Tổng số thí sinh đã thi</p>
               </div>
             </div>
-            <a
-              href="#"
+            <button
+              onClick={() => navigate("/instructor-dashboard/students")}
               className="text-gray-400 hover:text-gray-600 text-sm mt-4 self-end"
+              type="button"
             >
               Xem →
-            </a>
+            </button>
           </div>
         </div>
 

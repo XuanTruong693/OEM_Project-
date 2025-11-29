@@ -24,6 +24,9 @@ import VerifyEmail from "./authPages/VerifyEmail.jsx";
 import ResetPassword from "./authPages/ResetPassword.jsx";
 
 import InstructorDashboard from "./pages/instructorPage/InstructorDashboard.jsx";
+import InstructorExamsList from "./pages/instructorPage/InstructorExamsList.jsx";
+import InstructorSubmissionsList from "./pages/instructorPage/InstructorSubmissionsList.jsx";
+import InstructorStudentsList from "./pages/instructorPage/InstructorStudentsList.jsx";
 import AssignExam from "./pages/instructorPage/AssignExam.jsx";
 import ExamBank from "./pages/instructorPage/ExamBank.jsx";
 import OpenExam from "./pages/instructorPage/OpenExam.jsx";
@@ -165,6 +168,9 @@ const App = () => {
             path="/instructor-dashboard"
             element={<InstructorDashboard />}
           />
+          <Route path="/instructor-dashboard/exams" element={<InstructorExamsList />} />
+          <Route path="/instructor-dashboard/submissions" element={<InstructorSubmissionsList />} />
+          <Route path="/instructor-dashboard/students" element={<InstructorStudentsList />} />
           <Route path="/exam-bank" element={<ExamBank />} />
           <Route path="/assign-exam" element={<AssignExam />} />
           <Route path="/open-exam" element={<OpenExam />} />

@@ -154,17 +154,22 @@ export default function StudentDashboard() {
   };
 
   const Card = ({ title, desc, action, onClick, icon }) => (
-    <button onClick={onClick} className="group text-left rounded-2xl p-4 bg-white border border-slate-200 hover:border-blue-300 hover:shadow transition">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl grid place-items-center bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-600 group-hover:from-blue-200 group-hover:to-indigo-200">
-          {icon || '📘'}
+    <button
+      onClick={onClick}
+      className="group text-left rounded-2xl p-4 bg-white border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all duration-200 hover:-translate-y-1 focus-visible:ring-2 focus-visible:ring-blue-200"
+    >
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-xl grid place-items-center bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-600 transition-colors duration-200 group-hover:from-blue-200 group-hover:to-indigo-200">
+          {icon || "📘"}
         </div>
-        <div>
+        <div className="flex-1">
           <h3 className="font-semibold text-slate-800">{title}</h3>
           <p className="text-sm text-slate-500">{desc}</p>
         </div>
       </div>
-      <div className="mt-3 text-sm font-medium text-blue-600">{action} →</div>
+      <div className="mt-3 text-sm font-medium text-blue-600 group-hover:translate-x-0.5 transition-transform">
+        {action} →
+      </div>
     </button>
   );
 
@@ -294,10 +299,23 @@ export default function StudentDashboard() {
             </button>
           </div>
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <img src={user.avatar || '/icons/UI Image/default-avatar.png'} alt="avatar" className="w-8 h-8 rounded-full object-cover border border-slate-200" />
-              <span className="text-sm text-slate-600">Xin chào, <span className="font-semibold text-slate-800">{user.fullname || 'Người dùng'}</span></span>
-            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/profile')}
+              className="flex items-center gap-2 text-left group focus-visible:outline-none"
+            >
+              <img
+                src={user.avatar || '/icons/UI Image/default-avatar.png'}
+                alt="avatar"
+                className="w-8 h-8 rounded-full object-cover border border-slate-200"
+              />
+              <span className="text-sm text-slate-600">
+                Xin chào,{" "}
+                <span className="font-semibold text-slate-800 group-hover:text-blue-700 underline underline-offset-2">
+                  {user.fullname || 'Người dùng'}
+                </span>
+              </span>
+            </button>
             <button onClick={logout} className="px-3 py-2 rounded-lg border border-slate-300 text-slate-700 hover:border-slate-400">Đăng xuất</button>
           </div>
         </div>
@@ -357,13 +375,18 @@ export default function StudentDashboard() {
             desc="Nhập mã phòng được giảng viên cung cấp." 
             action="Xác minh ngay" 
             onClick={() => {
-              // Xóa token trước khi vào verify room
+              // Xóa toàn bộ session trước khi vào verify room
               try {
                 sessionStorage.removeItem('room_token');
                 sessionStorage.removeItem('exam_flags');
                 sessionStorage.removeItem('pending_exam_duration');
-              } catch {}
-              navigate('/verify-room');
+                sessionStorage.removeItem('room_code');
+                sessionStorage.removeItem('exam_id');
+                sessionStorage.removeItem('exam_duration');
+              } catch (err) {
+                console.error('Error clearing session:', err);
+              }
+              navigate('/verify-room', { state: { fromStudentDashboard: true } });
             }} 
             icon="🔐" 
           />

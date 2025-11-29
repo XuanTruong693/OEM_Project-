@@ -47,6 +47,8 @@ router.get(
   async (req, res) => {
     try {
       const instructorId = req.user.id;
+      console.log("📋 Fetching submissions for instructor:", instructorId);
+      
       const [rows] = await sequelize.query(
         `
         SELECT 
@@ -57,23 +59,32 @@ router.get(
           u.full_name AS student_name,
           s.total_score,
           s.ai_score,
+          s.suggested_total_score,
           s.status,
+          s.attempt_no,
           s.started_at,
-          s.submitted_at,
-          s.created_at,
-          s.updated_at
+          s.submitted_at
         FROM submissions s
         JOIN exams e ON e.id = s.exam_id
         JOIN users u ON u.id = s.user_id
         WHERE e.instructor_id = ?
-        ORDER BY s.submitted_at DESC, s.created_at DESC
+        ORDER BY s.submitted_at DESC, s.started_at DESC
         `,
         { replacements: [instructorId] }
       );
+      
+      console.log("✅ Found", rows.length, "submissions");
       return res.json(rows || []);
     } catch (err) {
       console.error("❌ Error fetching submissions list:", err);
-      return res.status(500).json({ message: "Internal server error" });
+      console.error("❌ Error details:", err.message);
+      console.error("❌ SQL Error code:", err.original?.code);
+      console.error("❌ SQL Error errno:", err.original?.errno);
+      return res.status(500).json({ 
+        message: "Internal server error",
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+        sqlCode: process.env.NODE_ENV === 'development' ? err.original?.code : undefined
+      });
     }
   }
 );

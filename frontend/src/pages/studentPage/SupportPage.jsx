@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiPhone, FiMail, FiMapPin, FiArrowLeft } from 'react-icons/fi';
+import { FiPhone, FiMail, FiMapPin, FiArrowLeft, FiCalendar } from 'react-icons/fi';
 
 export default function SupportPage() {
   const navigate = useNavigate();
@@ -17,16 +17,30 @@ export default function SupportPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-4 sm:p-6">
-      <div className="max-w-4xl mx-auto">
-        {/* Back button */}
-        <button
-          onClick={() => navigate('/student-dashboard')}
-          className="flex items-center gap-2 px-4 py-2 mb-6 bg-white text-slate-700 rounded-xl hover:bg-slate-50 transition shadow-sm border border-slate-200"
-        >
-          <FiArrowLeft className="w-5 h-5" />
-          <span className="font-semibold">Quay lại Dashboard</span>
-        </button>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+      {/* Sticky Header */}
+      <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
+        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+          <button
+            onClick={() => navigate('/student-dashboard')}
+            className="flex items-center gap-2 px-3 py-2 text-slate-700 rounded-lg hover:bg-slate-100 transition-all"
+          >
+            <FiArrowLeft className="w-5 h-5" />
+            <span className="font-semibold">Quay lại</span>
+          </button>
+
+          <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-2">
+            <img src="/Logo.png" alt="Logo" className="h-15 w-auto" />
+          </div>
+
+          <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
+            <FiCalendar className="w-4 h-4 text-slate-500" />
+            <span className="text-sm text-slate-600">{new Date().toLocaleDateString('vi-VN')}</span>
+          </div>
+        </div>
+      </header>
+
+      <div className="max-w-4xl mx-auto p-4 sm:p-6">
 
         {/* Header */}
         <div className="text-center mb-8">
