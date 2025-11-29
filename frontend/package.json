@@ -7,7 +7,8 @@
     "start": "vite",
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "powershell -Command \"Remove-Item -Recurse -Force test-results,playwright-report -ErrorAction SilentlyContinue\"; npx playwright test --output test-results; npx playwright show-report --host 0.0.0.0 --port 9323"
   },
   "dependencies": {
     "@react-oauth/google": "^0.12.2",
@@ -19,13 +20,15 @@
     "react-dom": "^19.1.1",
     "react-icons": "^5.5.0",
     "react-router-dom": "^7.9.1",
-    "recharts": "^3.3.0"
+    "recharts": "^3.3.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@vitejs/plugin-react": "^5.0.3",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.13",
-    "vite": "^5.4.0"
+    "vite": "^6.4.1"
   }
 }
