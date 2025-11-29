@@ -37,6 +37,83 @@ router.get(
   }
 );
 
+// ==============================
+// 📋 1b️⃣ API: Danh sách submissions (dùng cho trang con "Xem")
+// ==============================
+router.get(
+  "/dashboard/submissions",
+  verifyToken,
+  authorizeRole(["instructor"]),
+  async (req, res) => {
+    try {
+      const instructorId = req.user.id;
+      const [rows] = await sequelize.query(
+        `
+        SELECT 
+          s.id AS submission_id,
+          s.exam_id,
+          e.title AS exam_title,
+          u.id AS student_id,
+          u.full_name AS student_name,
+          s.total_score,
+          s.ai_score,
+          s.status,
+          s.started_at,
+          s.submitted_at,
+          s.created_at,
+          s.updated_at
+        FROM submissions s
+        JOIN exams e ON e.id = s.exam_id
+        JOIN users u ON u.id = s.user_id
+        WHERE e.instructor_id = ?
+        ORDER BY s.submitted_at DESC, s.created_at DESC
+        `,
+        { replacements: [instructorId] }
+      );
+      return res.json(rows || []);
+    } catch (err) {
+      console.error("❌ Error fetching submissions list:", err);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
+
+// ==============================
+// 👥 1c️⃣ API: Danh sách sinh viên đã tham gia (distinct)
+// ==============================
+router.get(
+  "/dashboard/students",
+  verifyToken,
+  authorizeRole(["instructor"]),
+  async (req, res) => {
+    try {
+      const instructorId = req.user.id;
+      const [rows] = await sequelize.query(
+        `
+        SELECT 
+          u.id AS student_id,
+          u.full_name AS student_name,
+          u.email,
+          COUNT(s.id) AS submissions_count,
+          AVG(s.total_score) AS avg_score,
+          MAX(s.submitted_at) AS last_submitted_at
+        FROM submissions s
+        JOIN exams e ON e.id = s.exam_id
+        JOIN users u ON u.id = s.user_id
+        WHERE e.instructor_id = ?
+        GROUP BY u.id, u.full_name, u.email
+        ORDER BY last_submitted_at DESC, submissions_count DESC
+        `,
+        { replacements: [instructorId] }
+      );
+      return res.json(rows || []);
+    } catch (err) {
+      console.error("❌ Error fetching students list:", err);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
+
 // =======================================
 // 📅 2️⃣ API: Lấy thống kê theo tháng (T1–T12)
 // =======================================
