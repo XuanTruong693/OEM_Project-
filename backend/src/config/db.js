@@ -1,4 +1,5 @@
 const { Sequelize } = require("sequelize");
+const mysql = require('mysql2/promise');
 require("dotenv").config();
 
 const sequelize = new Sequelize(
@@ -14,4 +15,18 @@ const sequelize = new Sequelize(
   }
 );
 
+// MySQL2 Connection Pool for raw SQL queries (used in submissionController)
+const pool = mysql.createPool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  port: process.env.DB_PORT || 3306,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  timezone: process.env.APP_TZ || '+07:00'
+});
+
 module.exports = sequelize;
+module.exports.pool = pool;

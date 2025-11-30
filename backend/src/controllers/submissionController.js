@@ -1,51 +1,102 @@
-const pool = require("../config/db");
+const { pool } = require("../config/db");
 
-const CHEATING_TYPES = new Set([
-  "blocked_key",
-  "visibility_hidden",
-  "fullscreen_lost",
-  "window_blur",
-  "tab_switch",
-  "alt_tab",
-]);
+const CHEATING_TYPES = {
+  "blocked_key": "high",
+  "visibility_hidden": "medium",
+  "fullscreen_lost": "high",
+  "window_blur": "medium",
+  "tab_switch": "high",
+  "alt_tab": "high",
+  "multiple_faces": "high",
+  "no_face_detected": "medium",
+  "copy_paste": "high",
+};
 
 exports.postProctorEvent = async (req, res) => {
-  const { submissionId } = req.params;
+  const submissionId = req.params.submissionId || req.params.id; 
   const { event_type, details } = req.body;
+  
+  //console.log(`📝 [Proctor] Received event: ${event_type} for submission ${submissionId}`, { body: req.body });
+  
+  // Validate required fields
+  if (!event_type) {
+    //console.error("❌ [Proctor] Missing event_type");
+    return res.status(400).json({ error: "event_type is required" });
+  }
+  
+  if (!submissionId || isNaN(parseInt(submissionId))) {
+    //console.error("❌ [Proctor] Invalid submissionId:", submissionId);
+    return res.status(400).json({ error: "Invalid submissionId" });
+  }
+  
   let conn;
   try {
     conn = await pool.getConnection();
     await conn.beginTransaction();
-    const isCheating = CHEATING_TYPES.has(event_type) ? 1 : 0;
-    const [insertResult] = await conn.query(
-      "INSERT INTO proctor_events (submission_id, event_type, details, is_cheating) VALUES (?, ?, ?, ?)",
-      [submissionId, event_type, JSON.stringify(details || {}), isCheating]
-    );
+    
+    const severity = CHEATING_TYPES[event_type];
+    const isCheating = !!severity;
+    
     let updatedCheatingCount = null;
+    
     if (isCheating) {
-      // Increment count
-      await conn.query(
-        "UPDATE submissions SET cheating_count = cheating_count + 1, cheating_flag = 1 WHERE id = ?",
+      // Get submission details (student_id, exam_id)
+      const [subRows] = await conn.query(
+        "SELECT user_id, exam_id FROM submissions WHERE id = ?",
         [submissionId]
       );
-      const [rows] = await conn.query(
-        "SELECT cheating_count FROM submissions WHERE id = ?",
-        [submissionId]
-      );
-      if (rows && rows[0]) updatedCheatingCount = rows[0].cheating_count;
+      
+      if (subRows && subRows[0]) {
+        const { user_id: studentId, exam_id: examId } = subRows[0];
+        
+        // Insert into cheating_logs table (trigger will auto-update cheating_count)
+        const [insertResult] = await conn.query(
+          `INSERT INTO cheating_logs 
+           (submission_id, student_id, exam_id, event_type, event_details, severity) 
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            submissionId,
+            studentId,
+            examId,
+            event_type,
+            JSON.stringify(details || {}),
+            severity
+          ]
+        );
+        
+        //console.log(`✅ [Proctor] Cheating logged with ID: ${insertResult.insertId}`);
+        
+        // Get updated count (trigger already updated submissions.cheating_count)
+        const [countResult] = await conn.query(
+          "SELECT cheating_count FROM submissions WHERE id = ?",
+          [submissionId]
+        );
+        
+        updatedCheatingCount = countResult[0]?.cheating_count || 0;
+        
+        //console.log(`📊 [Proctor] Current cheating_count: ${updatedCheatingCount}`);
+      }
+    } else {
+      //console.log(`ℹ️ [Proctor] Non-cheating event: ${event_type}`);
     }
+    
     await conn.commit();
     conn.release();
+    
     res.status(200).json({
       success: true,
-      event_id: insertResult.insertId,
-      is_cheating: !!isCheating,
+      is_cheating: isCheating,
+      severity: severity || null,
       cheating_count: updatedCheatingCount,
+      message: isCheating ? `Cheating event logged: ${event_type}` : `Event logged: ${event_type}`
     });
   } catch (err) {
-    if (conn) await conn.rollback();
-    console.error("Error logging proctor event:", err);
-    res.status(500).json({ error: "Failed to log proctor event" });
+    if (conn) {
+      await conn.rollback();
+      conn.release();
+    }
+    console.error("❌ [Proctor] Error logging event:", err);
+    res.status(500).json({ error: "Failed to log proctor event", details: err.message });
   }
 };
 
@@ -131,6 +182,53 @@ exports.getStudentExamDetail = async (req, res) => {
   } catch (err) {
     console.error("Error getting student detail:", err);
     res.status(500).json({ error: "Failed to get student detail" });
+  }
+};
+
+//Get cheating details for a specific student submission
+exports.getStudentCheatingDetails = async (req, res) => {
+  const { submissionId } = req.params;
+  try {
+    const conn = await pool.getConnection();
+    const [cheatingLogs] = await conn.query(
+      `SELECT 
+        cl.id,
+        cl.event_type,
+        cl.event_details,
+        cl.detected_at,
+        cl.severity,
+        u.full_name AS student_name,
+        e.title AS exam_title
+       FROM cheating_logs cl
+       JOIN submissions s ON s.id = cl.submission_id
+       JOIN users u ON u.id = cl.student_id
+       JOIN exams e ON e.id = cl.exam_id
+       WHERE cl.submission_id = ?
+       ORDER BY cl.detected_at DESC`,
+      [submissionId]
+    );
+    
+    const [summary] = await conn.query(
+      `SELECT 
+        COUNT(*) AS total_incidents,
+        SUM(CASE WHEN severity = 'high' THEN 1 ELSE 0 END) AS high_count,
+        SUM(CASE WHEN severity = 'medium' THEN 1 ELSE 0 END) AS medium_count,
+        SUM(CASE WHEN severity = 'low' THEN 1 ELSE 0 END) AS low_count,
+        MIN(detected_at) AS first_incident,
+        MAX(detected_at) AS last_incident
+       FROM cheating_logs
+       WHERE submission_id = ?`,
+      [submissionId]
+    );
+    
+    conn.release();
+    res.json({
+      logs: cheatingLogs,
+      summary: summary[0] || {}
+    });
+  } catch (err) {
+    console.error("Error getting cheating details:", err);
+    res.status(500).json({ error: "Failed to get cheating details" });
   }
 };
 

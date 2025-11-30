@@ -54,14 +54,6 @@ const requireRoomVerification = async (req, res, next) => {
       { replacements: [userId, roomCode] }
     );
 
-    console.log("🔍 [verifyRoomMiddleware] Check verification:", {
-      userId,
-      examId,
-      roomCode,
-      verifiedCount: Array.isArray(verifiedRows) ? verifiedRows.length : 0,
-      verifiedRows: verifiedRows
-    });
-
     if (!Array.isArray(verifiedRows) || verifiedRows.length === 0) {
       // Chưa verify room
       console.warn("❌ [verifyRoomMiddleware] Student chưa verify room, trả 403");
@@ -72,8 +64,7 @@ const requireRoomVerification = async (req, res, next) => {
       });
     }
 
-    console.log("✅ [verifyRoomMiddleware] Student đã verify room, cho phép tiếp tục");
-    // Đã verify room, cho phép tiếp tục
+    // console.log("✅ [verifyRoomMiddleware] Student đã verify room, cho phép tiếp tục");
     next();
   } catch (err) {
     console.error("requireRoomVerification error:", err);

@@ -150,11 +150,14 @@ export default function TakeExam() {
 
     const postProctor = async (evt, details = {}) => {
       try {
-        await axiosClient.post(`/submissions/${submissionId}/proctor-event`, {
+        const response = await axiosClient.post(`/submissions/${submissionId}/proctor-event`, {
           event_type: evt,
           details,
         });
-      } catch {}
+        //console.log(`✅ [Proctor] ${evt} logged:`, response.data);
+      } catch (error) {
+        //console.error(`❌ [Proctor] Failed to log ${evt}:`, error.response?.data || error.message);
+      }
     };
 
     const flash = (msg, kind = "warn", ms = 1200) => {

@@ -26,6 +26,35 @@ export default function ResultsDashboard() {
   const filtered = React.useMemo(() => {
     const norm = (s) => String(s || '').toLowerCase();
     let arr = (rows || []).filter(r => norm(r.exam_title || r.exam_id).includes(norm(q)));
+    const examMap = new Map();
+    arr.forEach(r => {
+      const examId = r.exam_id;
+      const existing = examMap.get(examId);
+      const currentScore = Number(r.suggested_total_score ?? r.total_score ?? 0);
+      const existingScore = existing ? Number(existing.suggested_total_score ?? existing.total_score ?? 0) : -1;
+      
+      if (!existing) {
+        examMap.set(examId, r);
+      } else {
+        // Priority 1: instructor_confirmed = 1 (approved)
+        const currentConfirmed = r.instructor_confirmed === 1 || r.status === 'confirmed';
+        const existingConfirmed = existing.instructor_confirmed === 1 || existing.status === 'confirmed';
+        
+        if (currentConfirmed && !existingConfirmed) {
+          examMap.set(examId, r);
+        } else if (!currentConfirmed && existingConfirmed) {
+          // Keep existing
+        } else {
+          // Both confirmed or both not confirmed: take higher score
+          if (currentScore > existingScore) {
+            examMap.set(examId, r);
+          }
+        }
+      }
+    });
+    
+    arr = Array.from(examMap.values());
+    
     if (sort === 'score_desc') {
       arr = arr.sort((a, b) => ((b.suggested_total_score ?? b.total_score ?? 0) - (a.suggested_total_score ?? a.total_score ?? 0)));
     } else if (sort === 'score_asc') {
@@ -163,11 +192,16 @@ export default function ResultsDashboard() {
           <div className="space-y-4">
             {filtered.map((r, i) => {
               const mcq = r.total_score ?? r.mcq_score;
-              const essay = r.essay_score;
+              const essay = r.ai_score;
               const total = r.suggested_total_score ?? (Number(mcq || 0) + Number(essay || 0));
               const totalBadge = getScoreBadge(total);
               const mcqBadge = getScoreBadge(mcq);
               const essayBadge = getScoreBadge(essay);
+              
+              // Check if confirmed by instructor
+              const isConfirmed = r.instructor_confirmed === 1 || r.status === 'confirmed';
+              const statusLabel = isConfirmed ? 'Đã duyệt' : 'Chưa duyệt';
+              const statusColor = isConfirmed ? 'emerald' : 'amber';
 
               return (
                 <div
@@ -196,6 +230,16 @@ export default function ResultsDashboard() {
                                 minute: '2-digit'
                               }) : '-'}
                             </span>
+                            
+                            {/* Status Badge */}
+                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 ${
+                              statusColor === 'emerald' 
+                                ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' 
+                                : 'bg-amber-100 text-amber-700 border border-amber-200'
+                            }`}>
+                              {isConfirmed ? '✓' : '⏳'} {statusLabel}
+                            </span>
+                            
                             {totalBadge.grade && (
                               <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                                 totalBadge.color === 'emerald' ? 'bg-emerald-100 text-emerald-700' :
@@ -239,7 +283,10 @@ export default function ResultsDashboard() {
                       <div className="h-12 w-px bg-slate-200"></div>
 
                       <div className="text-center">
-                        <div className="text-xs text-slate-500 mb-1">Tổng điểm</div>
+                        <div className="text-xs text-slate-500 mb-1 flex items-center gap-1 justify-center">
+                          Tổng điểm
+                          {isConfirmed && <span className="text-emerald-600">✓</span>}
+                        </div>
                         <div className={`text-3xl font-bold ${
                           totalBadge.color === 'emerald' ? 'text-emerald-600' :
                           totalBadge.color === 'amber' ? 'text-amber-600' :
@@ -248,6 +295,11 @@ export default function ResultsDashboard() {
                         }`}>
                           {totalBadge.label}
                         </div>
+                        {isConfirmed && (
+                          <div className="text-[10px] text-emerald-600 font-semibold mt-0.5">
+                            Điểm chính thức
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

@@ -10,9 +10,12 @@ const Badge = ({ color = "slate", children }) => (
       "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
       color === "emerald" &&
         "bg-emerald-500/10 text-emerald-700 ring-1 ring-emerald-500/20",
-      color === "amber" && "bg-amber-500/10 text-amber-700 ring-1 ring-amber-500/20",
-      color === "rose" && "bg-rose-500/10 text-rose-700 ring-1 ring-rose-500/20",
-      color === "slate" && "bg-slate-500/10 text-slate-700 ring-1 ring-slate-500/20"
+      color === "amber" &&
+        "bg-amber-500/10 text-amber-700 ring-1 ring-amber-500/20",
+      color === "rose" &&
+        "bg-rose-500/10 text-rose-700 ring-1 ring-rose-500/20",
+      color === "slate" &&
+        "bg-slate-500/10 text-slate-700 ring-1 ring-slate-500/20"
     )}
   >
     {children}
@@ -25,7 +28,9 @@ const StatCard = ({ label, value, subtle, icon }) => (
     <div className="relative">
       {icon && <div className="text-3xl mb-3">{icon}</div>}
       <div className="text-slate-600 text-sm font-medium">{label}</div>
-      <div className="mt-2 text-3xl font-bold bg-gradient-to-br from-blue-600 to-indigo-600 bg-clip-text text-transparent">{value}</div>
+      <div className="mt-2 text-3xl font-bold bg-gradient-to-br from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+        {value}
+      </div>
       {subtle && <div className="text-xs text-slate-500 mt-2">{subtle}</div>}
     </div>
   </div>
@@ -55,6 +60,30 @@ const StatusPill = (v) => {
 const fmtDate = (s) => (s ? new Date(s).toLocaleString() : "-");
 const toFinal = (r) => r.total_score ?? r.suggested_total_score ?? 0;
 
+// Format duration: show seconds if < 60s, otherwise show minutes
+const fmtDuration = (seconds, minutes) => {
+  if (seconds == null && minutes == null) return "-";
+
+  const sec = Number(seconds);
+  const min = Number(minutes);
+
+  if (!isNaN(sec)) {
+    if (sec < 60) {
+      return `${sec}s`;
+    } else {
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      return s > 0 ? `${m}m ${s}s` : `${m}m`;
+    }
+  }
+
+  if (!isNaN(min)) {
+    return min > 0 ? `${min}m` : "< 1m";
+  }
+
+  return "-";
+};
+
 export default function Result() {
   const nav = useNavigate();
 
@@ -72,6 +101,45 @@ export default function Result() {
   const [passThreshold, setPassThreshold] = React.useState(50);
 
   const [drawer, setDrawer] = React.useState({ open: false, row: null });
+  const [cheatingDetails, setCheatingDetails] = React.useState(null);
+  const [faceImageData, setFaceImageData] = React.useState(null);
+  const [cardImageData, setCardImageData] = React.useState(null);
+  const [originalScores, setOriginalScores] = React.useState({
+    total_score: 0,
+    ai_score: 0,
+  });
+  const [scoreError, setScoreError] = React.useState("");
+
+  // Toast notifications
+  const [toast, setToast] = React.useState({
+    show: false,
+    type: "",
+    message: "",
+  });
+  const [confirmDialog, setConfirmDialog] = React.useState({
+    show: false,
+    message: "",
+    onConfirm: null,
+  });
+
+  // Toast helper functions
+  const showToast = (type, message) => {
+    setToast({ show: true, type, message });
+    setTimeout(() => setToast({ show: false, type: "", message: "" }), 3000);
+  };
+
+  const showConfirm = (message, onConfirm) => {
+    setConfirmDialog({ show: true, message, onConfirm });
+  };
+
+  const handleConfirm = () => {
+    if (confirmDialog.onConfirm) confirmDialog.onConfirm();
+    setConfirmDialog({ show: false, message: "", onConfirm: null });
+  };
+
+  const handleCancel = () => {
+    setConfirmDialog({ show: false, message: "", onConfirm: null });
+  };
 
   const load = async (id) => {
     if (!id) return;
@@ -111,8 +179,8 @@ export default function Result() {
             load(String(first.id));
           }
         }
-      } catch {
-        /* ignore */
+      } catch (err) {
+        console.error("Failed to fetch exam list:", err);
       }
     })();
   }, []);
@@ -122,6 +190,69 @@ export default function Result() {
     setExamId(id);
     load(id);
   };
+  React.useEffect(() => {
+    if (!examId) return;
+
+    let isActive = true;
+    let currentCount = rows.length;
+
+    const waitForNewSubmissions = async () => {
+      while (isActive) {
+        try {
+          const res = await axiosClient.get(
+            `/instructor/exams/${examId}/submissions/count?lastCount=${currentCount}`
+          );
+
+          if (!isActive) break;
+
+          if (res.data?.hasChanges) {
+            const newCount = res.data.count;
+
+            const [summaryRes, resultsRes] = await Promise.all([
+              axiosClient.get(`/instructor/exams/${examId}/summary`),
+              axiosClient.get(`/instructor/exams/${examId}/results`),
+            ]);
+
+            setSummary(summaryRes?.data || null);
+
+            const newData = Array.isArray(resultsRes?.data)
+              ? resultsRes.data
+              : [];
+            setRows((prevRows) => {
+              const existingMap = new Map(
+                prevRows.map((row) => [row.student_id, row])
+              );
+
+              return newData.map((newRow) => {
+                const existing = existingMap.get(newRow.student_id);
+                if (existing) {
+                  return {
+                    ...existing,
+
+                    status: newRow.status || existing.status,
+                    submitted_at: newRow.submitted_at || existing.submitted_at,
+                  };
+                }
+
+                return newRow;
+              });
+            });
+
+            currentCount = newCount;
+          }
+        } catch (err) {
+          console.error("Long polling error:", err);
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+        }
+      }
+    };
+
+    waitForNewSubmissions();
+
+    return () => {
+      isActive = false;
+    };
+  }, [examId, rows.length]);
 
   const filtered = React.useMemo(() => {
     const norm = (s) => String(s || "").toLowerCase();
@@ -151,9 +282,11 @@ export default function Result() {
 
   const exportCsv = () => {
     // Get exam title
-    const examTitle = examList.find(e => String(e.id) === String(examId))?.title || `Exam #${examId}`;
-    const currentDate = new Date().toLocaleString('vi-VN');
-    
+    const examTitle =
+      examList.find((e) => String(e.id) === String(examId))?.title ||
+      `Exam #${examId}`;
+    const currentDate = new Date().toLocaleString("vi-VN");
+
     // Create header rows
     const lines = [
       "=== ONLINE EXAM MONITORING SYSTEM ===",
@@ -164,35 +297,41 @@ export default function Result() {
       "=== DANH SACH SINH VIEN THAM GIA ===",
       "", // Empty line
     ];
-    
+
     const header = [
       "Student",
+      "Student ID",
+      "Submission ID",
       "MCQ",
       "Essay (AI)",
       "Suggested",
       "Final",
       "Start",
       "Submitted",
+      "Duration (s)",
       "Duration (min)",
-      "Cheating",
-      "Face",
-      "Card",
+      "Cheating Count",
+      "Has Face",
+      "Has Card",
       "Status",
     ];
     lines.push(header.join(","));
     filtered.forEach((r) => {
       const line = [
         r.student_name ?? "",
-        r.mcq_score ?? "",
+        r.student_id ?? "",
+        r.submission_id ?? "",
+        r.total_score ?? "",
         r.ai_score ?? "",
         r.suggested_total_score ?? "",
-        r.total_score ?? r.suggested_total_score ?? "",
+        r.instructor_confirmed === 1 ? r.suggested_total_score ?? "" : "",
         r.started_at ? new Date(r.started_at).toLocaleString() : "",
         r.submitted_at ? new Date(r.submitted_at).toLocaleString() : "",
+        r.duration_seconds ?? "",
         r.duration_minutes ?? "",
-        r.cheating_flag ? "Yes" : "No",
-        r.face_image_url ?? "",
-        r.student_card_url ?? "",
+        r.cheating_count ?? "0",
+        r.has_face_image ? "Yes" : "No",
+        r.has_student_card ? "Yes" : "No",
         r.status ?? "",
       ]
         .map((v) => `"${String(v).replaceAll('"', '""')}"`)
@@ -213,180 +352,472 @@ export default function Result() {
   const exportXlsx = async () => {
     try {
       // Get exam title
-      const examTitle = examList.find(e => String(e.id) === String(examId))?.title || `Exam #${examId}`;
-      const currentDate = new Date().toLocaleString('vi-VN');
-      
-      const data = filtered.map((r) => ({
-        "Student": r.student_name ?? "",
-        "MCQ": r.mcq_score ?? "",
-        "Essay (AI)": r.ai_score ?? "",
-        "Suggested": r.suggested_total_score ?? "",
-        "Final": r.total_score ?? r.suggested_total_score ?? "",
-        "Start": r.started_at ? new Date(r.started_at).toLocaleString('vi-VN') : "",
-        "Submitted": r.submitted_at ? new Date(r.submitted_at).toLocaleString('vi-VN') : "",
-        "Duration (min)": r.duration_minutes ?? "",
-        "Cheating": r.cheating_flag ? "Yes" : "No",
-        "Face": r.face_image_url ?? "",
-        "Card": r.student_card_url ?? "",
-        "Status": r.status ?? "",
-      }));
-      
-      const mod = await import(/* @vite-ignore */ "xlsx");
-      
-      // Add data starting from row 7 (to leave space for logo and headers)
-      const dataRows = data.map(obj => Object.values(obj));
-      const ws = mod.utils.aoa_to_sheet([
-        [], // Row 1 - Space for logo
-        [], // Row 2 - Space for logo
-        [], // Row 3 - Empty
-        [`Bài thi: ${examTitle}`], // Row 4
-        [`Ngày xuất: ${currentDate}`], // Row 5
-        [], // Row 6 - Empty
-        ["DANH SÁCH SINH VIÊN THAM GIA"], // Row 7
-        [], // Row 8 - Empty
-        ["Student", "MCQ", "Essay (AI)", "Suggested", "Final", "Start", "Submitted", "Duration (min)", "Cheating", "Face", "Card", "Status"], // Row 9 - Headers
-        ...dataRows // Row 10+ - Data
-      ]);
-      
-      // Add logo image placeholder text in first row
-      ws['A1'] = { v: "🎓 ONLINE EXAM MONITORING SYSTEM", t: "s" };
-      
-      // Style the cells
-      if (!ws['!rows']) ws['!rows'] = [];
-      ws['!rows'][0] = { hpt: 30 }; // Row 1 height for logo
-      ws['!rows'][1] = { hpt: 10 }; // Row 2 height
-      ws['!rows'][6] = { hpt: 25 }; // Row 7 height for label
-      
-      // Merge cells
-      ws['!merges'] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 11 } }, // Logo/Title - Row 1, columns A-L
-        { s: { r: 3, c: 0 }, e: { r: 3, c: 11 } }, // Exam title - Row 4
-        { s: { r: 4, c: 0 }, e: { r: 4, c: 11 } }, // Date - Row 5
-        { s: { r: 6, c: 0 }, e: { r: 6, c: 11 } }, // Label - Row 7
+      const examTitle =
+        examList.find((e) => String(e.id) === String(examId))?.title ||
+        `Exam #${examId}`;
+      const currentDate = new Date().toLocaleString("vi-VN");
+
+      // Import ExcelJS
+      const ExcelJS = await import("exceljs");
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Results");
+
+      // Load logo image
+      let logoImageId = null;
+      try {
+        const logoResponse = await fetch("/Logo.png");
+        const logoBlob = await logoResponse.blob();
+        const logoArrayBuffer = await logoBlob.arrayBuffer();
+
+        logoImageId = workbook.addImage({
+          buffer: logoArrayBuffer,
+          extension: "png",
+        });
+      } catch (err) {
+        console.warn("Failed to load logo:", err);
+      }
+
+      // Add logo to header (row 1-3, A1:B3)
+      if (logoImageId !== null) {
+        worksheet.addImage(logoImageId, {
+          tl: { col: 0, row: 0 }, // Top-left at A1
+          br: { col: 2, row: 3 }, // Bottom-right at C4 (columns A-B, rows 1-3)
+          editAs: "oneCell",
+        });
+      }
+
+      // Add title rows (logo takes A1:B3, title starts at C1)
+      worksheet.mergeCells("C1:O3");
+      worksheet.getCell("C1").value = "🎓 ONLINE EXAM MONITORING SYSTEM";
+      worksheet.getCell("C1").font = {
+        bold: true,
+        size: 18,
+        color: { argb: "FF1F4788" },
+      };
+      worksheet.getCell("C1").alignment = {
+        horizontal: "center",
+        vertical: "middle",
+      };
+      worksheet.getCell("C1").fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFE8F0FE" },
+      };
+      worksheet.getRow(1).height = 20;
+      worksheet.getRow(2).height = 20;
+      worksheet.getRow(3).height = 20;
+
+      worksheet.getRow(4).height = 10;
+
+      worksheet.mergeCells("A5:O5");
+      worksheet.getCell("A5").value = `Bài thi: ${examTitle}`;
+      worksheet.getCell("A5").font = { bold: true, size: 12 };
+      worksheet.getCell("A5").alignment = {
+        horizontal: "left",
+        vertical: "middle",
+      };
+
+      worksheet.mergeCells("A6:O6");
+      worksheet.getCell("A6").value = `Ngày xuất: ${currentDate}`;
+      worksheet.getCell("A6").font = { size: 11 };
+      worksheet.getCell("A6").alignment = {
+        horizontal: "left",
+        vertical: "middle",
+      };
+
+      worksheet.getRow(7).height = 10;
+
+      worksheet.mergeCells("A8:O8");
+      worksheet.getCell("A8").value = "DANH SÁCH SINH VIÊN THAM GIA";
+      worksheet.getCell("A8").font = {
+        bold: true,
+        size: 13,
+        color: { argb: "FF1F4788" },
+      };
+      worksheet.getCell("A8").alignment = {
+        horizontal: "center",
+        vertical: "middle",
+      };
+      worksheet.getCell("A8").fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFD0E1F9" },
+      };
+      worksheet.getRow(8).height = 25;
+
+      worksheet.getRow(9).height = 10;
+
+      const headerRow = worksheet.getRow(10);
+      const headers = [
+        "Student",
+        "Student ID",
+        "Submission ID",
+        "MCQ",
+        "Essay (AI)",
+        "Suggested",
+        "Final",
+        "Start",
+        "Submitted",
+        "Duration (s)",
+        "Duration (min)",
+        "Cheating Count",
+        "Face Image",
+        "Card Image",
+        "Status",
       ];
-      
+
+      headers.forEach((header, idx) => {
+        const cell = headerRow.getCell(idx + 1);
+        cell.value = header;
+        cell.font = { bold: true, size: 11 };
+        cell.alignment = { horizontal: "center", vertical: "middle" };
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FF4A90E2" },
+        };
+        cell.border = {
+          top: { style: "thin", color: { argb: "FF000000" } },
+          bottom: { style: "thin", color: { argb: "FF000000" } },
+          left: { style: "thin", color: { argb: "FF000000" } },
+          right: { style: "thin", color: { argb: "FF000000" } },
+        };
+      });
+
       // Set column widths
-      ws['!cols'] = [
-        { wch: 20 }, // Student
-        { wch: 8 },  // MCQ
-        { wch: 12 }, // Essay (AI)
-        { wch: 10 }, // Suggested
-        { wch: 8 },  // Final
-        { wch: 18 }, // Start
-        { wch: 18 }, // Submitted
-        { wch: 15 }, // Duration
-        { wch: 10 }, // Cheating
-        { wch: 10 }, // Face
-        { wch: 10 }, // Card
-        { wch: 12 }, // Status
+      worksheet.columns = [
+        { width: 20 }, // Student
+        { width: 10 }, // Student ID
+        { width: 12 }, // Submission ID
+        { width: 8 }, // MCQ
+        { width: 12 }, // Essay (AI)
+        { width: 10 }, // Suggested
+        { width: 8 }, // Final
+        { width: 18 }, // Start
+        { width: 18 }, // Submitted
+        { width: 12 }, // Duration (s)
+        { width: 12 }, // Duration (min)
+        { width: 14 }, // Cheating Count
+        { width: 20 }, // Face Image
+        { width: 20 }, // Card Image
+        { width: 12 }, // Status
       ];
-      
-      // Apply styles to specific cells
-      const range = mod.utils.decode_range(ws['!ref']);
-      for (let R = range.s.r; R <= range.e.r; ++R) {
-        for (let C = range.s.c; C <= range.e.c; ++C) {
-          const cellAddress = mod.utils.encode_cell({ r: R, c: C });
-          if (!ws[cellAddress]) continue;
-          
-          if (!ws[cellAddress].s) ws[cellAddress].s = {};
-          
-          // Row 1 (Logo/Title)
-          if (R === 0) {
-            ws[cellAddress].s = {
-              font: { bold: true, sz: 16, color: { rgb: "1F4788" } },
-              alignment: { horizontal: "center", vertical: "center" },
-              fill: { fgColor: { rgb: "E8F0FE" } }
+
+      // Add data rows starting from row 11
+      let currentRow = 11;
+
+      for (const r of filtered) {
+        const row = worksheet.getRow(currentRow);
+
+        // Set row height for images
+        row.height = 80;
+
+        // Add data
+        row.getCell(1).value = r.student_name ?? "";
+        row.getCell(2).value = r.student_id ?? "";
+        row.getCell(3).value = r.submission_id ?? "";
+        row.getCell(4).value = r.total_score ?? "";
+        row.getCell(5).value = r.ai_score ?? "";
+        row.getCell(6).value = r.suggested_total_score ?? "";
+        row.getCell(7).value =
+          r.instructor_confirmed === 1 ? r.suggested_total_score ?? "" : "";
+        row.getCell(8).value = r.started_at
+          ? new Date(r.started_at).toLocaleString("vi-VN")
+          : "";
+        row.getCell(9).value = r.submitted_at
+          ? new Date(r.submitted_at).toLocaleString("vi-VN")
+          : "";
+        row.getCell(10).value = r.duration_seconds ?? "";
+        row.getCell(11).value = r.duration_minutes ?? "";
+        row.getCell(12).value = r.cheating_count ?? "0";
+        row.getCell(13).value = r.has_face_image ? "Yes" : "No";
+        row.getCell(14).value = r.has_student_card ? "Yes" : "No";
+        row.getCell(15).value = r.status ?? "";
+
+        // Style cells
+        for (let col = 1; col <= 15; col++) {
+          const cell = row.getCell(col);
+          cell.alignment = { horizontal: "left", vertical: "middle" };
+          cell.border = {
+            top: { style: "hair", color: { argb: "FFCCCCCC" } },
+            bottom: { style: "hair", color: { argb: "FFCCCCCC" } },
+            left: { style: "hair", color: { argb: "FFCCCCCC" } },
+            right: { style: "hair", color: { argb: "FFCCCCCC" } },
+          };
+          if (currentRow % 2 === 0) {
+            cell.fill = {
+              type: "pattern",
+              pattern: "solid",
+              fgColor: { argb: "FFF8F9FA" },
             };
-          }
-          // Row 4 (Exam title)
-          else if (R === 3) {
-            ws[cellAddress].s = {
-              font: { bold: true, sz: 12 },
-              alignment: { horizontal: "left", vertical: "center" }
-            };
-          }
-          // Row 5 (Date)
-          else if (R === 4) {
-            ws[cellAddress].s = {
-              font: { sz: 11 },
-              alignment: { horizontal: "left", vertical: "center" }
-            };
-          }
-          // Row 7 (Label)
-          else if (R === 6) {
-            ws[cellAddress].s = {
-              font: { bold: true, sz: 13, color: { rgb: "1F4788" } },
-              alignment: { horizontal: "center", vertical: "center" },
-              fill: { fgColor: { rgb: "D0E1F9" } }
-            };
-          }
-          // Row 9 (Column headers)
-          else if (R === 8) {
-            ws[cellAddress].s = {
-              font: { bold: true, sz: 11 },
-              alignment: { horizontal: "center", vertical: "center" },
-              fill: { fgColor: { rgb: "4A90E2" } },
-              border: {
-                top: { style: "thin", color: { rgb: "000000" } },
-                bottom: { style: "thin", color: { rgb: "000000" } },
-                left: { style: "thin", color: { rgb: "000000" } },
-                right: { style: "thin", color: { rgb: "000000" } }
-              }
-            };
-          }
-          // Data rows (10+)
-          else if (R >= 9) {
-            ws[cellAddress].s = {
-              alignment: { horizontal: "left", vertical: "center" },
-              border: {
-                top: { style: "hair", color: { rgb: "CCCCCC" } },
-                bottom: { style: "hair", color: { rgb: "CCCCCC" } },
-                left: { style: "hair", color: { rgb: "CCCCCC" } },
-                right: { style: "hair", color: { rgb: "CCCCCC" } }
-              }
-            };
-            // Alternate row colors
-            if (R % 2 === 0) {
-              ws[cellAddress].s.fill = { fgColor: { rgb: "F8F9FA" } };
-            }
           }
         }
+
+        // Load and embed face image
+        if (r.has_face_image && r.submission_id) {
+          try {
+            const res = await axiosClient.get(
+              `/instructor/submissions/${r.submission_id}/face-image`,
+              {
+                responseType: "arraybuffer",
+              }
+            );
+
+            const imageId = workbook.addImage({
+              buffer: res.data,
+              extension: "jpeg",
+            });
+
+            worksheet.addImage(imageId, {
+              tl: { col: 12, row: currentRow - 1 }, // Top-left (column M, 0-indexed)
+              br: { col: 13, row: currentRow }, // Bottom-right
+              editAs: "oneCell",
+            });
+          } catch (err) {
+            // Silent fail for face image
+          }
+        }
+
+        // Load and embed card image
+        if (r.has_student_card && r.submission_id) {
+          try {
+            const res = await axiosClient.get(
+              `/instructor/submissions/${r.submission_id}/student-card`,
+              {
+                responseType: "arraybuffer",
+              }
+            );
+
+            const imageId = workbook.addImage({
+              buffer: res.data,
+              extension: "jpeg",
+            });
+
+            worksheet.addImage(imageId, {
+              tl: { col: 13, row: currentRow - 1 }, // Top-left (column N, 0-indexed)
+              br: { col: 14, row: currentRow }, // Bottom-right
+              editAs: "oneCell",
+            });
+          } catch (err) {
+            // Silent fail for card image
+          }
+        }
+
+        currentRow++;
       }
-      
-      const wb = mod.utils.book_new();
-      mod.utils.book_append_sheet(wb, ws, "Results");
-      
-      // Clean filename
-      const cleanTitle = examTitle.replace(/[/:*?"<>|]/g, '-');
-      const cleanDate = currentDate.replace(/[/:]/g, '-').replace(/,/g, '');
-      mod.writeFile(wb, `${cleanTitle}_${cleanDate}.xlsx`);
+
+      // Generate file
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const cleanTitle = examTitle.replace(/[/:*?"<>|]/g, "-");
+      const cleanDate = currentDate.replace(/[/:]/g, "-").replace(/,/g, "");
+      a.href = url;
+      a.download = `${cleanTitle}_${cleanDate}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      showToast(
+        "success",
+        "✅ Xuất Excel thành công với logo và ảnh đính kèm!"
+      );
     } catch (err) {
-      console.error('Excel export error:', err);
+      console.error("Excel export error:", err);
+      showToast("error", "❌ Lỗi xuất Excel: " + err.message);
       exportCsv();
     }
   };
 
-  const openDrawer = (row) => setDrawer({ open: true, row });
-  const closeDrawer = () => setDrawer({ open: false, row: null });
+  const openDrawer = async (row) => {
+    setDrawer({ open: true, row });
+    setFaceImageData(null);
+    setCardImageData(null);
+    setScoreError("");
+    setOriginalScores({
+      total_score: Number(row.total_score ?? 0),
+      ai_score: Number(row.ai_score ?? 0),
+    });
+
+    // Load cheating details if submission_id exists
+    if (row.submission_id) {
+      axiosClient
+        .get(`/instructor/submissions/${row.submission_id}/cheating-details`)
+        .then((res) => setCheatingDetails(res.data))
+        .catch(() => setCheatingDetails(null));
+
+      // Load face image blob
+      if (row.has_face_image) {
+        try {
+          const res = await axiosClient.get(
+            `/instructor/submissions/${row.submission_id}/face-image`,
+            {
+              responseType: "blob",
+            }
+          );
+          const imageUrl = URL.createObjectURL(res.data);
+          setFaceImageData(imageUrl);
+        } catch (err) {
+          console.error("Failed to load face image:", err);
+        }
+      }
+
+      // Load student card blob
+      if (row.has_student_card) {
+        try {
+          const res = await axiosClient.get(
+            `/instructor/submissions/${row.submission_id}/student-card`,
+            {
+              responseType: "blob",
+            }
+          );
+          const imageUrl = URL.createObjectURL(res.data);
+          setCardImageData(imageUrl);
+        } catch (err) {
+          console.error("Failed to load student card:", err);
+        }
+      }
+    }
+  };
+  const closeDrawer = () => {
+    // Cleanup blob URLs
+    if (faceImageData) URL.revokeObjectURL(faceImageData);
+    if (cardImageData) URL.revokeObjectURL(cardImageData);
+
+    setDrawer({ open: false, row: null });
+    setCheatingDetails(null);
+    setFaceImageData(null);
+    setCardImageData(null);
+    setScoreError("");
+    setOriginalScores({ total_score: 0, ai_score: 0 });
+  };
 
   const saveScore = async () => {
     const r = drawer.row;
     if (!r) return;
+
+    const newTotalScore = Number(r.total_score ?? 0);
+    const newAiScore = Number(r.ai_score ?? 0);
+
+    // Validation 1: Không cho điểm > 10
+    if (newTotalScore > 10 || newAiScore > 10) {
+      setScoreError("❌ Điểm không được vượt quá 10!");
+      showToast("error", "Điểm không được vượt quá 10!");
+      return;
+    }
+
+    // Validation 2: Confirm nếu giảm điểm
+    const oldTotal = originalScores.total_score;
+    const oldAi = originalScores.ai_score;
+    const oldSum = oldTotal + oldAi;
+    const newSum = newTotalScore + newAiScore;
+
+    if (newSum < oldSum) {
+      const message = `Bạn đang giảm điểm từ ${oldSum.toFixed(
+        1
+      )} xuống ${newSum.toFixed(1)}. Bạn có chắc chắn muốn tiếp tục?`;
+      showConfirm(message, async () => {
+        await performSave(newTotalScore, newAiScore, r);
+      });
+      return;
+    }
+
+    // Lưu trực tiếp nếu không giảm điểm
+    await performSave(newTotalScore, newAiScore, r);
+  };
+
+  const performSave = async (newTotalScore, newAiScore, r) => {
+    setScoreError("");
+
     try {
       const payload = {
-        mcq_score: Number(r.mcq_score ?? 0),
-        ai_score: Number(r.ai_score ?? 0),
+        total_score: newTotalScore,
+        ai_score: newAiScore,
         student_name: r.student_name,
       };
       await axiosClient.put(
         `/instructor/exams/${examId}/students/${r.student_id}/score`,
         payload
       );
-      await load(examId);
-      closeDrawer();
-    } catch {
-      /* ignore */
+      showToast("success", "✅ Lưu điểm thành công!");
+
+      // Update local state without full reload to preserve all data
+      setRows((prevRows) =>
+        prevRows.map((row) => {
+          if (row.student_id === r.student_id) {
+            // Only update score fields, keep all other data intact
+            const suggestedScore = (newTotalScore || 0) + (newAiScore || 0);
+            return {
+              ...row,
+              total_score: newTotalScore,
+              ai_score: newAiScore,
+              suggested_total_score: suggestedScore,
+              instructor_confirmed: 1,
+              status: "confirmed",
+            };
+          }
+          return row;
+        })
+      );
+
+      // Update drawer row to reflect new scores
+      setDrawer((prev) => ({
+        ...prev,
+        row: {
+          ...prev.row,
+          total_score: newTotalScore,
+          ai_score: newAiScore,
+          suggested_total_score: (newTotalScore || 0) + (newAiScore || 0),
+          instructor_confirmed: 1,
+          status: "confirmed",
+        },
+      }));
+
+      setTimeout(() => closeDrawer(), 1000);
+    } catch (err) {
+      console.error("Save score error:", err);
+      showToast("error", "❌ Lỗi khi lưu điểm!");
+      setScoreError("❌ Lỗi khi lưu điểm!");
     }
+  };
+
+  const approveAllScores = async () => {
+    if (!examId) return;
+
+    const message = `Bạn có chắc muốn duyệt tất cả ${filtered.length} bài thi?`;
+
+    showConfirm(message, async () => {
+      try {
+        console.log(`📝 [Result] Approving all scores for exam ${examId}...`);
+
+        const res = await axiosClient.post(
+          `/instructor/exams/${examId}/approve-all-scores`
+        );
+
+        console.log(
+          `✅ [Result] Approved ${res.data?.approved || 0} submissions`
+        );
+
+        showToast(
+          "success",
+          `✅ Đã duyệt thành công ${res.data?.approved || 0} bài thi!`
+        );
+
+        // Update local state instead of full reload
+        setRows((prevRows) =>
+          prevRows.map((row) => ({
+            ...row,
+            instructor_confirmed: 1,
+            status: "confirmed",
+          }))
+        );
+      } catch (err) {
+        console.error("❌ [Result] Failed to approve all scores:", err);
+        showToast("error", "❌ Lỗi khi duyệt điểm!");
+      }
+    });
   };
 
   return (
@@ -458,10 +889,10 @@ export default function Result() {
             label="Total Submissions"
             value={summary?.total_submissions ?? summary?.total ?? 0}
           />
-          <StatCard 
+          <StatCard
             icon="👥"
-            label="Total Students" 
-            value={summary?.total_students ?? 0} 
+            label="Total Students"
+            value={summary?.total_students ?? 0}
           />
           <StatCard
             icon="⭐"
@@ -490,7 +921,9 @@ export default function Result() {
         >
           <div className="flex flex-wrap items-center gap-3">
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                🔍
+              </span>
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
@@ -555,9 +988,9 @@ export default function Result() {
           </div>
         </Section>
 
-        {/* Table */}
+        {/* Table - Desktop View */}
         <Section title="Danh sách bài nộp">
-          <div className="overflow-auto rounded-xl border border-slate-200/50 shadow-inner">
+          <div className="hidden md:block overflow-auto rounded-xl border border-slate-200/50 shadow-inner max-h-[600px]">
             <table className="min-w-full text-sm">
               <thead className="bg-gradient-to-br from-slate-50 to-blue-50/30 sticky top-0 backdrop-blur-xl">
                 <tr className="text-left text-slate-700">
@@ -582,7 +1015,9 @@ export default function Result() {
                     <td colSpan={13} className="p-12 text-center">
                       <div className="flex flex-col items-center gap-3">
                         <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
-                        <span className="text-slate-600 font-medium">Đang tải...</span>
+                        <span className="text-slate-600 font-medium">
+                          Đang tải...
+                        </span>
                       </div>
                     </td>
                   </tr>
@@ -591,7 +1026,9 @@ export default function Result() {
                     <td colSpan={13} className="p-12 text-center">
                       <div className="flex flex-col items-center gap-3">
                         <span className="text-6xl">📭</span>
-                        <span className="text-slate-600 font-medium">Không có dữ liệu</span>
+                        <span className="text-slate-600 font-medium">
+                          Không có dữ liệu
+                        </span>
                       </div>
                     </td>
                   </tr>
@@ -599,55 +1036,72 @@ export default function Result() {
                   filtered.map((r) => (
                     <tr
                       key={`${r.student_id}-${r.student_name}`}
-                      className="border-t border-slate-100 hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-indigo-50/50 transition-all"
+                      onClick={() => openDrawer(r)}
+                      className="border-t border-slate-100 hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-indigo-50/50 transition-all cursor-pointer"
                     >
                       <td className="p-4 font-semibold text-slate-800">
                         {r.student_name}
                       </td>
-                      <td className="p-4 text-slate-700">{r.mcq_score != null ? Number(r.mcq_score).toFixed(1) : "-"}</td>
-                      <td className="p-4 text-slate-700">{r.ai_score != null ? Number(r.ai_score).toFixed(1) : "-"}</td>
-                      <td className="p-4 text-slate-700">{r.suggested_total_score != null ? Number(r.suggested_total_score).toFixed(1) : "-"}</td>
-                      <td className="p-4">
-                        <span className="inline-flex items-center justify-center px-3 py-1 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold text-base shadow-lg">
-                          {(r.total_score ?? r.suggested_total_score) != null
-                            ? Number(r.total_score ?? r.suggested_total_score).toFixed(1)
-                            : "-"}
-                        </span>
+                      <td className="p-4 text-slate-700">
+                        {r.total_score != null
+                          ? Number(r.total_score).toFixed(1)
+                          : "-"}
                       </td>
-                      <td className="p-4 text-xs text-slate-600">{fmtDate(r.started_at)}</td>
-                      <td className="p-4 text-xs text-slate-600">{fmtDate(r.submitted_at)}</td>
-                      <td className="p-4 text-slate-700">{r.duration_minutes ?? "-"}</td>
+                      <td className="p-4 text-slate-700">
+                        {r.ai_score != null
+                          ? Number(r.ai_score).toFixed(1)
+                          : "-"}
+                      </td>
+                      <td className="p-4 text-slate-700">
+                        {r.suggested_total_score != null
+                          ? Number(r.suggested_total_score).toFixed(1)
+                          : "-"}
+                      </td>
                       <td className="p-4">
-                        {r.cheating_flag ? (
-                          <Badge color="rose">⚠️ Yes</Badge>
+                        {r.instructor_confirmed === 1 &&
+                        r.suggested_total_score != null ? (
+                          <span className="inline-flex items-center justify-center px-3 py-1 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 text-white font-bold text-base shadow-lg">
+                            {Number(r.suggested_total_score).toFixed(1)}
+                          </span>
                         ) : (
-                          <Badge color="emerald">✓ No</Badge>
+                          <span className="inline-flex items-center justify-center px-3 py-1 rounded-lg border-2 border-dashed border-slate-300 text-slate-400 font-medium text-sm">
+                            Chưa duyệt
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-4 text-xs text-slate-600">
+                        {fmtDate(r.started_at)}
+                      </td>
+                      <td className="p-4 text-xs text-slate-600">
+                        {fmtDate(r.submitted_at)}
+                      </td>
+                      <td className="p-4 text-slate-700 font-medium">
+                        {fmtDuration(r.duration_seconds, r.duration_minutes)}
+                      </td>
+                      <td className="p-4">
+                        {r.cheating_count > 0 || r.has_cheating_flag ? (
+                          <div className="flex items-center gap-1">
+                            <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                            <span className="text-red-600 font-semibold">
+                              {r.cheating_count || "!"}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-emerald-500 font-medium">
+                            ✓
+                          </span>
                         )}
                       </td>
                       <td className="p-4">
-                        {r.face_image_url ? (
-                          <a
-                            className="text-indigo-600 font-medium hover:text-indigo-800 hover:underline transition-all"
-                            href={r.face_image_url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            👤 View
-                          </a>
+                        {r.has_face_image || r.face_image_url ? (
+                          <span className="text-indigo-600 font-medium">✓</span>
                         ) : (
                           <span className="text-slate-400">—</span>
                         )}
                       </td>
                       <td className="p-4">
-                        {r.student_card_url ? (
-                          <a
-                            className="text-indigo-600 font-medium hover:text-indigo-800 hover:underline transition-all"
-                            href={r.student_card_url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            🪪 View
-                          </a>
+                        {r.has_student_card || r.student_card_url ? (
+                          <span className="text-indigo-600 font-medium">✓</span>
                         ) : (
                           <span className="text-slate-400">—</span>
                         )}
@@ -655,7 +1109,10 @@ export default function Result() {
                       <td className="p-4">{StatusPill(r.status)}</td>
                       <td className="p-4">
                         <button
-                          onClick={() => openDrawer(r)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openDrawer(r);
+                          }}
                           className="rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 text-white px-4 py-2 shadow-lg hover:shadow-xl transition-all hover:scale-[1.05] font-medium"
                         >
                           ✏️ Edit
@@ -667,94 +1124,479 @@ export default function Result() {
               </tbody>
             </table>
           </div>
+
+          {/* Mobile Card View */}
+          <div className="md:hidden space-y-4 max-h-[600px] overflow-auto">
+            {loading ? (
+              <div className="flex flex-col items-center gap-3 py-12">
+                <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+                <span className="text-slate-600 font-medium">Đang tải...</span>
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 py-12">
+                <span className="text-6xl">📭</span>
+                <span className="text-slate-600 font-medium">
+                  Không có dữ liệu
+                </span>
+              </div>
+            ) : (
+              filtered.map((r) => (
+                <div
+                  key={`${r.student_id}-${r.student_name}`}
+                  onClick={() => openDrawer(r)}
+                  className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all p-4 cursor-pointer active:scale-[0.98]"
+                >
+                  {/* Header */}
+                  <div className="flex items-start justify-between mb-3 pb-3 border-b border-slate-100">
+                    <div className="flex-1">
+                      <h3 className="font-bold text-lg text-slate-800">
+                        {r.student_name}
+                      </h3>
+                      <div className="text-xs text-slate-500 mt-1">
+                        {fmtDate(r.submitted_at)}
+                      </div>
+                    </div>
+                    {r.instructor_confirmed === 1 &&
+                    r.suggested_total_score != null ? (
+                      <span className="px-3 py-1 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 text-white font-bold text-lg shadow-lg">
+                        {Number(r.suggested_total_score).toFixed(1)}
+                      </span>
+                    ) : (
+                      <span className="px-3 py-1 rounded-lg border-2 border-dashed border-slate-300 text-slate-400 font-medium text-xs">
+                        Chưa duyệt
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Scores Grid */}
+                  <div className="grid grid-cols-3 gap-3 mb-3">
+                    <div className="text-center">
+                      <div className="text-xs text-slate-500 mb-1">MCQ</div>
+                      <div className="font-semibold text-slate-800">
+                        {r.total_score != null
+                          ? Number(r.total_score).toFixed(1)
+                          : "-"}
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xs text-slate-500 mb-1">AI</div>
+                      <div className="font-semibold text-slate-800">
+                        {r.ai_score != null
+                          ? Number(r.ai_score).toFixed(1)
+                          : "-"}
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xs text-slate-500 mb-1">Gợi ý</div>
+                      <div className="font-semibold text-slate-800">
+                        {r.suggested_total_score != null
+                          ? Number(r.suggested_total_score).toFixed(1)
+                          : "-"}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Info Row */}
+                  <div className="flex items-center gap-4 text-xs text-slate-600">
+                    <div className="flex items-center gap-1">
+                      <span>⏱️</span>
+                      <span>
+                        {fmtDuration(r.duration_seconds, r.duration_minutes)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {r.cheating_count > 0 || r.has_cheating_flag ? (
+                        <>
+                          <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                          <span className="text-red-600 font-semibold">
+                            {r.cheating_count || "!"}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-emerald-500 font-medium">
+                          ✓ Không gian lận
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Verification Icons */}
+                  <div className="flex items-center gap-3 mt-3 pt-3 border-t border-slate-100">
+                    <div className="flex items-center gap-1 text-xs">
+                      {r.has_face_image || r.face_image_url ? (
+                        <span className="text-indigo-600">📸 Khuôn mặt ✓</span>
+                      ) : (
+                        <span className="text-slate-400">📸 Khuôn mặt —</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 text-xs">
+                      {r.has_student_card || r.student_card_url ? (
+                        <span className="text-indigo-600">🆔 CMND ✓</span>
+                      ) : (
+                        <span className="text-slate-400">🆔 CMND —</span>
+                      )}
+                    </div>
+                    <div className="ml-auto">{StatusPill(r.status)}</div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Approve All Button - Below table */}
+          <div className="mt-6 flex justify-end">
+            <button
+              onClick={approveAllScores}
+              className="rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 text-white px-6 py-3 shadow-lg hover:shadow-xl transition-all hover:scale-[1.02] font-medium flex items-center gap-2 text-lg"
+              disabled={!examId || filtered.length === 0}
+            >
+              <span>✓</span>
+              Duyệt tất cả điểm
+            </button>
+          </div>
         </Section>
 
         {/* Drawer */}
         {drawer.open && (
-          <div className="fixed inset-0 z-50 flex bg-black/30 backdrop-blur-sm">
-            <div className="ml-auto h-full w-full max-w-md bg-white/95 backdrop-blur-xl shadow-2xl">
-              <div className="flex items-center justify-between border-b border-slate-200 bg-gradient-to-r from-blue-500 to-indigo-600 p-6">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="w-full max-w-2xl max-h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden">
+              <div className="flex items-center justify-between bg-slate-800 p-6">
                 <div>
-                  <h4 className="text-xl font-bold text-white">Cập nhật điểm</h4>
-                  <div className="text-sm text-blue-100 mt-1">
+                  <h4 className="text-xl font-bold text-white">
+                    Cập nhật điểm
+                  </h4>
+                  <div className="text-sm text-slate-300 mt-1">
                     Save & Confirm sẽ công bố điểm cuối cùng cho sinh viên
                   </div>
                 </div>
                 <button
                   onClick={closeDrawer}
-                  className="rounded-lg bg-white/20 backdrop-blur-xl px-4 py-2 text-white hover:bg-white/30 transition-all font-medium"
+                  className="rounded-lg bg-slate-700 hover:bg-slate-600 px-4 py-2 text-white transition-all font-medium"
                 >
                   ✕ Đóng
                 </button>
               </div>
 
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                    <span className="w-1 h-4 bg-gradient-to-b from-blue-500 to-indigo-600 rounded-full"></span>
+              <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+                {/* Error Message */}
+                {scoreError && (
+                  <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4 text-center">
+                    <div className="text-red-700 font-bold">{scoreError}</div>
+                  </div>
+                )}
+
+                {/* Student Name - Read Only */}
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                  <label className="text-xs font-semibold text-slate-600 uppercase">
                     Tên sinh viên
                   </label>
-                  <input
-                    className="mt-2 w-full rounded-xl border border-slate-200 bg-white/50 backdrop-blur-xl px-4 py-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all"
-                    value={drawer.row.student_name || ""}
-                    onChange={(e) =>
-                      setDrawer((d) => ({
-                        ...d,
-                        row: { ...d.row, student_name: e.target.value },
-                      }))
-                    }
-                  />
+                  <div className="mt-1 text-lg font-bold text-slate-900">
+                    {drawer.row.student_name || ""}
+                  </div>
                 </div>
+
+                {/* Additional Info - Read Only */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-semibold text-slate-700">Điểm MCQ (0-10)</label>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <label className="text-xs font-semibold text-blue-700 uppercase">
+                      Submission ID
+                    </label>
+                    <div className="mt-1 text-base font-semibold text-blue-900">
+                      #{drawer.row.submission_id || "N/A"}
+                    </div>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <label className="text-xs font-semibold text-blue-700 uppercase">
+                      Student ID
+                    </label>
+                    <div className="mt-1 text-base font-semibold text-blue-900">
+                      {drawer.row.student_id || "N/A"}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Time Info */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                    <label className="text-xs font-semibold text-green-700 uppercase flex items-center gap-1">
+                      <span>⏰</span> Bắt đầu
+                    </label>
+                    <div className="mt-1 text-sm font-medium text-green-900">
+                      {fmtDate(drawer.row.started_at)}
+                    </div>
+                  </div>
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                    <label className="text-xs font-semibold text-green-700 uppercase flex items-center gap-1">
+                      <span>✅</span> Nộp bài
+                    </label>
+                    <div className="mt-1 text-sm font-medium text-green-900">
+                      {fmtDate(drawer.row.submitted_at)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Duration & Cheating */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-center">
+                    <label className="text-xs font-semibold text-purple-700 uppercase">
+                      Thời gian
+                    </label>
+                    <div className="mt-1 text-lg font-bold text-purple-900">
+                      {fmtDuration(
+                        drawer.row.duration_seconds,
+                        drawer.row.duration_minutes
+                      )}
+                    </div>
+                  </div>
+                  <div
+                    className={`border-2 rounded-lg p-3 text-center ${
+                      drawer.row.cheating_count > 0 ||
+                      drawer.row.has_cheating_flag
+                        ? "bg-red-50 border-red-300"
+                        : "bg-emerald-50 border-emerald-200"
+                    }`}
+                  >
+                    <label
+                      className="text-xs font-semibold uppercase"
+                      style={{
+                        color:
+                          drawer.row.cheating_count > 0 ||
+                          drawer.row.has_cheating_flag
+                            ? "#dc2626"
+                            : "#059669",
+                      }}
+                    >
+                      Gian lận
+                    </label>
+                    <div
+                      className="mt-1 text-lg font-bold"
+                      style={{
+                        color:
+                          drawer.row.cheating_count > 0 ||
+                          drawer.row.has_cheating_flag
+                            ? "#dc2626"
+                            : "#059669",
+                      }}
+                    >
+                      {drawer.row.cheating_count > 0
+                        ? drawer.row.cheating_count
+                        : "✓"}
+                    </div>
+                  </div>
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-center">
+                    <label className="text-xs font-semibold text-indigo-700 uppercase">
+                      Trạng thái
+                    </label>
+                    <div className="mt-1">{StatusPill(drawer.row.status)}</div>
+                  </div>
+                </div>
+
+                {/* Score Input Grid */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div
+                    className={`bg-white border-2 rounded-lg p-4 ${
+                      Number(drawer.row.total_score ?? 0) > 10
+                        ? "border-red-500"
+                        : "border-slate-300"
+                    }`}
+                  >
+                    <label className="text-xs font-semibold text-slate-700 uppercase block mb-2">
+                      Điểm MCQ
+                    </label>
                     <input
                       type="number"
                       step="0.1"
                       min="0"
                       max="10"
-                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white/50 backdrop-blur-xl px-4 py-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all"
-                      value={drawer.row.mcq_score ?? 0}
-                      onChange={(e) =>
+                      className="w-full text-2xl font-bold text-slate-900 bg-transparent border-none focus:outline-none"
+                      value={drawer.row.total_score ?? 0}
+                      onChange={(e) => {
+                        const val = e.target.value;
                         setDrawer((d) => ({
                           ...d,
-                          row: { ...d.row, mcq_score: e.target.value },
-                        }))
-                      }
+                          row: { ...d.row, total_score: val },
+                        }));
+                        if (Number(val) > 10) {
+                          setScoreError("❌ Điểm MCQ không được vượt quá 10!");
+                        } else {
+                          setScoreError("");
+                        }
+                      }}
                     />
                   </div>
-                  <div>
-                    <label className="text-sm font-semibold text-slate-700">Điểm AI (0-10)</label>
+                  <div
+                    className={`bg-white border-2 rounded-lg p-4 ${
+                      Number(drawer.row.ai_score ?? 0) > 10
+                        ? "border-red-500"
+                        : "border-slate-300"
+                    }`}
+                  >
+                    <label className="text-xs font-semibold text-slate-700 uppercase block mb-2">
+                      Điểm essay (AI)
+                    </label>
                     <input
                       type="number"
                       step="0.1"
                       min="0"
                       max="10"
-                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white/50 backdrop-blur-xl px-4 py-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all"
+                      className="w-full text-2xl font-bold text-slate-900 bg-transparent border-none focus:outline-none"
                       value={drawer.row.ai_score ?? 0}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const val = e.target.value;
                         setDrawer((d) => ({
                           ...d,
-                          row: { ...d.row, ai_score: e.target.value },
-                        }))
-                      }
+                          row: { ...d.row, ai_score: val },
+                        }));
+                        if (Number(val) > 10) {
+                          setScoreError("❌ Điểm AI không được vượt quá 10!");
+                        } else {
+                          setScoreError("");
+                        }
+                      }}
                     />
                   </div>
                 </div>
 
-                <div className="rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-indigo-200 p-6">
-                  <div className="text-sm font-medium text-slate-600">Tổng điểm</div>
-                  <div className="mt-2 text-4xl font-bold bg-gradient-to-br from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                {/* Total Score Display */}
+                <div className="bg-slate-100 border-2 border-slate-400 rounded-lg p-6 text-center">
+                  <div className="text-xs font-bold text-slate-600 uppercase mb-2">
+                    Tổng điểm
+                  </div>
+                  <div className="text-5xl font-black text-slate-900">
                     {(
-                      Number(drawer.row.mcq_score ?? 0) +
+                      Number(drawer.row.total_score ?? 0) +
                       Number(drawer.row.ai_score ?? 0)
-                    ).toFixed(1)} <span className="text-2xl">/ 10</span>
+                    ).toFixed(1)}
+                  </div>
+                  <div className="text-lg font-bold text-slate-500 mt-1">
+                    / 10
                   </div>
                 </div>
+
+                {/* Face & Card Images */}
+                {(drawer.row.has_face_image || drawer.row.has_student_card) && (
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                    <h5 className="text-xs font-bold text-slate-700 uppercase mb-3">
+                      Ảnh xác thực
+                    </h5>
+                    <div className="grid grid-cols-2 gap-4">
+                      {drawer.row.has_face_image && (
+                        <div>
+                          <div className="text-xs font-semibold text-slate-600 mb-2">
+                            Khuôn mặt
+                          </div>
+                          {faceImageData ? (
+                            <img
+                              src={faceImageData}
+                              alt="Face"
+                              className="w-full h-40 object-cover rounded-lg border border-slate-300"
+                            />
+                          ) : (
+                            <div className="w-full h-40 bg-slate-200 rounded-lg flex flex-col items-center justify-center text-slate-500 border border-dashed border-slate-400">
+                              <div className="animate-spin text-xl mb-1">
+                                ⏳
+                              </div>
+                              <span className="text-xs">Đang tải...</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {drawer.row.has_student_card && (
+                        <div>
+                          <div className="text-xs font-semibold text-slate-600 mb-2">
+                            Thẻ sinh viên
+                          </div>
+                          {cardImageData ? (
+                            <img
+                              src={cardImageData}
+                              alt="Student Card"
+                              className="w-full h-40 object-cover rounded-lg border border-slate-300"
+                            />
+                          ) : (
+                            <div className="w-full h-40 bg-slate-200 rounded-lg flex flex-col items-center justify-center text-slate-500 border border-dashed border-slate-400">
+                              <div className="animate-spin text-xl mb-1">
+                                ⏳
+                              </div>
+                              <span className="text-xs">Đang tải...</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Cheating Details */}
+                {cheatingDetails &&
+                  cheatingDetails.logs &&
+                  cheatingDetails.logs.length > 0 && (
+                    <div className="rounded-2xl bg-red-50/50 backdrop-blur-xl border border-red-200 p-4 space-y-3">
+                      <h5 className="text-sm font-bold text-red-700 flex items-center gap-2">
+                        <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                        Cảnh báo gian lận (
+                        {cheatingDetails.summary?.total_incidents || 0} lần)
+                      </h5>
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {cheatingDetails.logs.map((log, idx) => (
+                          <div
+                            key={idx}
+                            className="bg-white/80 rounded-lg p-3 text-xs"
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span
+                                className={`font-semibold ${
+                                  log.severity === "high"
+                                    ? "text-red-600"
+                                    : log.severity === "medium"
+                                    ? "text-orange-600"
+                                    : "text-yellow-600"
+                                }`}
+                              >
+                                {log.event_type
+                                  .replace(/_/g, " ")
+                                  .toUpperCase()}
+                              </span>
+                              <span className="text-slate-500">
+                                {new Date(log.detected_at).toLocaleTimeString(
+                                  "vi-VN"
+                                )}
+                              </span>
+                            </div>
+                            {log.event_details &&
+                              typeof log.event_details === "object" && (
+                                <div className="text-slate-600 text-xs mt-1">
+                                  {JSON.stringify(log.event_details)}
+                                </div>
+                              )}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <div className="bg-red-100 rounded px-2 py-1 text-center">
+                          <div className="font-bold text-red-700">
+                            {cheatingDetails.summary?.high_count || 0}
+                          </div>
+                          <div className="text-red-600">Nghiêm trọng</div>
+                        </div>
+                        <div className="bg-orange-100 rounded px-2 py-1 text-center">
+                          <div className="font-bold text-orange-700">
+                            {cheatingDetails.summary?.medium_count || 0}
+                          </div>
+                          <div className="text-orange-600">Trung bình</div>
+                        </div>
+                        <div className="bg-yellow-100 rounded px-2 py-1 text-center">
+                          <div className="font-bold text-yellow-700">
+                            {cheatingDetails.summary?.low_count || 0}
+                          </div>
+                          <div className="text-yellow-600">Thấp</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                 <button
                   onClick={saveScore}
-                  className="w-full rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 px-6 py-4 font-bold text-white shadow-lg hover:shadow-xl transition-all hover:scale-[1.02] text-lg"
+                  className="w-full rounded-lg bg-slate-800 hover:bg-slate-700 px-6 py-4 font-bold text-white transition-all text-lg"
                 >
                   💾 Lưu & Xác nhận
                 </button>
@@ -763,6 +1605,51 @@ export default function Result() {
           </div>
         )}
       </div>
+
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className="fixed top-4 right-4 z-[100] animate-slide-in">
+          <div
+            className={`rounded-lg shadow-2xl px-6 py-4 min-w-[300px] ${
+              toast.type === "success"
+                ? "bg-green-500"
+                : toast.type === "error"
+                ? "bg-red-500"
+                : "bg-blue-500"
+            } text-white font-medium`}
+          >
+            {toast.message}
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Dialog */}
+      {confirmDialog.show && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full mx-4">
+            <div className="mb-4">
+              <div className="text-lg font-bold text-slate-800 mb-2">
+                ⚠️ Xác nhận
+              </div>
+              <div className="text-slate-600">{confirmDialog.message}</div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={handleCancel}
+                className="px-4 py-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 font-medium transition-all"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleConfirm}
+                className="px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-medium transition-all"
+              >
+                Xác nhận
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -8,12 +8,14 @@ const {
   startExam,
   saveAnswer,
   submitExam,
-  proctorEvent,
   uploadVerifyAssets,
   myResults,
   getExamPublicInfo,
   getSubmissionStatus,
 } = require("../controllers/studentExamController");
+
+// Import proctor event handler from submission controller
+const { postProctorEvent } = require("../controllers/submissionController");
 
 const { verifyToken } = require("../middleware/authMiddleware");
 const { requireRoomVerification } = require("../middleware/verifyRoomMiddleware");
@@ -33,7 +35,9 @@ router.post("/submissions/:id/verify", verifyToken, requireRoomVerification, upl
 
 router.post("/submissions/:id/start", verifyToken, requireRoomVerification, startExam);
 router.post("/submissions/:id/answer", verifyToken, requireRoomVerification, saveAnswer);
-router.post("/submissions/:id/proctor-event", verifyToken, requireRoomVerification, proctorEvent);
+
+router.post("/submissions/:id/proctor-event", verifyToken, requireRoomVerification, postProctorEvent);
+
 router.post("/submissions/:id/submit", verifyToken, requireRoomVerification, submitExam);
 
 // Results

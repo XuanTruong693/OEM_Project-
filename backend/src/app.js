@@ -56,8 +56,9 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/exam-bank", examBankRoutes);
 app.use("/api/assign-bank", assignBankRoutes);
 app.use("/api/edit-exam", editExamRoutes);
-app.use("/api", studentExamRoutes);
+app.use("/api", studentExamRoutes); // Includes proctor event handler
 
+// Submission routes for instructor (results, violations, etc.)
 app.use("/api/instructor", submissionRoutes);
 
 // Root-level role endpoints to support http://localhost:4000/role via Vite proxy

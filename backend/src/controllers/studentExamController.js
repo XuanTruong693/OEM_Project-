@@ -17,8 +17,6 @@ function verifyRoomToken(token) {
     return null;
   }
 }
-
-// Helper: check if a column exists in a table
 async function hasColumn(table, column) {
   const [rows] = await sequelize.query(
     `SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
@@ -191,11 +189,8 @@ async function joinExam(req, res) {
         { replacements: [userId, room_code] }
       );
     } catch (e) {
-      // ignore if table not exists
     }
 
-    // Tạo submission mới mỗi lần thi với attempt_no tăng dần
-    // Lấy attempt_no cao nhất hiện tại
     const [maxAttempt] = await sequelize.query(
       `SELECT COALESCE(MAX(attempt_no), 0) AS max_attempt 
        FROM submissions 
@@ -487,7 +482,7 @@ async function startExam(req, res) {
       hasOrderIndex = await hasColumn("exam_questions", "order_index");
     } catch (e) {}
 
-    // nếu chưa có started_at, set ngay bây giờ (nếu cột tồn tại). Tránh lỗi ENUM khi DB chưa có giá trị 'in_progress'
+    // nếu chưa có started_at, set ngay bây giờ (nếu cột tồn tại).
     const canInProgress = await (async () => {
       try {
         const [rows] = await sequelize.query(
@@ -844,14 +839,18 @@ async function submitExam(req, res) {
 async function myResults(req, res) {
   try {
     const userId = req.user.id;
+    // console.log(`📊 [myResults] Fetching results for student ${userId}`);
+    
     // Try view first
     try {
       const [rows] = await sequelize.query(
         `SELECT * FROM v_student_results WHERE student_id = ? ORDER BY submitted_at DESC`,
         { replacements: [userId] }
       );
+      // console.log(`✅ [myResults] Found ${rows.length} results for student ${userId}`);
       return res.json(rows);
     } catch (e) {
+      // console.warn(`⚠️ [myResults] View failed, using fallback:`, e.message);
       // fallback
       const [rows] = await sequelize.query(
         `SELECT s.id AS submission_id, s.exam_id, e.title AS exam_title,
@@ -861,6 +860,7 @@ async function myResults(req, res) {
          WHERE s.user_id = ? ORDER BY s.submitted_at DESC`,
         { replacements: [userId] }
       );
+      // console.log(`✅ [myResults] Fallback: Found ${rows.length} results for student ${userId}`);
       return res.json(rows);
     }
   } catch (err) {

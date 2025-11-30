@@ -38,7 +38,7 @@ router.get(
 );
 
 // ==============================
-// 📋 1b️⃣ API: Danh sách submissions (dùng cho trang con "Xem")
+// 📋 1b API: Danh sách submissions (dùng cho trang con "Xem")
 // ==============================
 router.get(
   "/dashboard/submissions",
@@ -90,7 +90,7 @@ router.get(
 );
 
 // ==============================
-// 👥 1c️⃣ API: Danh sách sinh viên đã tham gia (distinct)
+// 1c️ API: Danh sách sinh viên đã tham gia (distinct)
 // ==============================
 router.get(
   "/dashboard/students",
@@ -126,7 +126,7 @@ router.get(
 );
 
 // =======================================
-// 📅 2️⃣ API: Lấy thống kê theo tháng (T1–T12)
+// 2️⃣ API: Lấy thống kê theo tháng (T1–T12)
 // =======================================
 router.get(
   "/dashboard/monthly",
@@ -194,6 +194,55 @@ router.get(
       return res.json(rows || []);
     } catch (err) {
       console.error('instructor/exams/my error:', err);
+      return res.status(500).json({ message: 'Server error' });
+    }
+  }
+);
+
+// ==============================
+// 📊 Long Polling: Wait for new submissions
+// ==============================
+router.get(
+  "/exams/:examId/submissions/count",
+  verifyToken,
+  authorizeRole(["instructor"]),
+  async (req, res) => {
+    try {
+      const examId = parseInt(req.params.examId, 10);
+      const lastCount = parseInt(req.query.lastCount, 10) || 0;
+      const timeout = 25000; // 25 seconds max wait
+      const checkInterval = 1000; // Check every 1 second
+      
+      if (!Number.isFinite(examId)) return res.status(400).json({ message: 'examId invalid' });
+      
+      const startTime = Date.now();
+      
+      const checkCount = async () => {
+        const [result] = await sequelize.query(
+          `SELECT COUNT(*) as count FROM submissions WHERE exam_id = ?`,
+          { replacements: [examId] }
+        );
+        return result[0]?.count || 0;
+      };
+      
+      // Poll until count changes or timeout
+      const poll = async () => {
+        while (Date.now() - startTime < timeout) {
+          const currentCount = await checkCount();
+          
+          if (currentCount !== lastCount) {
+            return res.json({ count: currentCount, hasChanges: true });
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, checkInterval));
+        }
+        
+        return res.json({ count: lastCount, hasChanges: false });
+      };
+      
+      await poll();
+    } catch (err) {
+      console.error('Long polling error:', err);
       return res.status(500).json({ message: 'Server error' });
     }
   }
@@ -361,6 +410,7 @@ router.get(
   async (req, res) => {
     try {
       const examId = parseInt(req.params.examId, 10);
+      
       if (!Number.isFinite(examId)) return res.status(400).json({ message: 'examId invalid' });
       const ok = await ensureExamOwnership(examId, req.user.id);
       if (!ok) {
@@ -371,15 +421,13 @@ router.get(
       }
 
       try {
-        const [rows] = await sequelize.query(`CALL sp_get_exam_results(?, 'instructor', ?);`, { replacements: [examId, req.user.id] });
-        // mysql2/sequelize for CALL may wrap results in multiple arrays
-        let data = [];
-        if (Array.isArray(rows)) {
-          if (Array.isArray(rows[0])) data = rows[0];
-          else data = rows;
-        }
+        const results = await sequelize.query(`CALL sp_get_exam_results(?, 'instructor', ?);`, { replacements: [examId, req.user.id] });
+        
+        let data = Array.isArray(results) ? results : [];
+        
         return res.json(data);
       } catch (e) {
+        console.warn(`⚠️ [Results] Stored procedure failed, using fallback query:`, e.message);
         // Fallback: join basics
         const [rows] = await sequelize.query(
           `SELECT 
@@ -413,6 +461,52 @@ router.get(
   }
 );
 
+// POST /api/instructor/exams/:examId/approve-all-scores
+router.post(
+  "/exams/:examId/approve-all-scores",
+  verifyToken,
+  authorizeRole(["instructor"]),
+  async (req, res) => {
+    try {
+      const examId = parseInt(req.params.examId, 10);
+      if (!Number.isFinite(examId)) return res.status(400).json({ message: 'examId invalid' });
+      
+      const ok = await ensureExamOwnership(examId, req.user.id);
+      if (!ok) {
+        const er = await getExamRow(examId);
+        if (!er || String(er.status) !== 'published') {
+          return res.status(403).json({ message: 'Not owner of exam' });
+        }
+      }
+
+      console.log(`📝 [ApproveAll] Starting bulk approval for exam ${examId}`);
+
+      // Update all submissions: copy suggested_total_score to total_score, set instructor_confirmed=1
+      const [result] = await sequelize.query(
+        `UPDATE submissions 
+         SET total_score = suggested_total_score,
+             instructor_confirmed = 1,
+             status = 'confirmed'
+         WHERE exam_id = ? 
+           AND instructor_confirmed = 0`,
+        { replacements: [examId] }
+      );
+
+      const approvedCount = result.affectedRows || 0;
+      console.log(`✅ [ApproveAll] Approved ${approvedCount} submissions for exam ${examId}`);
+
+      return res.json({ 
+        success: true, 
+        approved: approvedCount,
+        message: `Đã duyệt ${approvedCount} bài thi`
+      });
+    } catch (err) {
+      console.error('❌ [ApproveAll] Error:', err);
+      return res.status(500).json({ message: 'Server error', error: err.message });
+    }
+  }
+);
+
 // PUT /api/instructor/exams/:examId/students/:studentId/score
 router.put(
   "/exams/:examId/students/:studentId/score",
@@ -422,7 +516,7 @@ router.put(
     try {
       const examId = parseInt(req.params.examId, 10);
       const studentId = parseInt(req.params.studentId, 10);
-      const { mcq_score, ai_score, student_name } = req.body || {};
+      const { total_score, ai_score, student_name } = req.body || {};
       if (!Number.isFinite(examId) || !Number.isFinite(studentId)) return res.status(400).json({ message: 'invalid ids' });
       const ok = await ensureExamOwnership(examId, req.user.id);
       if (!ok) {
@@ -432,7 +526,7 @@ router.put(
         }
       }
 
-      const mcq = mcq_score != null ? Number(mcq_score) : null;
+      const mcq = total_score != null ? Number(total_score) : null;
       const ai = ai_score != null ? Number(ai_score) : null;
       if ((mcq != null && isNaN(mcq)) || (ai != null && isNaN(ai))) return res.status(400).json({ message: 'score must be number' });
 
@@ -643,5 +737,65 @@ router.get("/user/info", verifyToken, async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
+// ==============================
+// 🖼️ API: Get Face Image Blob
+// ==============================
+router.get(
+  "/submissions/:submissionId/face-image",
+  verifyToken,
+  authorizeRole(["instructor"]),
+  async (req, res) => {
+    try {
+      const submissionId = parseInt(req.params.submissionId, 10);
+      
+      const [rows] = await sequelize.query(
+        `SELECT face_image_blob, face_image_mimetype FROM submissions WHERE id = ?`,
+        { replacements: [submissionId] }
+      );
+      
+      if (!rows || rows.length === 0 || !rows[0].face_image_blob) {
+        return res.status(404).json({ message: "Face image not found" });
+      }
+      
+      const mimeType = rows[0].face_image_mimetype || 'image/jpeg';
+      res.setHeader('Content-Type', mimeType);
+      res.send(rows[0].face_image_blob);
+    } catch (err) {
+      console.error("❌ Error fetching face image:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
+
+// ==============================
+// API: Get Student Card Image Blob
+// ==============================
+router.get(
+  "/submissions/:submissionId/student-card",
+  verifyToken,
+  authorizeRole(["instructor"]),
+  async (req, res) => {
+    try {
+      const submissionId = parseInt(req.params.submissionId, 10);
+      
+      const [rows] = await sequelize.query(
+        `SELECT student_card_blob, student_card_mimetype FROM submissions WHERE id = ?`,
+        { replacements: [submissionId] }
+      );
+      
+      if (!rows || rows.length === 0 || !rows[0].student_card_blob) {
+        return res.status(404).json({ message: "Student card image not found" });
+      }
+      
+      const mimeType = rows[0].student_card_mimetype || 'image/jpeg';
+      res.setHeader('Content-Type', mimeType);
+      res.send(rows[0].student_card_blob);
+    } catch (err) {
+      console.error("❌ Error fetching student card:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
 
 module.exports = router;

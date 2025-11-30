@@ -4,7 +4,7 @@ const submissionController = require("../controllers/submissionController");
 const router = express.Router();
 
 router.post(
-  "/:submissionId/proctor-event",
+  "/submissions/:submissionId/proctor-event",
   submissionController.postProctorEvent
 );
 
@@ -13,6 +13,11 @@ router.get("/exams/:examId/violations", submissionController.getExamViolations);
 router.get(
   "/exams/:examId/students/:studentId/detail",
   submissionController.getStudentExamDetail
+);
+
+router.get(
+  "/submissions/:submissionId/cheating-details",
+  submissionController.getStudentCheatingDetails
 );
 
 router.put(
