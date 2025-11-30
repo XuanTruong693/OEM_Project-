@@ -19,6 +19,23 @@ export default function PrepareExam() {
   const [faceGuideOk, setFaceGuideOk] = useState(false);
   const [faceGuideMsg, setFaceGuideMsg] = useState("Hãy căn khuôn mặt vào khung và nhìn thẳng");
   const [facePreviewUrl, setFacePreviewUrl] = useState("");
+  const [cardPreviewUrl, setCardPreviewUrl] = useState("");
+  
+  // Verification logs
+  const [cardVerifyLog, setCardVerifyLog] = useState("");
+  const [faceVerifyLog, setFaceVerifyLog] = useState("");
+  const [compareLog, setCompareLog] = useState("");
+  const [isVerifyingCard, setIsVerifyingCard] = useState(false);
+  const [isVerifyingFace, setIsVerifyingFace] = useState(false);
+  const [isComparing, setIsComparing] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState(0);
+  
+  // Upload status
+  const [cardUploaded, setCardUploaded] = useState(false);
+  const [faceUploaded, setFaceUploaded] = useState(false);
+  const [faceVerified, setFaceVerified] = useState(false);
+  const [cardVerified, setCardVerified] = useState(false);
+  const [facesCompared, setFacesCompared] = useState(false);
 
   const submissionId = search.get("submission_id");
   const duration = Number(sessionStorage.getItem("pending_exam_duration") || "60");
@@ -172,26 +189,36 @@ export default function PrepareExam() {
     };
   }, [submissionId]);
 
-  // Upload helpers
+  // Upload helpers - CHỈ upload, chưa verify
   const handleUpload = async (e, type) => {
     const file = e.target.files?.[0];
     if (!file || !submissionId) return;
+    
     const form = new FormData();
     if (type === "face") form.append("face_image", file);
     if (type === "card") form.append("student_card_image", file);
+    
     try {
-      const res = await axiosClient.post(`/submissions/${submissionId}/verify`, form);
-      if (type === "face") {
-        if (res?.data?.face) { setFaceOk(true); setFaceErr(""); }
-        else { setFaceOk(false); setFaceErr("Ảnh khuôn mặt không hợp lệ. Vui lòng chụp lại."); }
-      }
-      if (type === "card") {
-        if (res?.data?.card) { setCardOk(true); setCardErr(""); }
-        else { setCardOk(false); setCardErr("Ảnh thẻ sinh viên không hợp lệ. Vui lòng tải lại."); }
+      const res = await axiosClient.post(`/submissions/${submissionId}/upload-images`, form);
+      
+      if (res?.data?.ok) {
+        if (type === "face" && res.data.face_uploaded) {
+          setFacePreviewUrl(res.data.face_preview);
+          setFaceUploaded(true);
+          setFaceErr("");
+          console.log("[Upload] ✅ Ảnh khuôn mặt đã upload");
+        }
+        if (type === "card" && res.data.card_uploaded) {
+          setCardPreviewUrl(res.data.card_preview);
+          setCardUploaded(true);
+          setCardErr("");
+          console.log("[Upload] ✅ Ảnh thẻ SV đã upload");
+        }
       }
     } catch (err) {
-      if (type === 'face') setFaceErr('Không thể tải ảnh khuôn mặt lên máy chủ. Vui lòng thử lại.');
-      if (type === 'card') setCardErr('Không thể tải ảnh thẻ SV lên máy chủ. Vui lòng thử lại.');
+      const errorMsg = err?.response?.data?.message || "Lỗi upload";
+      if (type === 'face') setFaceErr(errorMsg);
+      if (type === 'card') setCardErr(errorMsg);
     }
   };
 
@@ -220,6 +247,9 @@ export default function PrepareExam() {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
+      // Reset stable count để bắt đầu đếm lại
+      stableOkCountRef.current = 0;
+      
       // Warmup face detection for live guide
       if (!('FaceDetector' in window)) {
         await loadFaceApi();
@@ -280,8 +310,8 @@ export default function PrepareExam() {
           }
           setFaceGuideOk(ok);
           setFaceGuideMsg(msg || (ok ? 'Sẵn sàng chụp' : 'Căn giữa, nhìn thẳng vào camera'));
-          // Auto capture when stable and no preview yet
-          if (ok && !facePreviewUrl) {
+          // Auto capture and upload when stable
+          if (ok && !faceUploaded) {
             stableOkCountRef.current += 1;
             if (stableOkCountRef.current >= 3) {
               const snap = document.createElement('canvas');
@@ -289,13 +319,30 @@ export default function PrepareExam() {
               snap.height = v.videoHeight || 480;
               const sctx = snap.getContext('2d');
               sctx.drawImage(v, 0, 0, snap.width, snap.height);
-              snap.toBlob((blob) => {
+              snap.toBlob(async (blob) => {
                 if (!blob) return;
                 facePreviewBlobRef.current = blob;
                 const url = URL.createObjectURL(blob);
                 setFacePreviewUrl(url);
+                stableOkCountRef.current = 0;
+                
+                // Tự động upload
+                try {
+                  const form = new FormData();
+                  form.append('face_image', blob, 'face.jpg');
+                  const res = await axiosClient.post(`/submissions/${submissionId}/upload-images`, form);
+                  if (res?.data?.ok && res.data.face_uploaded) {
+                    setFaceUploaded(true);
+                    setFaceErr("");
+                    console.log("[Auto Upload] ✅ Ảnh khuôn mặt đã upload tự động");
+                    // Dừng camera
+                    try { streamRef.current?.getTracks()?.forEach((t) => t.stop()); } catch {}
+                    clearInterval(guideIntervalRef.current);
+                  }
+                } catch (e) {
+                  console.error("[Auto Upload] ❌", e);
+                }
               }, 'image/jpeg', 0.9);
-              stableOkCountRef.current = 0;
             }
           } else if (!ok) {
             stableOkCountRef.current = 0;
@@ -326,19 +373,168 @@ export default function PrepareExam() {
     try {
       const form = new FormData();
       form.append('face_image', facePreviewBlobRef.current, 'face.jpg');
-      const res = await axiosClient.post(`/submissions/${submissionId}/verify`, form);
-      if (res?.data?.face) {
-        setFaceOk(true);
+      const res = await axiosClient.post(`/submissions/${submissionId}/upload-images`, form);
+      
+      if (res?.data?.ok && res.data.face_uploaded) {
+        setFacePreviewUrl(res.data.face_preview);
+        setFaceUploaded(true);
         setFaceErr("");
+        console.log("[Upload] ✅ Ảnh khuôn mặt đã upload");
+        // Dừng camera sau khi upload thành công
         try { streamRef.current?.getTracks()?.forEach((t) => t.stop()); } catch {}
         clearInterval(guideIntervalRef.current);
       } else {
-        setFaceOk(false);
-        setFaceErr('Máy chủ từ chối ảnh khuôn mặt. Vui lòng chụp lại.');
+        setFaceErr("Không thể upload ảnh");
       }
     } catch (e) {
+      const errorMsg = e?.response?.data?.message || "Lỗi upload";
+      setFaceErr(errorMsg);
+    }
+  };
+
+  // Verify thẻ sinh viên (sau khi upload)
+  const verifyCard = async () => {
+    if (!cardUploaded || !submissionId) return;
+    setIsVerifyingCard(true);
+    setOcrProgress(0);
+    setCardVerifyLog("⏳ Đang xác minh thẻ sinh viên...");
+    
+    // Fake progress để user thấy tiến trình
+    const progressInterval = setInterval(() => {
+      setOcrProgress(prev => {
+        if (prev >= 90) return prev;
+        return prev + Math.random() * 15;
+      });
+    }, 300);
+    
+    try {
+      const res = await axiosClient.post(`/submissions/${submissionId}/verify-card`);
+      clearInterval(progressInterval);
+      setOcrProgress(100);
+      
+      if (res?.data?.ok && res.data.valid) {
+        setCardVerified(true);
+        setCardOk(true);
+        setCardErr("");
+        const mssv = res.data.details?.mssv || "";
+        const fields = res.data.details?.fields_matched?.join(", ") || "";
+        setCardVerifyLog(`✅ Thẻ SV hợp lệ!\\nMSSV: ${mssv}\\nTrường phát hiện: ${fields}`);
+        console.log("[Card Verify] ✅", res.data.details);
+      } else {
+        setCardVerified(false);
+        setCardOk(false);
+        const reasons = res?.data?.details?.reasons?.join("\\n") || res?.data?.message || "Không rõ lý do";
+        setCardErr(reasons);
+        setCardVerifyLog(`❌ Thẻ SV không hợp lệ:\\n${reasons}`);
+        console.error("[Card Verify] ❌", reasons);
+      }
+    } catch (err) {
+      clearInterval(progressInterval);
+      setOcrProgress(0);
+      setCardVerified(false);
+      setCardOk(false);
+      
+      // Bắt lỗi chi tiết hơn
+      let errorMsg = "Lỗi xác minh";
+      let errorDetails = "";
+      
+      if (err?.response?.data?.message) {
+        errorMsg = err.response.data.message;
+      } else if (err?.message) {
+        errorMsg = err.message;
+      } else if (err?.code === 'ECONNABORTED') {
+        errorMsg = "⏱️ Timeout: Xác minh quá lâu (>30s)";
+      } else if (err?.code === 'ERR_NETWORK') {
+        errorMsg = "🌐 Lỗi kết nối mạng";
+      }
+      
+      if (err?.response?.status) {
+        errorDetails = `\\nHTTP ${err.response.status}: ${err.response.statusText || 'Error'}`;
+      }
+      if (err?.response?.data?.error) {
+        errorDetails += `\\nBackend: ${err.response.data.error}`;
+      }
+      
+      setCardErr(errorMsg);
+      setCardVerifyLog(`❌ Lỗi: ${errorMsg}${errorDetails}\\n\\n🔍 Debug: ${err?.code || 'Unknown error'}`);
+      console.error("[Card Verify] ❌ Full Error:", {
+        message: err?.message,
+        code: err?.code,
+        status: err?.response?.status,
+        data: err?.response?.data,
+        stack: err?.stack
+      });
+    } finally {
+      setIsVerifyingCard(false);
+      setTimeout(() => setOcrProgress(0), 2000);
+    }
+  };
+
+  // Verify khuôn mặt (sau khi upload)
+  const verifyFace = async () => {
+    if (!faceUploaded || !submissionId) return;
+    setIsVerifyingFace(true);
+    setFaceVerifyLog("⏳ Đang kiểm tra liveness...");
+    
+    try {
+      const res = await axiosClient.post(`/submissions/${submissionId}/verify-face`);
+      
+      if (res?.data?.ok && res.data.valid) {
+        setFaceVerified(true);
+        const confidence = res.data.liveness?.confidence?.toFixed(1) || "N/A";
+        setFaceVerifyLog(`✅ Khuôn mặt hợp lệ!\\nLiveness confidence: ${confidence}%`);
+        console.log("[Face Verify] ✅", res.data.liveness);
+      } else {
+        setFaceVerified(false);
+        const reasons = res?.data?.liveness?.reasons?.join(", ") || res?.data?.message || "Không rõ lý do";
+        setFaceErr(reasons);
+        setFaceVerifyLog(`❌ Khuôn mặt không hợp lệ:\\n${reasons}`);
+        console.error("[Face Verify] ❌", reasons);
+      }
+    } catch (err) {
+      setFaceVerified(false);
+      const errorMsg = err?.response?.data?.message || "Lỗi xác minh";
+      setFaceErr(errorMsg);
+      setFaceVerifyLog(`❌ Lỗi: ${errorMsg}`);
+    } finally {
+      setIsVerifyingFace(false);
+    }
+  };
+
+  // So sánh 2 khuôn mặt (sau khi verify cả 2)
+  const compareFaces = async () => {
+    if (!faceVerified || !cardVerified || !submissionId) return;
+    setIsComparing(true);
+    setCompareLog("⏳ Đang so sánh khuôn mặt...");
+    
+    try {
+      const res = await axiosClient.post(`/submissions/${submissionId}/compare-faces`);
+      
+      if (res?.data?.ok && res.data.match) {
+        setFacesCompared(true);
+        setFaceOk(true);
+        const confidence = res.data.confidence?.toFixed(1) || "N/A";
+        const threshold = res.data.threshold || 65;
+        setCompareLog(`✅ Xác minh thành công!\\nĐộ tương đồng: ${confidence}%\\n(Yêu cầu ≥${threshold}%)`);
+        console.log("[Compare] ✅", res.data);
+      } else {
+        setFacesCompared(true); // Đánh dấu đã so sánh nhưng fail
+        setFaceOk(false);
+        const confidence = res?.data?.confidence?.toFixed(1) || "N/A";
+        const threshold = res?.data?.threshold || 65;
+        const msg = res?.data?.message || "Khuôn mặt không khớp";
+        setFaceErr(msg);
+        setCompareLog(`❌ ${msg}\\nĐộ tương đồng: ${confidence}%\\n(Yêu cầu ≥${threshold}%)`);
+        console.error("[Compare] ❌", msg);
+      }
+    } catch (err) {
+      setFacesCompared(true); // Đánh dấu đã thử so sánh nhưng lỗi
       setFaceOk(false);
-      setFaceErr('Không thể tải ảnh lên máy chủ. Vui lòng thử lại.');
+      const errorMsg = err?.response?.data?.message || "Lỗi so sánh";
+      setFaceErr(errorMsg);
+      setCompareLog(`❌ Lỗi: ${errorMsg}`);
+    } finally {
+      setIsComparing(false);
     }
   };
 
@@ -354,9 +550,12 @@ export default function PrepareExam() {
   }, [reqs, faceOk, cardOk, monitorOk]);
 
   // Gating từng bước: chỉ cho phép bước sau khi hoàn tất bước trước
-  const allowCard = useMemo(() => (!reqs.face || faceOk) && reqs.card, [reqs, faceOk]);
+  // Đổi thứ tự: thẻ SV là bước 1, khuôn mặt là bước 2
+  // Gating: Face phụ thuộc Card nếu cả hai đều được yêu cầu
+  const allowCard = useMemo(() => reqs.card, [reqs]);
+  const allowFace = useMemo(() => (!reqs.card || cardOk) && reqs.face, [reqs, cardOk]);
   const allowMonitor = useMemo(
-    () => (!reqs.face || faceOk) && (!reqs.card || cardOk) && reqs.monitor,
+    () => (!reqs.card || cardOk) && (!reqs.face || faceOk) && reqs.monitor,
     [reqs, faceOk, cardOk]
   );
 
@@ -428,101 +627,290 @@ export default function PrepareExam() {
 
         {/* Steps */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {/* Face verify */}
-          {reqs.face && (
-            <div className={`rounded-2xl p-4 transition ${cardCls} md:col-span-2`}>
-              <div className="flex items-center justify-between mb-2">
-                <p className={`${theme==="dark"?"text-slate-100":"text-slate-800"} font-semibold`}>
-                  <span className="inline-flex items-center justify-center w-6 h-6 mr-2 rounded-full bg-blue-600 text-white text-xs font-bold">1</span>
-                  Xác minh khuôn mặt
-                </p>
-                <span className={`text-xs ${faceOk ? "text-emerald-400" : faceErr ? "text-red-500" : theme==="dark"?"text-slate-400":"text-slate-500"}`}>{faceOk ? "Đã xác minh" : faceErr ? faceErr : "Chưa xác minh"}</span>
-              </div>
-              <div className={`relative rounded-xl overflow-hidden border ${theme==="dark"?"border-white/10":"border-slate-200"} bg-black/20`}>
-                <div className="bg-black/20" style={{ aspectRatio: '4 / 3' }}>
-                  <video ref={videoRef} className="w-full h-full object-cover" />
-                </div>
-                {/* Oval guide overlay */}
-                <div className="absolute inset-0 pointer-events-none grid place-items-center">
-                  <div className={`w-[88%] h-[80%] rounded-full border-4 transition-all ${faceGuideOk ? 'border-emerald-500/80' : 'border-red-500/70'}`} />
-                </div>
-                <div className="absolute left-1/2 -translate-x-1/2 bottom-3 text-xs font-medium px-2 py-1 rounded bg-black/40 text-white">
-                  {faceGuideMsg}
-                </div>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2 items-center">
-                <button
-                  className="px-3 py-2 rounded-lg text-white font-medium shadow transition hover:brightness-105"
-                  style={{ background: "linear-gradient(180deg,#6aa3ff,#5b82ff)" }}
-                  onClick={startCamera}
-                >
-                  Bật camera
-                </button>
-                <button
-                  className="px-3 py-2 rounded-lg text-white font-semibold shadow transition hover:brightness-105 disabled:opacity-60"
-                  style={{ background: "linear-gradient(180deg,#6aa3ff,#5b82ff)" }}
-                  onClick={captureFace}
-                  disabled={!submissionId}
-                >
-                  Chụp lại (thủ công)
-                </button>
-                <button
-                  className="px-3 py-2 rounded-lg text-white font-semibold shadow transition hover:brightness-105 disabled:opacity-60"
-                  style={{ background: "linear-gradient(180deg,#00cf7f,#17a55c)" }}
-                  onClick={uploadFacePreview}
-                  disabled={!submissionId || !facePreviewUrl}
-                >
-                  Tải lên ảnh đã chụp
-                </button>
-                {facePreviewUrl && (
-                  <span className="text-xs text-emerald-500">Đã chụp ảnh xem trước</span>
-                )}
-              </div>
-              {facePreviewUrl && (
-                <div className="mt-3">
-                  <p className={`${theme==="dark"?"text-slate-300":"text-slate-700"} text-sm mb-1`}>Ảnh xem trước:</p>
-                  <img src={facePreviewUrl} alt="preview" className="w-full max-w-md rounded-lg border border-white/10" />
-                </div>
-              )}
-              {/* <div className="mt-3">
-                <label
-                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer border transition
-                    ${theme==="dark" ? "bg-white/5 border-white/10 text-slate-100 hover:border-blue-300/40" : "bg-white border-slate-200 text-slate-800 hover:border-blue-300"}`}
-                >
-                  <input type="file" accept="image/*" className="hidden" onChange={(e)=>handleUpload(e,"face")} />
-                  <span>Hoặc tải ảnh khuôn mặt</span>
-                </label>
-              </div> */}
-            </div>
-          )}
-
-          {/* Student card */}
+          {/* Student card - Bước 1 */}
           {reqs.card && (
             <div className={`relative rounded-2xl p-4 transition ${cardCls}`}>
               <div className="flex items-center justify-between mb-2">
                 <p className={`${theme==="dark"?"text-slate-100":"text-slate-800"} font-semibold`}>
-                  <span className="inline-flex items-center justify-center w-6 h-6 mr-2 rounded-full bg-blue-600 text-white text-xs font-bold">2</span>
+                  <span className="inline-flex items-center justify-center w-6 h-6 mr-2 rounded-full bg-blue-600 text-white text-xs font-bold">1</span>
                   Xác minh thẻ sinh viên
                 </p>
-                <span className={`text-xs ${cardOk ? "text-emerald-400" : theme==="dark"?"text-slate-400":"text-slate-500"}`}>{cardOk ? "Đã xác minh" : "Chưa xác minh"}</span>
+                <span className={`text-xs ${cardOk ? "text-emerald-400" : cardErr ? "text-red-500" : theme==="dark"?"text-slate-400":"text-slate-500"}`}>
+                  {cardOk ? "✅ Đã xác minh" : cardErr ? "❌ Lỗi" : "⏳ Chưa xác minh"}
+                </span>
               </div>
-              <label
-                className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer border transition
-                ${theme==="dark" ? "bg-white/5 border-white/10 text-slate-100 hover:border-blue-300/40" : "bg-white border-slate-200 text-slate-800 hover:border-blue-300"}`}
-              >
-                <input type="file" accept="image/*" className="hidden" onChange={(e)=> allowCard && handleUpload(e,"card")} disabled={!allowCard} />
-                <span>Tải ảnh thẻ SV (mặt trước)</span>
-              </label>
-              <p className={`${cardOk ? "text-emerald-500" : theme==="dark"?"text-slate-400":"text-slate-500"} text-sm mt-2`}>
-                {cardOk ? "Đã xác minh" : "Chưa xác minh"}
-              </p>
-              {!allowCard && (
-                <div className="absolute inset-0 rounded-2xl bg-black/30 grid place-items-center text-white text-sm font-medium">
-                  Hoàn tất bước 1 (khuôn mặt) để mở khóa bước 2
+              
+              {/* Upload button */}
+              {!cardUploaded && (
+                <label
+                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer border transition
+                  ${theme==="dark" ? "bg-white/5 border-white/10 text-slate-100 hover:border-blue-300/40" : "bg-white border-slate-200 text-slate-800 hover:border-blue-300"}`}
+                >
+                  <input type="file" accept="image/*" className="hidden" onChange={(e)=> allowCard && handleUpload(e,"card")} disabled={!allowCard} />
+                  <span>📤 Tải ảnh thẻ SV</span>
+                </label>
+              )}
+
+              {/* Preview ảnh */}
+              {cardPreviewUrl && (
+                <div className="mt-3">
+                  <img src={cardPreviewUrl} alt="Thẻ SV" className="w-full max-w-xs rounded-lg border border-white/10" />
+                </div>
+              )}
+
+              {/* Verify button */}
+              {cardUploaded && !cardVerified && (
+                <div className="mt-3">
+                  <button
+                    onClick={verifyCard}
+                    disabled={isVerifyingCard}
+                    className="px-3 py-2 rounded-lg text-white font-semibold shadow transition hover:brightness-105 disabled:opacity-60 w-full"
+                    style={{ background: "linear-gradient(180deg,#6aa3ff,#5b82ff)" }}
+                  >
+                    {isVerifyingCard ? "⏳ Đang xác minh..." : "🔍 Bắt đầu xác minh"}
+                  </button>
+                  
+                  {/* Progress bar */}
+                  {isVerifyingCard && ocrProgress > 0 && (
+                    <div className="mt-2">
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className={theme==="dark"?"text-slate-400":"text-slate-600"}>OCR Progress:</span>
+                        <span className={theme==="dark"?"text-slate-300":"text-slate-700"}>{Math.round(ocrProgress)}%</span>
+                      </div>
+                      <div className="h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-blue-500 transition-all duration-300"
+                          style={{ width: `${ocrProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Verification log */}
+              {cardVerifyLog && (
+                <div className={`mt-2 p-2 rounded text-xs font-mono whitespace-pre-wrap ${cardOk ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>
+                  {cardVerifyLog}
+                </div>
+              )}
+              
+              {/* Nút upload lại nếu fail */}
+              {cardUploaded && !cardOk && cardVerifyLog && (
+                <div className="mt-3">
+                  <label
+                    className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer border transition bg-amber-500 hover:bg-amber-600 text-white font-semibold shadow`}
+                  >
+                    <input type="file" accept="image/*" className="hidden" onChange={(e)=> {
+                      setCardUploaded(false);
+                      setCardVerified(false);
+                      setCardOk(false);
+                      setCardVerifyLog("");
+                      setCardErr("");
+                      handleUpload(e,"card");
+                    }} />
+                    <span>🔄 Upload lại ảnh thẻ SV</span>
+                  </label>
+                </div>
+              )}
+
+              {!cardUploaded && !cardErr && (
+                <p className={`${theme==="dark"?"text-slate-400":"text-slate-500"} text-xs mt-2`}>
+                  Yêu cầu: "Thẻ sinh viên", "Đại học", domain .edu.vn, MSSV 8-11 số
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Face verify - Bước 2 */}
+          {reqs.face && (
+            <div className={`rounded-2xl p-4 transition ${cardCls} md:col-span-2`}>
+              <div className="flex items-center justify-between mb-2">
+                <p className={`${theme==="dark"?"text-slate-100":"text-slate-800"} font-semibold`}>
+                  <span className="inline-flex items-center justify-center w-6 h-6 mr-2 rounded-full bg-blue-600 text-white text-xs font-bold">2</span>
+                  Xác minh khuôn mặt
+                </p>
+                <span className={`text-xs ${faceOk ? "text-emerald-400" : faceErr ? "text-red-500" : theme==="dark"?"text-slate-400":"text-slate-500"}`}>
+                  {faceOk ? "✅ Đã xác minh" : faceErr ? "❌ Lỗi" : "⏳ Chưa xác minh"}
+                </span>
+              </div>
+
+              {/* Camera preview */}
+              {!faceUploaded && (
+                <>
+                  <div className={`relative rounded-xl overflow-hidden border ${theme==="dark"?"border-white/10":"border-slate-200"} bg-black/20`}>
+                    <div className="bg-black/20" style={{ aspectRatio: '4 / 3' }}>
+                      <video ref={videoRef} className="w-full h-full object-cover" />
+                    </div>
+                    <div className="absolute inset-0 pointer-events-none grid place-items-center">
+                      <div className={`w-[88%] h-[80%] rounded-full border-4 transition-all ${faceGuideOk ? 'border-emerald-500/80' : 'border-red-500/70'}`} />
+                    </div>
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-3 text-xs font-medium px-2 py-1 rounded bg-black/40 text-white">
+                      {faceGuideMsg}
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      className="px-3 py-2 rounded-lg text-white font-medium shadow transition hover:brightness-105 disabled:opacity-60"
+                      style={{ background: "linear-gradient(180deg,#6aa3ff,#5b82ff)" }}
+                      onClick={startCamera}
+                      disabled={!allowFace}
+                    >
+                      📷 Bật camera
+                    </button>
+                    <button
+                      className="px-3 py-2 rounded-lg text-white font-semibold shadow transition hover:brightness-105 disabled:opacity-60"
+                      style={{ background: "linear-gradient(180deg,#00cf7f,#17a55c)" }}
+                      onClick={uploadFacePreview}
+                      disabled={!submissionId || !facePreviewUrl || !allowFace}
+                    >
+                      📤 Tải lên ảnh đã chụp
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* Preview ảnh đã upload */}
+              {facePreviewUrl && faceUploaded && (
+                <div className="mt-3">
+                  <img src={facePreviewUrl} alt="preview" className="w-full max-w-md rounded-lg border border-white/10" />
+                </div>
+              )}
+
+              {/* Verify button - Bước 2a: Verify liveness */}
+              {faceUploaded && !faceVerified && (
+                <button
+                  onClick={verifyFace}
+                  disabled={isVerifyingFace}
+                  className="mt-3 px-3 py-2 rounded-lg text-white font-semibold shadow transition hover:brightness-105 disabled:opacity-60"
+                  style={{ background: "linear-gradient(180deg,#6aa3ff,#5b82ff)" }}
+                >
+                  {isVerifyingFace ? "⏳ Đang xác minh..." : "🔍 Bắt đầu xác minh liveness"}
+                </button>
+              )}
+
+              {/* Liveness log */}
+              {faceVerifyLog && (
+                <div className={`mt-2 p-2 rounded text-xs font-mono whitespace-pre-wrap ${faceVerified ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>
+                  {faceVerifyLog}
+                </div>
+              )}
+              
+              {/* Nút chụp lại nếu fail */}
+              {faceUploaded && !faceVerified && faceVerifyLog && !isVerifyingFace && (
+                <button
+                  onClick={() => {
+                    setFaceUploaded(false);
+                    setFaceVerified(false);
+                    setFaceOk(false);
+                    setFaceVerifyLog("");
+                    setFaceErr("");
+                    setFacePreviewUrl("");
+                    startCamera();
+                  }}
+                  className="mt-3 px-3 py-2 rounded-lg text-white font-semibold shadow transition hover:brightness-105 bg-amber-500 hover:bg-amber-600"
+                >
+                  🔄 Chụp lại ảnh khuôn mặt
+                </button>
+              )}
+
+              {/* Compare button - Bước 2b: So sánh khuôn mặt */}
+              {faceVerified && cardVerified && !facesCompared && (
+                <button
+                  onClick={compareFaces}
+                  disabled={isComparing}
+                  className="mt-3 px-3 py-2 rounded-lg text-white font-semibold shadow transition hover:brightness-105 disabled:opacity-60"
+                  style={{ background: "linear-gradient(180deg,#ff6b6b,#ee5a52)" }}
+                >
+                  {isComparing ? "⏳ Đang so sánh..." : "⚖️ So sánh với thẻ SV"}
+                </button>
+              )}
+
+              {/* Compare log */}
+              {compareLog && (
+                <div className={`mt-2 p-2 rounded text-xs font-mono whitespace-pre-wrap ${faceOk ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>
+                  {compareLog}
+                </div>
+              )}
+              
+              {/* Nút thử lại nếu compare fail */}
+              {facesCompared && !faceOk && compareLog && !isComparing && (
+                <div className="mt-3 flex gap-2">
+                  <button
+                    onClick={() => {
+                      setFaceUploaded(false);
+                      setFaceVerified(false);
+                      setFacesCompared(false);
+                      setFaceOk(false);
+                      setFaceVerifyLog("");
+                      setCompareLog("");
+                      setFaceErr("");
+                      setFacePreviewUrl("");
+                      startCamera();
+                    }}
+                    className="px-3 py-2 rounded-lg text-white font-semibold shadow transition hover:brightness-105 bg-amber-500 hover:bg-amber-600"
+                  >
+                    🔄 Chụp lại ảnh khuôn mặt
+                  </button>
+                  <label
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer bg-amber-500 hover:bg-amber-600 text-white font-semibold shadow transition"
+                  >
+                    <input type="file" accept="image/*" className="hidden" onChange={(e)=> {
+                      setCardUploaded(false);
+                      setCardVerified(false);
+                      setCardOk(false);
+                      setCardVerifyLog("");
+                      setFacesCompared(false);
+                      setCompareLog("");
+                      handleUpload(e,"card");
+                    }} />
+                    <span>🔄 Upload lại thẻ SV</span>
+                  </label>
+                </div>
+              )}
+
+              {/* Nút upload ảnh đã xác minh cuối cùng */}
+              {facesCompared && faceOk && (
+                <div className="mt-4 p-4 rounded-xl bg-gradient-to-br from-emerald-500/20 to-green-500/20 border border-emerald-500/30">
+                  <p className="text-emerald-400 font-semibold mb-2">🎉 Xác minh hoàn tất!</p>
+                  <p className="text-xs text-slate-300 mb-3">Cả 2 khuôn mặt khớp nhau. Bạn có thể tải lên ảnh đã xác minh để hoàn thành bước cuối cùng.</p>
+                  <button
+                    className="px-4 py-2 rounded-lg text-white font-bold shadow-lg transition hover:brightness-110"
+                    style={{ background: "linear-gradient(180deg,#00cf7f,#17a55c)" }}
+                    onClick={async () => {
+                      try {
+                        // Gọi API upload ảnh đã xác minh lên server
+                        const form = new FormData();
+                        if (facePreviewBlobRef.current) {
+                          form.append('verified_face', facePreviewBlobRef.current, 'verified_face.jpg');
+                        }
+                        if (cardPreviewBlobRef.current) {
+                          form.append('verified_card', cardPreviewBlobRef.current, 'verified_card.jpg');
+                        }
+                        const res = await axiosClient.post(`/submissions/${submissionId}/upload-verified-images`, form);
+                        if (res?.data?.ok) {
+                          alert("✅ Đã tải lên ảnh đã xác minh thành công!");
+                        }
+                      } catch (e) {
+                        console.error("[Upload Verified] ❌", e);
+                        alert("❌ Lỗi khi tải lên ảnh đã xác minh");
+                      }
+                    }}
+                  >
+                    📤 Tải lên ảnh đã xác minh
+                  </button>
+                </div>
+              )}
+
+              {!allowFace && (
+                <div className="mt-2 text-xs font-medium text-amber-500">
+                  ⚠️ Hoàn tất bước 1 (thẻ sinh viên) để mở khóa bước 2
                 </div>
               )}
             </div>
           )}
+
+          
 
           {/* Monitor */}
           {reqs.monitor && (

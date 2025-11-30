@@ -9,6 +9,11 @@ const {
   saveAnswer,
   submitExam,
   uploadVerifyAssets,
+  uploadImages,
+  verifyStudentCardImage,
+  verifyFaceImage,
+  compareFaceImages,
+  uploadVerifiedImages,
   myResults,
   getExamPublicInfo,
   getSubmissionStatus,
@@ -28,10 +33,25 @@ router.get("/exams/:id/public-info", verifyToken, requireRoomVerification, getEx
 
 // Submissions - Tất cả đều cần verify room
 router.get("/submissions/:id/status", verifyToken, requireRoomVerification, getSubmissionStatus);
+
+// Legacy endpoint (backward compatibility)
 router.post("/submissions/:id/verify", verifyToken, requireRoomVerification, upload.fields([
   { name: "face_image", maxCount: 1 },
   { name: "student_card_image", maxCount: 1 },
 ]), uploadVerifyAssets);
+
+// New verification endpoints (separated upload & verify steps)
+router.post("/submissions/:id/upload-images", verifyToken, requireRoomVerification, upload.fields([
+  { name: "face_image", maxCount: 1 },
+  { name: "student_card_image", maxCount: 1 },
+]), uploadImages);
+router.post("/submissions/:id/verify-card", verifyToken, requireRoomVerification, verifyStudentCardImage);
+router.post("/submissions/:id/verify-face", verifyToken, requireRoomVerification, verifyFaceImage);
+router.post("/submissions/:id/compare-faces", verifyToken, requireRoomVerification, compareFaceImages);
+router.post("/submissions/:id/upload-verified-images", verifyToken, requireRoomVerification, upload.fields([
+  { name: "verified_face", maxCount: 1 },
+  { name: "verified_card", maxCount: 1 },
+]), uploadVerifiedImages);
 
 router.post("/submissions/:id/start", verifyToken, requireRoomVerification, startExam);
 router.post("/submissions/:id/answer", verifyToken, requireRoomVerification, saveAnswer);
