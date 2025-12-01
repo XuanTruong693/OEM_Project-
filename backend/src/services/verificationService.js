@@ -18,13 +18,25 @@ async function callPythonVerify(action, data) {
       "middleware",
       "verify_images.py"
     );
-    const pythonProcess = spawn("python", [pythonScript]);
+
+    const pythonPath = process.env.PYTHON_PATH || "python";
+
+    const pythonProcess = spawn(pythonPath, [pythonScript], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+    });
 
     const input = JSON.stringify({ action, ...data });
     let stdout = "";
     let stderr = "";
+    let stdinWritten = false;
     
-    // Không có timeout - tối ưu hóa để xong trong 10s
+    // Timeout 30s để xử lý ảnh lớn
+    const timeout = setTimeout(() => {
+      pythonProcess.kill();
+      reject(new Error("Python verification timeout after 30s"));
+    }, 30000);
 
     pythonProcess.stdout.on("data", (data) => {
       stdout += data.toString("utf8");
@@ -48,11 +60,12 @@ async function callPythonVerify(action, data) {
     });
 
     pythonProcess.on("close", (code) => {
+      clearTimeout(timeout);
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
       
       if (code !== 0) {
         console.error(`[Python ${action}] ❌ Lỗi (${elapsed}s):`, stderr);
-        return reject(new Error(`Python process exited with code ${code}`));
+        return reject(new Error(`Python process exited with code ${code}: ${stderr}`));
       }
 
       try {
@@ -66,12 +79,34 @@ async function callPythonVerify(action, data) {
     });
 
     pythonProcess.on("error", (err) => {
+      clearTimeout(timeout);
       console.error(`[Python ${action}] ❌ Không khởi động được Python:`, err.message);
       reject(new Error(`Failed to start Python process: ${err.message}`));
     });
 
-    pythonProcess.stdin.write(input);
-    pythonProcess.stdin.end();
+    // ✅ FIX: Xử lý lỗi khi write vào stdin
+    pythonProcess.stdin.on("error", (err) => {
+      console.error(`[Python ${action}] ❌ Stdin write error:`, err.message);
+      if (!stdinWritten) {
+        clearTimeout(timeout);
+        reject(new Error(`Failed to write to Python stdin: ${err.message}`));
+      }
+    });
+
+    // Write input và đánh dấu đã ghi xong
+    try {
+      pythonProcess.stdin.write(input, "utf8", (err) => {
+        if (err) {
+          console.error(`[Python ${action}] ❌ Write callback error:`, err);
+        } else {
+          stdinWritten = true;
+        }
+      });
+      pythonProcess.stdin.end();
+    } catch (writeErr) {
+      clearTimeout(timeout);
+      reject(new Error(`Failed to write input: ${writeErr.message}`));
+    }
   });
 }
 

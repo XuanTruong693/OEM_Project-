@@ -299,6 +299,43 @@ exports.getExamResults = async (req, res) => {
   }
 };
 
+// Reset cheating logs cho một submission (chỉ dùng cho testing/debugging)
+exports.resetCheatingLogs = async (req, res) => {
+  const submissionId = req.params.submissionId || req.params.id;
+  
+  if (!submissionId || isNaN(parseInt(submissionId))) {
+    return res.status(400).json({ error: "Invalid submissionId" });
+  }
+  
+  let conn;
+  try {
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    
+    // Xóa tất cả cheating logs của submission này
+    await conn.query("DELETE FROM cheating_logs WHERE submission_id = ?", [submissionId]);
+    
+    // Reset cheating_count về 0
+    await conn.query("UPDATE submissions SET cheating_count = 0 WHERE id = ?", [submissionId]);
+    
+    await conn.commit();
+    conn.release();
+    
+    console.log(`✅ [Reset] Cleared cheating logs for submission ${submissionId}`);
+    res.json({ 
+      success: true, 
+      message: `Cheating logs cleared for submission ${submissionId}` 
+    });
+  } catch (err) {
+    if (conn) {
+      await conn.rollback();
+      conn.release();
+    }
+    console.error("❌ [Reset] Error clearing cheating logs:", err);
+    res.status(500).json({ error: "Failed to clear cheating logs", details: err.message });
+  }
+};
+
 // Optional: Thêm endpoint delete student nếu cần (gọi sp_delete)
 exports.deleteStudentExamRecord = async (req, res) => {
   const { examId, studentId } = req.params;
@@ -313,5 +350,98 @@ exports.deleteStudentExamRecord = async (req, res) => {
   } catch (err) {
     console.error("Error deleting student record:", err);
     res.status(500).json({ error: "Failed to delete student record" });
+  }
+};
+
+// Lấy câu hỏi và đáp án của sinh viên cho một submission
+// Nếu exam đã archived, tự động lấy submission có điểm cao nhất
+exports.getSubmissionQuestions = async (req, res) => {
+  const submissionId = req.params.submissionId || req.params.id;
+  
+  if (!submissionId || isNaN(parseInt(submissionId))) {
+    return res.status(400).json({ error: "Invalid submissionId" });
+  }
+  
+  try {
+    const conn = await pool.getConnection();
+    
+    // Lấy exam_id, user_id và exam status từ submission
+    const [subRows] = await conn.query(
+      `SELECT s.exam_id, s.user_id, e.status as exam_status 
+       FROM submissions s
+       JOIN exams e ON e.id = s.exam_id
+       WHERE s.id = ?`,
+      [submissionId]
+    );
+    
+    if (!subRows || subRows.length === 0) {
+      conn.release();
+      return res.status(404).json({ error: "Submission not found" });
+    }
+    
+    const { exam_id: examId, user_id: studentId, exam_status: examStatus } = subRows[0];
+    
+    // ✅ Nếu exam đã archived, lấy submission có điểm cao nhất của sinh viên này
+    let actualSubmissionId = submissionId;
+    
+    if (examStatus === 'archived') {
+      const [bestSub] = await conn.query(
+        `SELECT id FROM submissions
+         WHERE exam_id = ? AND user_id = ?
+         ORDER BY COALESCE(total_score, suggested_total_score, 0) DESC, id DESC
+         LIMIT 1`,
+        [examId, studentId]
+      );
+      
+      if (bestSub && bestSub[0]) {
+        actualSubmissionId = bestSub[0].id;
+        console.log(`✅ [Submission] Exam archived - using best submission ${actualSubmissionId} instead of ${submissionId}`);
+      }
+    }
+    
+    // Lấy tất cả câu hỏi của bài thi
+    const [questions] = await conn.query(
+      `SELECT id as question_id, question_text, type, points, order_index 
+       FROM exam_questions 
+       WHERE exam_id = ? 
+       ORDER BY order_index ASC, id ASC`,
+      [examId]
+    );
+    
+    // Lấy tất cả options cho các câu MCQ
+    const [options] = await conn.query(
+      `SELECT eo.id as option_id, eo.question_id, eo.option_text, eo.is_correct
+       FROM exam_options eo
+       INNER JOIN exam_questions eq ON eo.question_id = eq.id
+       WHERE eq.exam_id = ?
+       ORDER BY eo.id ASC`,
+      [examId]
+    );
+    
+    // ✅ Lấy câu trả lời từ submission có điểm cao nhất
+    const [answers] = await conn.query(
+      `SELECT question_id, answer_text, selected_option_id, score, status
+       FROM student_answers
+       WHERE submission_id = ? AND student_id = ?`,
+      [actualSubmissionId, studentId]
+    );
+    
+    conn.release();
+    
+    res.json({
+      questions,
+      options,
+      answers,
+      exam_id: examId,
+      student_id: studentId,
+      submission_id: actualSubmissionId,
+      original_submission_id: submissionId,
+      is_best_submission: actualSubmissionId === parseInt(submissionId),
+      exam_status: examStatus
+    });
+    
+  } catch (err) {
+    console.error("❌ [Submission] Error fetching questions:", err);
+    res.status(500).json({ error: "Failed to fetch submission questions", details: err.message });
   }
 };

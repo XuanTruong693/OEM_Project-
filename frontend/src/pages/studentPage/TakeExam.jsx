@@ -28,6 +28,9 @@ export default function TakeExam() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false); // Đánh dấu đã nộp bài
   const [showConfirmModal, setShowConfirmModal] = useState(false); // Modal xác nhận nộp bài
+  const cleanupListenersRef = useRef(null); // Lưu hàm cleanup để gọi khi nộp bài
+  const submittedRef = useRef(false); // Ref để tracking submitted state (tránh stale closure)
+  const monitoringActiveRef = useRef(false); // Ref để tracking khi nào bắt đầu giám sát (sau grace period)
   const [unansweredQuestions, setUnansweredQuestions] = useState([]); // Danh sách câu bỏ trống
 
   const qRefs = useRef({});
@@ -170,6 +173,18 @@ export default function TakeExam() {
     };
 
     const penalize = (evt, msg, key = null) => {
+      // ✅ Không tính vi phạm nếu đã nộp bài
+      if (submittedRef.current) {
+        console.log("🛑 [TakeExam] Violation ignored - exam already submitted:", evt);
+        return;
+      }
+      
+      // ✅ Không tính vi phạm trước khi sinh viên bắt đầu làm bài (tránh false positive khi load trang)
+      if (!monitoringActiveRef.current) {
+        console.log("⏳ [TakeExam] Violation ignored - monitoring not active yet:", evt);
+        return;
+      }
+      
       setViolations((v) => {
         const nv = v + 1;
         flash(`${msg} (Cảnh cáo ${nv}/5)`, "danger", 1600);
@@ -214,6 +229,13 @@ export default function TakeExam() {
 
     start();
 
+    // ✅ Grace period: Bắt đầu giám sát sau 10 giây (tránh false positive khi load trang)
+    // Thời gian đủ để sinh viên đọc đề, tương tác với trang, và ổn định trạng thái
+    const graceTimer = setTimeout(() => {
+      monitoringActiveRef.current = true;
+      console.log("✅ [TakeExam] Monitoring activated after grace period");
+    }, 10000);
+
     window.addEventListener("keydown", onKey, true);
     document.addEventListener("fullscreenchange", onFs);
     document.addEventListener("visibilitychange", onVis);
@@ -221,16 +243,49 @@ export default function TakeExam() {
     window.addEventListener("contextmenu", onCtx);
     window.addEventListener("beforeunload", onBefore);
 
-    return () => {
+    const cleanup = () => {
+      clearTimeout(graceTimer);
+      monitoringActiveRef.current = false;
       window.removeEventListener("keydown", onKey, true);
       document.removeEventListener("fullscreenchange", onFs);
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("blur", onBlur);
       window.removeEventListener("contextmenu", onCtx);
       window.removeEventListener("beforeunload", onBefore);
+      console.log("🛑 [TakeExam] Monitoring stopped - all event listeners removed");
     };
+
+    // Lưu hàm cleanup để có thể gọi khi submit
+    cleanupListenersRef.current = cleanup;
+
+    return cleanup;
     // eslint-disable-next-line
   }, [submissionId, examId]);
+
+  // ===== Kích hoạt giám sát khi sinh viên bắt đầu tương tác =====
+  useEffect(() => {
+    // Lắng nghe sự kiện tương tác đầu tiên (click hoặc focus vào câu hỏi)
+    const handleFirstInteraction = () => {
+      if (!monitoringActiveRef.current) {
+        monitoringActiveRef.current = true;
+        console.log("✅ [TakeExam] Monitoring activated by user interaction");
+        // Gỡ listener sau khi kích hoạt
+        document.removeEventListener("click", handleFirstInteraction, true);
+        document.removeEventListener("focus", handleFirstInteraction, true);
+      }
+    };
+    
+    // Chỉ thêm listener nếu chưa submit
+    if (!submitted) {
+      document.addEventListener("click", handleFirstInteraction, true);
+      document.addEventListener("focus", handleFirstInteraction, true);
+    }
+    
+    return () => {
+      document.removeEventListener("click", handleFirstInteraction, true);
+      document.removeEventListener("focus", handleFirstInteraction, true);
+    };
+  }, [submitted]);
 
   // ===== Timer =====
   useEffect(() => {
@@ -301,6 +356,17 @@ export default function TakeExam() {
   const handleSubmit = async (auto = false) => {
     if (submitting) return;
     setSubmitting(true);
+    
+    // ✅ Đánh dấu đã nộp bài NGAY để dừng tracking violations
+    setSubmitted(true);
+    submittedRef.current = true; // ✅ Cập nhật ref để penalize function nhìn thấy ngay
+    
+    // ✅ Dừng hoàn toàn việc theo dõi màn hình - xóa tất cả event listeners
+    if (cleanupListenersRef.current) {
+      cleanupListenersRef.current();
+      cleanupListenersRef.current = null;
+    }
+    
     try {
       const res = await axiosClient.post(`/submissions/${submissionId}/submit`);
       const beMcq =
@@ -326,14 +392,13 @@ export default function TakeExam() {
         setTotalScore(mcq + (beAi || 0));
       }
       setShowModal(true);
-      setSubmitted(true);
       
       sessionStorage.removeItem("pending_exam_duration");
       sessionStorage.removeItem("exam_flags");
       sessionStorage.removeItem(`exam_${examId}_started`);
       localStorage.removeItem("examTheme");
       
-      console.log("✅ [TakeExam] Exam submitted, session cleared");
+      console.log("✅ [TakeExam] Exam submitted, session cleared, monitoring stopped");
       
       try {
         await document.exitFullscreen?.();
@@ -440,13 +505,13 @@ export default function TakeExam() {
       </header>
 
       {/* BODY (only MAIN scrolls) */}
-      <div className="flex-1 overflow-hidden">
-        <div className="max-w-6xl mx-auto p-4 grid grid-cols-1 md:grid-cols-4 gap-4 h-full">
-          {/* SIDEBAR (no scroll) */}
+      <div className="flex-1 overflow-hidden flex">
+        <div className="max-w-6xl mx-auto p-4 flex gap-4 w-full" style={{ height: "calc(100vh - 80px)" }}>
+          {/* SIDEBAR (fixed position, no scroll) */}
           <aside
-            className={`rounded-2xl p-4 ${cardCls} overflow-hidden md:col-span-1`}
+            className={`rounded-2xl p-4 ${cardCls} flex-shrink-0 w-64 flex flex-col h-full`}
           >
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-2 flex-shrink-0">
               <h3
                 className={`text-sm font-semibold ${
                   theme === "dark" ? "text-slate-100" : "text-slate-800"
@@ -462,7 +527,7 @@ export default function TakeExam() {
                 {counts.answered}/{counts.total} đã làm
               </span>
             </div>
-            <div className="grid grid-cols-5 gap-2 pointer-events-auto select-none">
+            <div className="grid grid-cols-5 gap-2 pointer-events-auto select-none flex-shrink-0 overflow-y-auto max-h-[calc(100%-100px)]">
               {questions.map((q, i) => (
                 <button
                   key={q.question_id}
@@ -487,14 +552,14 @@ export default function TakeExam() {
             <p
               className={`${
                 theme === "dark" ? "text-slate-400" : "text-slate-600"
-              } text-sm mt-3`}
+              } text-sm mt-3 flex-shrink-0`}
             >
               Giữ chế độ toàn màn hình. Rời tab/ESC/F11 sẽ bị cảnh cáo.
             </p>
           </aside>
 
           {/* MAIN (scrollable) */}
-          <main className="md:col-span-3 space-y-4 overflow-y-auto pr-1">
+          <main className="flex-1 space-y-4 overflow-y-auto pr-1 h-full">
             {loading ? (
               <div className="space-y-3">
                 <div className="h-4 w-40 rounded bg-slate-200 animate-pulse" />

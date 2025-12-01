@@ -20,6 +20,12 @@ router.get(
   submissionController.getStudentCheatingDetails
 );
 
+// Lấy câu hỏi và đáp án của sinh viên
+router.get(
+  "/submissions/:submissionId/questions",
+  submissionController.getSubmissionQuestions
+);
+
 router.put(
   "/exams/:examId/students/:studentId/approve",
   submissionController.approveStudentScores

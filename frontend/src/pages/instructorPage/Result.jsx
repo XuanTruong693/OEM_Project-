@@ -1,6 +1,22 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
+import {
+  HiChartBar,
+  HiClipboardList,
+  HiClock,
+  HiCheckCircle,
+  HiSave,
+  HiCamera,
+  HiExclamationCircle,
+  HiAcademicCap,
+  HiIdentification,
+  HiDocumentText,
+  HiUser,
+  HiTrendingUp,
+  HiUserGroup,
+  HiStar,
+} from "react-icons/hi";
 
 const cls = (...a) => a.filter(Boolean).join(" ");
 
@@ -104,6 +120,8 @@ export default function Result() {
   const [cheatingDetails, setCheatingDetails] = React.useState(null);
   const [faceImageData, setFaceImageData] = React.useState(null);
   const [cardImageData, setCardImageData] = React.useState(null);
+  const [submissionQuestions, setSubmissionQuestions] = React.useState(null); // Câu hỏi và đáp án
+  const [submissionInfo, setSubmissionInfo] = React.useState(null); // Thông tin về submission (is_best, exam_status, etc)
   const [originalScores, setOriginalScores] = React.useState({
     total_score: 0,
     ai_score: 0,
@@ -168,16 +186,37 @@ export default function Result() {
 
         const url = new URL(window.location.href);
         const idQ = url.searchParams.get("exam_id");
+        let examToLoad = null;
         if (idQ) {
           setExamId(idQ);
-          load(idQ);
+          examToLoad = list.find((e) => String(e.id) === String(idQ));
         } else {
-          const first =
+          examToLoad =
             list.find((e) => String(e.status) === "published") || list[0];
-          if (first) {
-            setExamId(String(first.id));
-            load(String(first.id));
-          }
+          if (examToLoad) setExamId(String(examToLoad.id));
+        }
+        if (examToLoad) load(String(examToLoad.id));
+
+        // ✅ Polling: Kiểm tra time_close và tự động archive + reload kết quả
+        if (examToLoad) {
+          const interval = setInterval(async () => {
+            try {
+              const statusRes = await axiosClient.get(
+                `/instructor/exams/${examToLoad.id}/check-status`
+              );
+              if (
+                statusRes?.data?.status_changed &&
+                statusRes.data.current_status === "archived"
+              ) {
+                console.log("✅ Exam archived, reloading results...");
+                clearInterval(interval);
+                load(String(examToLoad.id));
+              }
+            } catch (err) {
+              console.error("Failed to check exam status:", err);
+            }
+          }, 5000); // Kiểm tra mỗi 5s
+          return () => clearInterval(interval);
         }
       } catch (err) {
         console.error("Failed to fetch exam list:", err);
@@ -635,6 +674,7 @@ export default function Result() {
     setDrawer({ open: true, row });
     setFaceImageData(null);
     setCardImageData(null);
+    setSubmissionQuestions(null);
     setScoreError("");
     setOriginalScores({
       total_score: Number(row.total_score ?? 0),
@@ -647,6 +687,57 @@ export default function Result() {
         .get(`/instructor/submissions/${row.submission_id}/cheating-details`)
         .then((res) => setCheatingDetails(res.data))
         .catch(() => setCheatingDetails(null));
+
+      // Load questions and answers
+      axiosClient
+        .get(`/instructor/submissions/${row.submission_id}/questions`)
+        .then((res) => {
+          const questions = res.data?.questions || [];
+          const answers = res.data?.answers || [];
+          const options = res.data?.options || [];
+
+          // Lưu thông tin submission
+          setSubmissionInfo({
+            is_best_submission: res.data?.is_best_submission,
+            exam_status: res.data?.exam_status,
+            actual_submission_id: res.data?.submission_id,
+            original_submission_id: res.data?.original_submission_id,
+          });
+
+          // Hiển thị thông báo nếu đang xem submission có điểm cao nhất
+          if (
+            res.data?.exam_status === "archived" &&
+            !res.data?.is_best_submission
+          ) {
+            console.log(
+              `✅ [Result] Showing best submission #${res.data?.submission_id} instead of #${res.data?.original_submission_id}`
+            );
+          }
+
+          // Map answers to questions
+          const answerMap = new Map(answers.map((a) => [a.question_id, a]));
+          const optionsByQ = (options || []).reduce((acc, o) => {
+            (acc[o.question_id] ||= []).push(o);
+            return acc;
+          }, {});
+
+          const merged = questions.map((q) => {
+            const answer = answerMap.get(q.question_id);
+            console.log(`Question ${q.question_id} (${q.type}):`, answer);
+            return {
+              ...q,
+              options: q.type === "MCQ" ? optionsByQ[q.question_id] || [] : [],
+              answer: answer || null,
+            };
+          });
+
+          console.log("[Result] Merged questions:", merged);
+          setSubmissionQuestions(merged);
+        })
+        .catch((err) => {
+          console.error("Error loading questions:", err);
+          setSubmissionQuestions([]);
+        });
 
       // Load face image blob
       if (row.has_face_image) {
@@ -690,6 +781,7 @@ export default function Result() {
     setCheatingDetails(null);
     setFaceImageData(null);
     setCardImageData(null);
+    setSubmissionInfo(null); // Reset submission info
     setScoreError("");
     setOriginalScores({ total_score: 0, ai_score: 0 });
   };
@@ -847,7 +939,7 @@ export default function Result() {
               className="group relative overflow-hidden rounded-xl bg-white/80 backdrop-blur-xl px-4 py-2.5 shadow-lg hover:shadow-xl transition-all border border-white/20 hover:scale-[1.02]"
             >
               <span className="relative z-10 flex items-center gap-2 font-medium text-slate-700">
-                <span>📋</span>
+                <HiClipboardList className="text-xl text-indigo-600" />
                 Chọn bài thi khác
               </span>
             </button>
@@ -885,17 +977,17 @@ export default function Result() {
         {/* Summary */}
         <div className="grid max-lg:grid-cols-2 grid-cols-4 gap-4">
           <StatCard
-            icon="📊"
+            icon={<HiChartBar className="text-blue-500" />}
             label="Total Submissions"
             value={summary?.total_submissions ?? summary?.total ?? 0}
           />
           <StatCard
-            icon="👥"
+            icon={<HiUserGroup className="text-emerald-500" />}
             label="Total Students"
             value={summary?.total_students ?? 0}
           />
           <StatCard
-            icon="⭐"
+            icon={<HiStar className="text-amber-500" />}
             label="Avg Score"
             value={
               summary?.avg_score != null
@@ -904,7 +996,7 @@ export default function Result() {
             }
           />
           <StatCard
-            icon="🕐"
+            icon={<HiClock className="text-slate-500" />}
             label="Last Submission"
             value={fmtDate(summary?.last_submission_time)}
           />
@@ -1199,7 +1291,7 @@ export default function Result() {
                   {/* Info Row */}
                   <div className="flex items-center gap-4 text-xs text-slate-600">
                     <div className="flex items-center gap-1">
-                      <span>⏱️</span>
+                      <HiClock className="text-base text-purple-500" />
                       <span>
                         {fmtDuration(r.duration_seconds, r.duration_minutes)}
                       </span>
@@ -1213,8 +1305,8 @@ export default function Result() {
                           </span>
                         </>
                       ) : (
-                        <span className="text-emerald-500 font-medium">
-                          ✓ Không gian lận
+                        <span className="text-emerald-500 font-medium flex items-center gap-1">
+                          <HiCheckCircle className="text-base" /> Không gian lận
                         </span>
                       )}
                     </div>
@@ -1224,16 +1316,24 @@ export default function Result() {
                   <div className="flex items-center gap-3 mt-3 pt-3 border-t border-slate-100">
                     <div className="flex items-center gap-1 text-xs">
                       {r.has_face_image || r.face_image_url ? (
-                        <span className="text-indigo-600">📸 Khuôn mặt ✓</span>
+                        <span className="text-indigo-600 flex items-center gap-1">
+                          <HiCamera className="text-base" /> Khuôn mặt ✓
+                        </span>
                       ) : (
-                        <span className="text-slate-400">📸 Khuôn mặt —</span>
+                        <span className="text-slate-400 flex items-center gap-1">
+                          <HiCamera className="text-base" /> Khuôn mặt —
+                        </span>
                       )}
                     </div>
                     <div className="flex items-center gap-1 text-xs">
                       {r.has_student_card || r.student_card_url ? (
-                        <span className="text-indigo-600">🆔 CMND ✓</span>
+                        <span className="text-indigo-600 flex items-center gap-1">
+                          <HiIdentification className="text-base" /> CMND ✓
+                        </span>
                       ) : (
-                        <span className="text-slate-400">🆔 CMND —</span>
+                        <span className="text-slate-400 flex items-center gap-1">
+                          <HiIdentification className="text-base" /> CMND —
+                        </span>
                       )}
                     </div>
                     <div className="ml-auto">{StatusPill(r.status)}</div>
@@ -1259,8 +1359,8 @@ export default function Result() {
         {/* Drawer */}
         {drawer.open && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="w-full max-w-2xl max-h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden">
-              <div className="flex items-center justify-between bg-slate-800 p-6">
+            <div className="w-full max-w-7xl max-h-[95vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+              <div className="flex items-center justify-between bg-slate-800 p-6 flex-shrink-0">
                 <div>
                   <h4 className="text-xl font-bold text-white">
                     Cập nhật điểm
@@ -1277,328 +1377,522 @@ export default function Result() {
                 </button>
               </div>
 
-              <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(90vh-140px)]">
-                {/* Error Message */}
-                {scoreError && (
-                  <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4 text-center">
-                    <div className="text-red-700 font-bold">{scoreError}</div>
-                  </div>
-                )}
-
-                {/* Student Name - Read Only */}
-                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
-                  <label className="text-xs font-semibold text-slate-600 uppercase">
-                    Tên sinh viên
-                  </label>
-                  <div className="mt-1 text-lg font-bold text-slate-900">
-                    {drawer.row.student_name || ""}
-                  </div>
-                </div>
-
-                {/* Additional Info - Read Only */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <label className="text-xs font-semibold text-blue-700 uppercase">
-                      Submission ID
-                    </label>
-                    <div className="mt-1 text-base font-semibold text-blue-900">
-                      #{drawer.row.submission_id || "N/A"}
-                    </div>
-                  </div>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <label className="text-xs font-semibold text-blue-700 uppercase">
-                      Student ID
-                    </label>
-                    <div className="mt-1 text-base font-semibold text-blue-900">
-                      {drawer.row.student_id || "N/A"}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Time Info */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                    <label className="text-xs font-semibold text-green-700 uppercase flex items-center gap-1">
-                      <span>⏰</span> Bắt đầu
-                    </label>
-                    <div className="mt-1 text-sm font-medium text-green-900">
-                      {fmtDate(drawer.row.started_at)}
-                    </div>
-                  </div>
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                    <label className="text-xs font-semibold text-green-700 uppercase flex items-center gap-1">
-                      <span>✅</span> Nộp bài
-                    </label>
-                    <div className="mt-1 text-sm font-medium text-green-900">
-                      {fmtDate(drawer.row.submitted_at)}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Duration & Cheating */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-center">
-                    <label className="text-xs font-semibold text-purple-700 uppercase">
-                      Thời gian
-                    </label>
-                    <div className="mt-1 text-lg font-bold text-purple-900">
-                      {fmtDuration(
-                        drawer.row.duration_seconds,
-                        drawer.row.duration_minutes
-                      )}
-                    </div>
-                  </div>
-                  <div
-                    className={`border-2 rounded-lg p-3 text-center ${
-                      drawer.row.cheating_count > 0 ||
-                      drawer.row.has_cheating_flag
-                        ? "bg-red-50 border-red-300"
-                        : "bg-emerald-50 border-emerald-200"
-                    }`}
-                  >
-                    <label
-                      className="text-xs font-semibold uppercase"
-                      style={{
-                        color:
-                          drawer.row.cheating_count > 0 ||
-                          drawer.row.has_cheating_flag
-                            ? "#dc2626"
-                            : "#059669",
-                      }}
-                    >
-                      Gian lận
-                    </label>
-                    <div
-                      className="mt-1 text-lg font-bold"
-                      style={{
-                        color:
-                          drawer.row.cheating_count > 0 ||
-                          drawer.row.has_cheating_flag
-                            ? "#dc2626"
-                            : "#059669",
-                      }}
-                    >
-                      {drawer.row.cheating_count > 0
-                        ? drawer.row.cheating_count
-                        : "✓"}
-                    </div>
-                  </div>
-                  <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-center">
-                    <label className="text-xs font-semibold text-indigo-700 uppercase">
-                      Trạng thái
-                    </label>
-                    <div className="mt-1">{StatusPill(drawer.row.status)}</div>
-                  </div>
-                </div>
-
-                {/* Score Input Grid */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div
-                    className={`bg-white border-2 rounded-lg p-4 ${
-                      Number(drawer.row.total_score ?? 0) > 10
-                        ? "border-red-500"
-                        : "border-slate-300"
-                    }`}
-                  >
-                    <label className="text-xs font-semibold text-slate-700 uppercase block mb-2">
-                      Điểm MCQ
-                    </label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="10"
-                      className="w-full text-2xl font-bold text-slate-900 bg-transparent border-none focus:outline-none"
-                      value={drawer.row.total_score ?? 0}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setDrawer((d) => ({
-                          ...d,
-                          row: { ...d.row, total_score: val },
-                        }));
-                        if (Number(val) > 10) {
-                          setScoreError("❌ Điểm MCQ không được vượt quá 10!");
-                        } else {
-                          setScoreError("");
-                        }
-                      }}
-                    />
-                  </div>
-                  <div
-                    className={`bg-white border-2 rounded-lg p-4 ${
-                      Number(drawer.row.ai_score ?? 0) > 10
-                        ? "border-red-500"
-                        : "border-slate-300"
-                    }`}
-                  >
-                    <label className="text-xs font-semibold text-slate-700 uppercase block mb-2">
-                      Điểm essay (AI)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="10"
-                      className="w-full text-2xl font-bold text-slate-900 bg-transparent border-none focus:outline-none"
-                      value={drawer.row.ai_score ?? 0}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setDrawer((d) => ({
-                          ...d,
-                          row: { ...d.row, ai_score: val },
-                        }));
-                        if (Number(val) > 10) {
-                          setScoreError("❌ Điểm AI không được vượt quá 10!");
-                        } else {
-                          setScoreError("");
-                        }
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* Total Score Display */}
-                <div className="bg-slate-100 border-2 border-slate-400 rounded-lg p-6 text-center">
-                  <div className="text-xs font-bold text-slate-600 uppercase mb-2">
-                    Tổng điểm
-                  </div>
-                  <div className="text-5xl font-black text-slate-900">
-                    {(
-                      Number(drawer.row.total_score ?? 0) +
-                      Number(drawer.row.ai_score ?? 0)
-                    ).toFixed(1)}
-                  </div>
-                  <div className="text-lg font-bold text-slate-500 mt-1">
-                    / 10
-                  </div>
-                </div>
-
-                {/* Face & Card Images */}
-                {(drawer.row.has_face_image || drawer.row.has_student_card) && (
-                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
-                    <h5 className="text-xs font-bold text-slate-700 uppercase mb-3">
-                      Ảnh xác thực
-                    </h5>
-                    <div className="grid grid-cols-2 gap-4">
-                      {drawer.row.has_face_image && (
-                        <div>
-                          <div className="text-xs font-semibold text-slate-600 mb-2">
-                            Khuôn mặt
+              <div className="flex-1 overflow-y-auto">
+                {/* Best Submission Indicator */}
+                {submissionInfo?.exam_status === "archived" &&
+                  submissionInfo?.is_best_submission === false && (
+                    <div className="bg-gradient-to-r from-blue-500 to-cyan-500 px-6 py-3 text-white shadow-md">
+                      <div className="flex items-center gap-3">
+                        <HiStar className="text-2xl animate-pulse" />
+                        <div className="flex-1">
+                          <div className="font-bold text-base">
+                            Đang hiển thị bài thi có điểm cao nhất
                           </div>
-                          {faceImageData ? (
-                            <img
-                              src={faceImageData}
-                              alt="Face"
-                              className="w-full h-40 object-cover rounded-lg border border-slate-300"
-                            />
-                          ) : (
-                            <div className="w-full h-40 bg-slate-200 rounded-lg flex flex-col items-center justify-center text-slate-500 border border-dashed border-slate-400">
-                              <div className="animate-spin text-xl mb-1">
-                                ⏳
-                              </div>
-                              <span className="text-xs">Đang tải...</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      {drawer.row.has_student_card && (
-                        <div>
-                          <div className="text-xs font-semibold text-slate-600 mb-2">
-                            Thẻ sinh viên
+                          <div className="text-xs text-blue-50 mt-0.5">
+                            Bài thi đã kết thúc - Hệ thống tự động chọn lần thi
+                            có điểm cao nhất (Submission #
+                            {submissionInfo?.actual_submission_id})
                           </div>
-                          {cardImageData ? (
-                            <img
-                              src={cardImageData}
-                              alt="Student Card"
-                              className="w-full h-40 object-cover rounded-lg border border-slate-300"
-                            />
-                          ) : (
-                            <div className="w-full h-40 bg-slate-200 rounded-lg flex flex-col items-center justify-center text-slate-500 border border-dashed border-slate-400">
-                              <div className="animate-spin text-xl mb-1">
-                                ⏳
-                              </div>
-                              <span className="text-xs">Đang tải...</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Cheating Details */}
-                {cheatingDetails &&
-                  cheatingDetails.logs &&
-                  cheatingDetails.logs.length > 0 && (
-                    <div className="rounded-2xl bg-red-50/50 backdrop-blur-xl border border-red-200 p-4 space-y-3">
-                      <h5 className="text-sm font-bold text-red-700 flex items-center gap-2">
-                        <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
-                        Cảnh báo gian lận (
-                        {cheatingDetails.summary?.total_incidents || 0} lần)
-                      </h5>
-                      <div className="space-y-2 max-h-48 overflow-y-auto">
-                        {cheatingDetails.logs.map((log, idx) => (
-                          <div
-                            key={idx}
-                            className="bg-white/80 rounded-lg p-3 text-xs"
-                          >
-                            <div className="flex items-center justify-between mb-1">
-                              <span
-                                className={`font-semibold ${
-                                  log.severity === "high"
-                                    ? "text-red-600"
-                                    : log.severity === "medium"
-                                    ? "text-orange-600"
-                                    : "text-yellow-600"
-                                }`}
-                              >
-                                {log.event_type
-                                  .replace(/_/g, " ")
-                                  .toUpperCase()}
-                              </span>
-                              <span className="text-slate-500">
-                                {new Date(log.detected_at).toLocaleTimeString(
-                                  "vi-VN"
-                                )}
-                              </span>
-                            </div>
-                            {log.event_details &&
-                              typeof log.event_details === "object" && (
-                                <div className="text-slate-600 text-xs mt-1">
-                                  {JSON.stringify(log.event_details)}
-                                </div>
-                              )}
-                          </div>
-                        ))}
-                      </div>
-                      <div className="grid grid-cols-3 gap-2 text-xs">
-                        <div className="bg-red-100 rounded px-2 py-1 text-center">
-                          <div className="font-bold text-red-700">
-                            {cheatingDetails.summary?.high_count || 0}
-                          </div>
-                          <div className="text-red-600">Nghiêm trọng</div>
-                        </div>
-                        <div className="bg-orange-100 rounded px-2 py-1 text-center">
-                          <div className="font-bold text-orange-700">
-                            {cheatingDetails.summary?.medium_count || 0}
-                          </div>
-                          <div className="text-orange-600">Trung bình</div>
-                        </div>
-                        <div className="bg-yellow-100 rounded px-2 py-1 text-center">
-                          <div className="font-bold text-yellow-700">
-                            {cheatingDetails.summary?.low_count || 0}
-                          </div>
-                          <div className="text-yellow-600">Thấp</div>
                         </div>
                       </div>
                     </div>
                   )}
 
+                {/* Container flex column để nút nằm dưới grid */}
+                <div className="flex flex-col">
+                  {/* Grid with fixed height for equal columns */}
+                  <div className="px-6">
+                    <div
+                      className="grid grid-cols-2 gap-6"
+                      style={{ height: "calc(95vh - 280px)" }}
+                    >
+                      {/* Left Column - Thông tin & Điểm - NO SCROLL */}
+                      <div className="pr-2 space-y-4">
+                        {/* Error Message */}
+                        {scoreError && (
+                          <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4 text-center">
+                            <div className="text-red-700 font-bold">
+                              {scoreError}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Student Name - Read Only */}
+                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                          <label className="text-xs font-semibold text-slate-600 uppercase">
+                            Tên sinh viên
+                          </label>
+                          <div className="mt-1 text-lg font-bold text-slate-900">
+                            {drawer.row.student_name || ""}
+                          </div>
+                        </div>
+
+                        {/* Additional Info - Read Only */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <label className="text-xs font-semibold text-blue-700 uppercase">
+                              Submission ID
+                            </label>
+                            <div className="mt-1 text-base font-semibold text-blue-900">
+                              #{drawer.row.submission_id || "N/A"}
+                            </div>
+                          </div>
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <label className="text-xs font-semibold text-blue-700 uppercase">
+                              Student ID
+                            </label>
+                            <div className="mt-1 text-base font-semibold text-blue-900">
+                              {drawer.row.student_id || "N/A"}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Time Info */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                            <label className="text-xs font-semibold text-green-700 uppercase flex items-center gap-1">
+                              <HiClock className="text-base" /> Bắt đầu
+                            </label>
+                            <div className="mt-1 text-sm font-medium text-green-900">
+                              {fmtDate(drawer.row.started_at)}
+                            </div>
+                          </div>
+                          <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                            <label className="text-xs font-semibold text-green-700 uppercase flex items-center gap-1">
+                              <HiCheckCircle className="text-base" /> Nộp bài
+                            </label>
+                            <div className="mt-1 text-sm font-medium text-green-900">
+                              {fmtDate(drawer.row.submitted_at)}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Duration & Cheating */}
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-center">
+                            <label className="text-xs font-semibold text-purple-700 uppercase">
+                              Thời gian
+                            </label>
+                            <div className="mt-1 text-lg font-bold text-purple-900">
+                              {fmtDuration(
+                                drawer.row.duration_seconds,
+                                drawer.row.duration_minutes
+                              )}
+                            </div>
+                          </div>
+                          <div
+                            className={`border-2 rounded-lg p-3 text-center ${
+                              drawer.row.cheating_count > 0 ||
+                              drawer.row.has_cheating_flag
+                                ? "bg-red-50 border-red-300"
+                                : "bg-emerald-50 border-emerald-200"
+                            }`}
+                          >
+                            <label
+                              className="text-xs font-semibold uppercase"
+                              style={{
+                                color:
+                                  drawer.row.cheating_count > 0 ||
+                                  drawer.row.has_cheating_flag
+                                    ? "#dc2626"
+                                    : "#059669",
+                              }}
+                            >
+                              Gian lận
+                            </label>
+                            <div
+                              className="mt-1 text-lg font-bold"
+                              style={{
+                                color:
+                                  drawer.row.cheating_count > 0 ||
+                                  drawer.row.has_cheating_flag
+                                    ? "#dc2626"
+                                    : "#059669",
+                              }}
+                            >
+                              {drawer.row.cheating_count > 0
+                                ? drawer.row.cheating_count
+                                : "✓"}
+                            </div>
+                          </div>
+                          <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-center">
+                            <label className="text-xs font-semibold text-indigo-700 uppercase">
+                              Trạng thái
+                            </label>
+                            <div className="mt-1">
+                              {StatusPill(drawer.row.status)}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Score Input Grid */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div
+                            className={`bg-white border-2 rounded-lg p-4 ${
+                              Number(drawer.row.total_score ?? 0) > 10
+                                ? "border-red-500"
+                                : "border-slate-300"
+                            }`}
+                          >
+                            <label className="text-xs font-semibold text-slate-700 uppercase block mb-2">
+                              Điểm MCQ
+                            </label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              max="10"
+                              className="w-full text-2xl font-bold text-slate-900 bg-transparent border-none focus:outline-none"
+                              value={drawer.row.total_score ?? 0}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setDrawer((d) => ({
+                                  ...d,
+                                  row: { ...d.row, total_score: val },
+                                }));
+                                if (Number(val) > 10) {
+                                  setScoreError(
+                                    "❌ Điểm MCQ không được vượt quá 10!"
+                                  );
+                                } else {
+                                  setScoreError("");
+                                }
+                              }}
+                            />
+                          </div>
+                          <div
+                            className={`bg-white border-2 rounded-lg p-4 ${
+                              Number(drawer.row.ai_score ?? 0) > 10
+                                ? "border-red-500"
+                                : "border-slate-300"
+                            }`}
+                          >
+                            <label className="text-xs font-semibold text-slate-700 uppercase block mb-2">
+                              Điểm essay (AI)
+                            </label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              max="10"
+                              className="w-full text-2xl font-bold text-slate-900 bg-transparent border-none focus:outline-none"
+                              value={drawer.row.ai_score ?? 0}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setDrawer((d) => ({
+                                  ...d,
+                                  row: { ...d.row, ai_score: val },
+                                }));
+                                if (Number(val) > 10) {
+                                  setScoreError(
+                                    "❌ Điểm AI không được vượt quá 10!"
+                                  );
+                                } else {
+                                  setScoreError("");
+                                }
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Total Score Display */}
+                        <div className="bg-slate-100 border-2 border-slate-400 rounded-lg p-6 text-center">
+                          <div className="text-xs font-bold text-slate-600 uppercase mb-2">
+                            Tổng điểm
+                          </div>
+                          <div className="text-5xl font-black text-slate-900">
+                            {(
+                              Number(drawer.row.total_score ?? 0) +
+                              Number(drawer.row.ai_score ?? 0)
+                            ).toFixed(1)}
+                          </div>
+                          <div className="text-lg font-bold text-slate-500 mt-1">
+                            / 10
+                          </div>
+                        </div>
+
+                        {/* Face & Card Images */}
+                        {(drawer.row.has_face_image ||
+                          drawer.row.has_student_card) && (
+                          <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                            <h5 className="text-xs font-bold text-slate-700 uppercase mb-3">
+                              Ảnh xác thực
+                            </h5>
+                            <div className="grid grid-cols-2 gap-4">
+                              {drawer.row.has_face_image && (
+                                <div>
+                                  <div className="text-xs font-semibold text-slate-600 mb-2">
+                                    Khuôn mặt
+                                  </div>
+                                  {faceImageData ? (
+                                    <img
+                                      src={faceImageData}
+                                      alt="Face"
+                                      className="w-full h-40 object-cover rounded-lg border border-slate-300"
+                                    />
+                                  ) : (
+                                    <div className="w-full h-40 bg-slate-200 rounded-lg flex flex-col items-center justify-center text-slate-500 border border-dashed border-slate-400">
+                                      <div className="animate-spin text-xl mb-1">
+                                        ⏳
+                                      </div>
+                                      <span className="text-xs">
+                                        Đang tải...
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              {drawer.row.has_student_card && (
+                                <div>
+                                  <div className="text-xs font-semibold text-slate-600 mb-2">
+                                    Thẻ sinh viên
+                                  </div>
+                                  {cardImageData ? (
+                                    <img
+                                      src={cardImageData}
+                                      alt="Student Card"
+                                      className="w-full h-40 object-cover rounded-lg border border-slate-300"
+                                    />
+                                  ) : (
+                                    <div className="w-full h-40 bg-slate-200 rounded-lg flex flex-col items-center justify-center text-slate-500 border border-dashed border-slate-400">
+                                      <div className="animate-spin text-xl mb-1">
+                                        ⏳
+                                      </div>
+                                      <span className="text-xs">
+                                        Đang tải...
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Cheating Details */}
+                        {cheatingDetails &&
+                          cheatingDetails.logs &&
+                          cheatingDetails.logs.length > 0 && (
+                            <div className="rounded-2xl bg-red-50/50 backdrop-blur-xl border border-red-200 p-4 space-y-3">
+                              <h5 className="text-sm font-bold text-red-700 flex items-center gap-2">
+                                <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                                Cảnh báo gian lận (
+                                {cheatingDetails.summary?.total_incidents || 0}{" "}
+                                lần)
+                              </h5>
+                              <div className="space-y-2 max-h-48 overflow-y-auto">
+                                {cheatingDetails.logs.map((log, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="bg-white/80 rounded-lg p-3 text-xs"
+                                  >
+                                    <div className="flex items-center justify-between mb-1">
+                                      <span
+                                        className={`font-semibold ${
+                                          log.severity === "high"
+                                            ? "text-red-600"
+                                            : log.severity === "medium"
+                                            ? "text-orange-600"
+                                            : "text-yellow-600"
+                                        }`}
+                                      >
+                                        {log.event_type
+                                          .replace(/_/g, " ")
+                                          .toUpperCase()}
+                                      </span>
+                                      <span className="text-slate-500">
+                                        {new Date(
+                                          log.detected_at
+                                        ).toLocaleTimeString("vi-VN")}
+                                      </span>
+                                    </div>
+                                    {log.event_details &&
+                                      typeof log.event_details === "object" && (
+                                        <div className="text-slate-600 text-xs mt-1">
+                                          {JSON.stringify(log.event_details)}
+                                        </div>
+                                      )}
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="grid grid-cols-3 gap-2 text-xs">
+                                <div className="bg-red-100 rounded px-2 py-1 text-center">
+                                  <div className="font-bold text-red-700">
+                                    {cheatingDetails.summary?.high_count || 0}
+                                  </div>
+                                  <div className="text-red-600">
+                                    Nghiêm trọng
+                                  </div>
+                                </div>
+                                <div className="bg-orange-100 rounded px-2 py-1 text-center">
+                                  <div className="font-bold text-orange-700">
+                                    {cheatingDetails.summary?.medium_count || 0}
+                                  </div>
+                                  <div className="text-orange-600">
+                                    Trung bình
+                                  </div>
+                                </div>
+                                <div className="bg-yellow-100 rounded px-2 py-1 text-center">
+                                  <div className="font-bold text-yellow-700">
+                                    {cheatingDetails.summary?.low_count || 0}
+                                  </div>
+                                  <div className="text-yellow-600">Thấp</div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                      </div>
+
+                      {/* Right Column - Câu hỏi & Đáp án - WITH SCROLL */}
+                      <div className="overflow-y-auto pr-2 h-full">
+                        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-4">
+                          <h5 className="text-sm font-bold text-indigo-900 uppercase flex items-center gap-2">
+                            <HiDocumentText className="text-xl" /> Câu hỏi và
+                            Đáp án của Sinh viên
+                          </h5>
+                        </div>
+
+                        {submissionQuestions === null ? (
+                          <div className="text-center py-8 text-slate-500">
+                            <div className="animate-spin w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+                            Đang tải câu hỏi...
+                          </div>
+                        ) : submissionQuestions.length === 0 ? (
+                          <div className="text-center py-8 text-slate-500">
+                            Không có dữ liệu câu hỏi
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {submissionQuestions.map((q, idx) => (
+                              <div
+                                key={q.question_id}
+                                className="bg-white border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                              >
+                                {/* Question Header */}
+                                <div className="flex items-start gap-3 mb-3">
+                                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center text-sm">
+                                    {idx + 1}
+                                  </div>
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <span
+                                        className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                                          q.type?.toUpperCase() === "MCQ"
+                                            ? "bg-blue-100 text-blue-700"
+                                            : "bg-purple-100 text-purple-700"
+                                        }`}
+                                      >
+                                        {q.type?.toUpperCase() === "MCQ"
+                                          ? "Trắc nghiệm"
+                                          : "Tự luận"}
+                                      </span>
+                                      <span className="text-xs text-slate-500">
+                                        {q.points || 1} điểm
+                                      </span>
+                                    </div>
+                                    <div
+                                      className="text-sm font-medium text-slate-800"
+                                      dangerouslySetInnerHTML={{
+                                        __html: q.question_text || "",
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* MCQ Options */}
+                                {q.type?.toUpperCase() === "MCQ" &&
+                                  q.options &&
+                                  q.options.length > 0 && (
+                                    <div className="ml-11 space-y-2">
+                                      {q.options.map((opt) => {
+                                        const isSelected =
+                                          opt.option_id ===
+                                            q.answer?.selected_option_id ||
+                                          opt.id ===
+                                            q.answer?.selected_option_id;
+                                        const isCorrect =
+                                          opt.is_correct || opt.correct;
+
+                                        return (
+                                          <div
+                                            key={opt.option_id || opt.id}
+                                            className={`flex items-start gap-2 p-2 rounded ${
+                                              isSelected && isCorrect
+                                                ? "bg-green-50 border border-green-300"
+                                                : isSelected && !isCorrect
+                                                ? "bg-red-50 border border-red-300"
+                                                : isCorrect
+                                                ? "bg-green-50/30 border border-green-200"
+                                                : "bg-slate-50"
+                                            }`}
+                                          >
+                                            <div className="flex-shrink-0 mt-0.5">
+                                              {isSelected ? (
+                                                isCorrect ? (
+                                                  <span className="text-green-600 font-bold">
+                                                    ✓
+                                                  </span>
+                                                ) : (
+                                                  <span className="text-red-600 font-bold">
+                                                    ✗
+                                                  </span>
+                                                )
+                                              ) : isCorrect ? (
+                                                <span className="text-green-500 text-xs">
+                                                  ✓
+                                                </span>
+                                              ) : (
+                                                <span className="w-4 h-4 rounded-full border-2 border-slate-300 inline-block"></span>
+                                              )}
+                                            </div>
+                                            <div className="flex-1 text-sm text-slate-700">
+                                              {opt.option_text}
+                                            </div>
+                                            {isSelected && (
+                                              <span className="text-xs font-semibold text-slate-600">
+                                                Đã chọn
+                                              </span>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+
+                                {/* Essay Answer */}
+                                {q.type?.toUpperCase() !== "MCQ" && (
+                                  <div className="ml-11 mt-2">
+                                    <div className="text-xs font-semibold text-slate-600 uppercase mb-1">
+                                      Câu trả lời:
+                                    </div>
+                                    {q.answer?.answer_text ? (
+                                      <div className="bg-slate-50 border border-slate-200 rounded p-3 text-sm text-slate-700 whitespace-pre-wrap">
+                                        {q.answer.answer_text}
+                                      </div>
+                                    ) : (
+                                      <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-600 italic">
+                                        Sinh viên chưa trả lời câu này
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Save Button - Fixed at bottom */}
+              <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex-shrink-0">
                 <button
                   onClick={saveScore}
-                  className="w-full rounded-lg bg-slate-800 hover:bg-slate-700 px-6 py-4 font-bold text-white transition-all text-lg"
+                  className="w-full rounded-lg bg-slate-800 hover:bg-slate-700 px-6 py-4 font-bold text-white transition-all text-lg flex items-center justify-center gap-2"
                 >
-                  💾 Lưu & Xác nhận
+                  <HiSave className="text-xl" /> Lưu & Xác nhận
                 </button>
               </div>
             </div>

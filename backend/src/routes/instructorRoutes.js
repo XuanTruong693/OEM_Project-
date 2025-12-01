@@ -798,4 +798,68 @@ router.get(
   }
 );
 
+// ==============================
+// 🔄 API: Kiểm tra và cập nhật trạng thái exam dựa trên time_close
+// ==============================
+router.get(
+  "/exams/:examId/check-status",
+  verifyToken,
+  authorizeRole(["instructor"]),
+  async (req, res) => {
+    try {
+      const examId = parseInt(req.params.examId, 10);
+      if (!Number.isFinite(examId)) return res.status(400).json({ message: 'examId invalid' });
+
+      // Lấy thông tin exam
+      const [rows] = await sequelize.query(
+        `SELECT id, status, time_close, 
+                CONVERT_TZ(NOW(), @@session.time_zone, ?) AS server_now
+         FROM exams 
+         WHERE id = ? AND instructor_id = ?
+         LIMIT 1`,
+        { replacements: [process.env.APP_TZ || '+07:00', examId, req.user.id] }
+      );
+
+      if (!rows || rows.length === 0) {
+        return res.status(404).json({ message: 'Exam not found' });
+      }
+
+      const exam = rows[0];
+      const currentStatus = exam.status;
+      let newStatus = currentStatus;
+      let statusChanged = false;
+
+      // Nếu exam đang published và đã quá time_close, chuyển sang archived
+      if (currentStatus === 'published' && exam.time_close) {
+        const now = new Date(exam.server_now);
+        const closeTime = new Date(exam.time_close);
+        
+        if (now >= closeTime) {
+          // Archive exam
+          await sequelize.query(
+            `UPDATE exams SET status = 'archived' WHERE id = ?`,
+            { replacements: [examId] }
+          );
+          newStatus = 'archived';
+          statusChanged = true;
+          
+          console.log(`✅ [Auto-Archive] Exam ${examId} archived at ${exam.server_now}, time_close was ${exam.time_close}`);
+        }
+      }
+
+      return res.json({
+        exam_id: examId,
+        previous_status: currentStatus,
+        current_status: newStatus,
+        status_changed: statusChanged,
+        time_close: exam.time_close,
+        server_now: exam.server_now
+      });
+    } catch (err) {
+      console.error('❌ Error checking exam status:', err);
+      return res.status(500).json({ message: 'Server error' });
+    }
+  }
+);
+
 module.exports = router;

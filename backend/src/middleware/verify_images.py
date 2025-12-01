@@ -115,7 +115,17 @@ def compare_two_faces(face_image_b64, card_image_b64, tolerance=0.35):
 
 if __name__ == "__main__":
     try:
-        input_json = sys.stdin.read()
+        # ✅ FIX: Đọc stdin an toàn hơn, tránh deadlock với buffer lớn
+        input_chunks = []
+        chunk_size = 8192  # 8KB mỗi lần đọc
+        
+        while True:
+            chunk = sys.stdin.read(chunk_size)
+            if not chunk:
+                break
+            input_chunks.append(chunk)
+        
+        input_json = "".join(input_chunks)
         
         if not input_json.strip():
             result = {"error": "No input data received"}

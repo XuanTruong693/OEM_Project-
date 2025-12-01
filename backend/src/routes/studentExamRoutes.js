@@ -20,7 +20,7 @@ const {
 } = require("../controllers/studentExamController");
 
 // Import proctor event handler from submission controller
-const { postProctorEvent } = require("../controllers/submissionController");
+const { postProctorEvent, resetCheatingLogs } = require("../controllers/submissionController");
 
 const { verifyToken } = require("../middleware/authMiddleware");
 const { requireRoomVerification } = require("../middleware/verifyRoomMiddleware");
@@ -57,6 +57,9 @@ router.post("/submissions/:id/start", verifyToken, requireRoomVerification, star
 router.post("/submissions/:id/answer", verifyToken, requireRoomVerification, saveAnswer);
 
 router.post("/submissions/:id/proctor-event", verifyToken, requireRoomVerification, postProctorEvent);
+
+// Reset cheating logs (chỉ dùng cho testing/debugging)
+router.delete("/submissions/:id/reset-cheating", verifyToken, requireRoomVerification, resetCheatingLogs);
 
 router.post("/submissions/:id/submit", verifyToken, requireRoomVerification, submitExam);
 

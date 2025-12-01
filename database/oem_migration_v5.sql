@@ -898,53 +898,31 @@ BEGIN
   -- Return ONE BEST submission per student with all required columns
   SELECT
     u.full_name AS student_name,
-    best_sub.user_id AS student_id,
-    best_sub.id AS submission_id,
-    best_sub.status,
-    best_sub.total_score,
-    best_sub.ai_score,
-    best_sub.suggested_total_score,
-    best_sub.started_at,
-    best_sub.submitted_at,
-    best_sub.instructor_confirmed,
-
-    -- Duration calculations
-    TIMESTAMPDIFF(SECOND, best_sub.started_at, best_sub.submitted_at) AS duration_seconds,
-    TIMESTAMPDIFF(MINUTE, best_sub.started_at, best_sub.submitted_at) AS duration_minutes,
-
-    -- Cheating info
-    best_sub.cheating_count,
-    CASE
-      WHEN best_sub.cheating_count > 0 THEN TRUE
-      ELSE FALSE
-    END AS has_cheating_flag,
-
-    -- Image flags (blob or URL)
-    CASE
-      WHEN best_sub.face_image_url IS NOT NULL OR best_sub.face_image_blob IS NOT NULL THEN TRUE
-      ELSE FALSE
-    END AS has_face_image,
-    CASE 
-      WHEN best_sub.student_card_url IS NOT NULL OR best_sub.student_card_blob IS NOT NULL THEN TRUE
-      ELSE FALSE
-    END AS has_student_card
-
-  FROM (
-    -- Get best submission per student using ROW_NUMBER (FAST!)
-    SELECT
-      s.*,
-      ROW_NUMBER() OVER (
-        PARTITION BY s.user_id
-        ORDER BY COALESCE(s.total_score, s.suggested_total_score, 0) DESC, s.id DESC
-      ) AS rn
-    FROM submissions s
-    WHERE s.exam_id = p_exam_id
-  ) AS best_sub
-
-  JOIN users u ON u.id = best_sub.user_id
-
-  WHERE best_sub.rn = 1
-
+    s.user_id AS student_id,
+    s.id AS submission_id,
+    s.status,
+    s.total_score,
+    s.ai_score,
+    s.suggested_total_score,
+    s.started_at,
+    s.submitted_at,
+    s.instructor_confirmed,
+    TIMESTAMPDIFF(SECOND, s.started_at, s.submitted_at) AS duration_seconds,
+    TIMESTAMPDIFF(MINUTE, s.started_at, s.submitted_at) AS duration_minutes,
+    -- Cheating: lấy số lần gian lận cao nhất trong các lần thi
+    (SELECT MAX(cheating_count) FROM submissions s2 WHERE s2.exam_id = s.exam_id AND s2.user_id = s.user_id) AS cheating_count,
+    CASE WHEN (SELECT MAX(cheating_count) FROM submissions s2 WHERE s2.exam_id = s.exam_id AND s2.user_id = s.user_id) > 0 THEN TRUE ELSE FALSE END AS has_cheating_flag,
+    CASE WHEN s.face_image_url IS NOT NULL OR s.face_image_blob IS NOT NULL THEN TRUE ELSE FALSE END AS has_face_image,
+    CASE WHEN s.student_card_url IS NOT NULL OR s.student_card_blob IS NOT NULL THEN TRUE ELSE FALSE END AS has_student_card
+  FROM submissions s
+  JOIN users u ON u.id = s.user_id
+  WHERE s.exam_id = p_exam_id
+    AND s.id = (
+      SELECT s2.id FROM submissions s2
+      WHERE s2.exam_id = s.exam_id AND s2.user_id = s.user_id
+      ORDER BY COALESCE(s2.total_score, s2.suggested_total_score, 0) DESC, s2.id DESC
+      LIMIT 1
+    )
   ORDER BY u.full_name ASC;
 
 END$$

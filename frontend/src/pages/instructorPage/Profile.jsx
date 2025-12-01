@@ -49,6 +49,12 @@ const Profile = () => {
           const firstName = nameParts.slice(-1).join(" ") || "";
           const genderMapBack = { male: "Nam", female: "Nữ", other: "Khác" };
 
+          // Normalize avatar URL from DB (remove any existing timestamp params)
+          const avatarFromDB = user.avatar || "/icons/UI Image/default-avatar.png";
+          const normalizedAvatar = typeof avatarFromDB === "string" 
+            ? avatarFromDB.replace(/[?&]t=\d+/g, "")
+            : avatarFromDB;
+
           setFormData((prev) => ({
             ...prev,
             firstName,
@@ -57,7 +63,7 @@ const Profile = () => {
             email: user.email || prev.email,
             phone: user.phone || "",
             address: user.address || "",
-            avatar: user.avatar || prev.avatar,
+            avatar: avatarFromDB,
           }));
 
           // store a normalized snapshot for change detection
@@ -68,17 +74,17 @@ const Profile = () => {
             email: user.email || "",
             phone: user.phone || "",
             address: user.address || "",
-            avatar: user.avatar || prev.avatar,
+            avatar: normalizedAvatar, // Store normalized version
           });
 
           setUserInfo({
-            fullname: user.full_name || prev.fullname,
-            avatar: user.avatar || prev.avatar,
+            fullname: user.full_name || "Giảng viên",
+            avatar: avatarFromDB,
           });
 
           // also persist a couple of values locally for other UI
           if (user.full_name) localStorage.setItem("fullname", user.full_name);
-          if (user.avatar) localStorage.setItem("avatar", user.avatar);
+          if (avatarFromDB) localStorage.setItem("avatar", avatarFromDB);
           if (user.email) localStorage.setItem("email", user.email);
           return;
         }
@@ -122,7 +128,6 @@ const Profile = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("[Profile] saving profile, data:", formData);
 
     // Validate phone: must be 10 digits when provided
     if (formData.phone && !/^\d{10}$/.test(formData.phone)) {
@@ -130,18 +135,29 @@ const Profile = () => {
       return;
     }
 
-    // Helper: normalize avatar URL (remove cache-bust query param)
+    // Helper: normalize avatar URL (remove ALL cache-bust query params and extract just the path)
     const normalizeAvatar = (a) => {
       if (!a) return "";
+      if (typeof a !== "string") return String(a);
+      
+      // treat blob/data URLs as unique (new upload in progress)
+      if (a.startsWith("blob:") || a.startsWith("data:")) return a;
+      
       try {
-        // treat blob/data URLs as unique (they indicate a new file)
-        if (a.startsWith("blob:") || a.startsWith("data:")) return a;
+        // Parse URL and remove timestamp param
         const url = new URL(a, window.location.origin);
         url.searchParams.delete("t");
-        return url.toString();
+        // Return just the pathname + search (without timestamp)
+        return url.pathname + url.search;
       } catch (err) {
-        // fallback string compare
-        return a.replace(/\?t=\d+$/, "");
+        // fallback: remove both ?t= and &t= patterns
+        const cleaned = a.replace(/[?&]t=\d+/g, "");
+        // Try to extract just the path
+        try {
+          return new URL(cleaned, window.location.origin).pathname;
+        } catch {
+          return cleaned;
+        }
       }
     };
 
@@ -153,13 +169,17 @@ const Profile = () => {
       const fullnameThen = `${initialForm.lastName || ""} ${
         initialForm.firstName || ""
       }`.trim();
+      
+      const normalizedCurrentAvatar = normalizeAvatar(formData.avatar);
+      const normalizedInitialAvatar = normalizeAvatar(initialForm.avatar);
+      
       const changed =
         fullnameNow !== fullnameThen ||
         (formData.phone || "") !== (initialForm.phone || "") ||
         (formData.address || "") !== (initialForm.address || "") ||
         (formData.gender || "") !== (initialForm.gender || "") ||
-        normalizeAvatar(formData.avatar) !==
-          normalizeAvatar(initialForm.avatar);
+        normalizedCurrentAvatar !== normalizedInitialAvatar;
+      
       if (!changed) {
         // show inline info message instead of alert
         setMessage({ text: "Không có thay đổi nào mới", type: "info" });
@@ -173,6 +193,7 @@ const Profile = () => {
     }
 
     // Map frontend fields to backend expected payload
+    // NOTE: Do NOT include avatar here - it's handled separately via /profile/avatar endpoint
     const genderMap = { Nam: "male", Nữ: "female", Khác: "other" };
     const payload = {
       full_name: `${formData.lastName || ""} ${
@@ -180,27 +201,21 @@ const Profile = () => {
       }`.trim(),
       phone: formData.phone || null,
       address: formData.address || null,
-      avatar: formData.avatar || null,
       gender: genderMap[formData.gender] || null,
     };
 
     try {
       const res = await axiosClient.put("/profile", payload);
-      console.log("[Profile] save response:", res.data);
 
       if (res.data && res.data.success) {
         const saved = res.data.data || {};
         const fullname = saved.full_name || payload.full_name || "";
-        let avatar = saved.avatar || payload.avatar || formData.avatar;
-        // cache-bust
-        if (typeof avatar === "string" && !avatar.startsWith("data:")) {
-          const sep = avatar.includes("?") ? "&" : "?";
-          avatar = `${avatar}${sep}t=${Date.now()}`;
-        }
+        
+        // Avatar is NOT included in this response - keep current avatar from formData
+        const currentAvatar = formData.avatar;
 
         const email = saved.email || formData.email;
         localStorage.setItem("fullname", fullname);
-        if (avatar) localStorage.setItem("avatar", avatar);
         if (email) localStorage.setItem("email", email);
 
         // update local UI
@@ -218,16 +233,24 @@ const Profile = () => {
           email,
           phone: saved.phone || prev.phone,
           address: saved.address || prev.address,
-          avatar,
+          // Keep the current avatar - it's managed separately
         }));
 
-        setUserInfo({ fullname, avatar });
+        setUserInfo({ fullname, avatar: currentAvatar });
 
         // update initial snapshot so further saves compare against the newly saved state
-        const normalizedAvatarForSnapshot =
-          typeof avatar === "string"
-            ? String(avatar).replace(/\?t=\d+$/, "")
-            : avatar;
+        // Normalize avatar: extract path only (consistent with upload logic)
+        let normalizedAvatarForSnapshot = currentAvatar;
+        if (typeof currentAvatar === "string") {
+          try {
+            const url = new URL(currentAvatar, window.location.origin);
+            url.searchParams.delete("t");
+            normalizedAvatarForSnapshot = url.pathname;
+          } catch {
+            normalizedAvatarForSnapshot = currentAvatar.replace(/[?&]t=\d+/g, "");
+          }
+        }
+        
         setInitialForm({
           firstName,
           lastName,
@@ -264,50 +287,74 @@ const Profile = () => {
   };
 
   return (
-    <div className="flex bg-gray-50 min-h-screen">
-      <main className="flex-1 max-sm:p-3 p-6 mt-0 max-sm:mt-10">
-        <div className="flex justify-center">
-          <div className="w-full max-w-xl lg:max-w-4xl ">
-            <div className="flex items-center bg-[#1BA4FF] rounded-[17px] px-3 py-3 mb-6 gap-3">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/40">
+      {/* Animated background blobs */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-24 -right-24 w-96 h-96 bg-blue-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob"></div>
+        <div className="absolute top-1/3 -left-24 w-96 h-96 bg-indigo-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-2000"></div>
+        <div className="absolute -bottom-24 left-1/3 w-96 h-96 bg-purple-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-4000"></div>
+      </div>
+
+      {/* Header with Logo */}
+      <header className="bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+          <div className="flex items-center justify-between relative">
+            <div className="flex items-center gap-4">
               <button
                 onClick={() => navigate(userRole === "student" ? "/student-dashboard" : "/instructor-dashboard")}
-                className="flex items-center text-white hover:opacity-80 transition"
+                className="flex items-center gap-2 px-3 py-2 text-slate-700 rounded-lg hover:bg-slate-100 transition-all"
               >
-                <img
-                  src="/icons/UI Image/return.png"
-                  alt="Return"
-                  className="w-4 h-4 mr-2"
-                />
-                <h2 className="text-xl underline underline-offset-4 font-semibold">
-                  Hồ sơ
-                </h2>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                <span className="font-medium">Quay lại</span>
               </button>
+              
+              <div className="h-8 w-px bg-slate-300"></div>
+              
+              <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                Hồ sơ cá nhân
+              </h1>
             </div>
+            
+            <div className="absolute left-1/2 transform -translate-x-1/2">
+              <img src="/Logo.png" alt="System Logo" className="h-12 w-auto" />
+            </div>
+            
+            <div className="w-32"></div>
+          </div>
+        </div>
+      </header>
 
-            <div className="bg-white shadow-lg rounded-3xl w-full p-5 sm:p-8 border border-gray-100">
-              <div className="flex justify-center mb-6">
-                <div className="relative w-24 h-24 sm:w-28 sm:h-28">
-                  <img
-                    src={formData.avatar}
-                    alt="Avatar"
-                    className="w-full h-full rounded-full object-cover border border-gray-200 shadow-sm"
-                  />
-                  <label
-                    htmlFor="avatar"
-                    className="absolute bottom-1 right-1 bg-gray-100 border border-gray-300 
-                           text-gray-600 w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center 
-                           rounded-full cursor-pointer hover:bg-gray-200 transition"
-                  >
-                    <FiCamera className="w-4 h-4" />
-                    {/* Accessible label text for screen-readers */}
-                    <span className="sr-only">Chọn ảnh đại diện</span>
-                    <input
-                      type="file"
-                      id="avatar"
-                      accept="image/*"
-                      className="hidden"
-                      aria-label="Upload avatar"
-                      onChange={async (e) => {
+      {/* Main Content */}
+      <main className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="bg-white/80 backdrop-blur-xl shadow-2xl rounded-3xl border border-white/20 overflow-hidden">
+          <div className="p-6 sm:p-8">
+            {/* Avatar Section - Larger */}
+            <div className="flex justify-center mb-6">
+              <div className="relative w-32 h-32 sm:w-36 sm:h-36">
+                <img
+                  src={formData.avatar}
+                  alt="Avatar"
+                  className="w-full h-full rounded-full object-cover border-4 border-gradient-to-r from-blue-500 to-indigo-600 shadow-2xl ring-4 ring-blue-100"
+                />
+                <label
+                  htmlFor="avatar"
+                  className="absolute bottom-1 right-1 bg-gradient-to-br from-blue-500 to-indigo-600 
+                         text-white w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center 
+                         rounded-full cursor-pointer hover:from-blue-600 hover:to-indigo-700 transition-all 
+                         shadow-lg hover:shadow-xl border-3 border-white"
+                >
+                  <FiCamera className="w-5 h-5" />
+                  {/* Accessible label text for screen-readers */}
+                  <span className="sr-only">Chọn ảnh đại diện</span>
+                  <input
+                    type="file"
+                    id="avatar"
+                    accept="image/*"
+                    className="hidden"
+                    aria-label="Upload avatar"
+                    onChange={async (e) => {
                         const file = e.target.files && e.target.files[0];
                         if (!file) return;
 
@@ -371,11 +418,6 @@ const Profile = () => {
 
                           // Log token presence to help debug 401 issues
                           const token = localStorage.getItem("token");
-                          console.log(
-                            "[Profile] uploading avatar — token present:",
-                            !!token,
-                            token
-                          );
 
                           // If there's no token, use the no-auth debug endpoint to verify server upload
                           if (!token) {
@@ -395,10 +437,32 @@ const Profile = () => {
                                 const sep = savedUrl.includes("?") ? "&" : "?";
                                 savedUrl = `${savedUrl}${sep}t=${Date.now()}`;
                               }
+                              
+                              // Normalize URL: extract path only
+                              let normalizedUrl = savedUrl;
+                              if (typeof savedUrl === "string") {
+                                try {
+                                  const url = new URL(savedUrl, window.location.origin);
+                                  url.searchParams.delete("t");
+                                  normalizedUrl = url.pathname;
+                                } catch {
+                                  normalizedUrl = savedUrl.replace(/[?&]t=\d+/g, "");
+                                }
+                              }
+                              
                               setFormData((prev) => ({
                                 ...prev,
                                 avatar: savedUrl,
                               }));
+                              
+                              // Update initialForm to reflect the new avatar state
+                              setInitialForm((prev) => {
+                                return {
+                                  ...prev,
+                                  avatar: normalizedUrl,
+                                };
+                              });
+                              
                               localStorage.setItem("avatar", savedUrl);
                               try {
                                 window.dispatchEvent(
@@ -436,10 +500,32 @@ const Profile = () => {
                               const sep = savedUrl.includes("?") ? "&" : "?";
                               savedUrl = `${savedUrl}${sep}t=${Date.now()}`;
                             }
+                            
+                            // Normalize URL for initialForm: extract path only
+                            let normalizedUrl = savedUrl;
+                            if (typeof savedUrl === "string") {
+                              try {
+                                const url = new URL(savedUrl, window.location.origin);
+                                url.searchParams.delete("t");
+                                normalizedUrl = url.pathname;
+                              } catch {
+                                normalizedUrl = savedUrl.replace(/[?&]t=\d+/g, "");
+                              }
+                            }
+                            
                             setFormData((prev) => ({
                               ...prev,
                               avatar: savedUrl,
                             }));
+                            
+                            // Update initialForm to reflect the new avatar state
+                            setInitialForm((prev) => {
+                              return {
+                                ...prev,
+                                avatar: normalizedUrl,
+                              };
+                            });
+                            
                             // update UI global storage
                             localStorage.setItem("avatar", savedUrl);
                             // notify other components in the same tab to refresh (storage event won't fire in same tab)
@@ -470,20 +556,22 @@ const Profile = () => {
                           alert(msg);
                         }
                       }}
-                    />
-                    <span id="avatar-desc" className="sr-only">
-                      Chọn file ảnh để cập nhật ảnh đại diện
-                    </span>
-                  </label>
-                </div>
+                  />
+                </label>
+                <span id="avatar-desc" className="sr-only">
+                  Chọn file ảnh để cập nhật ảnh đại diện
+                </span>
               </div>
+            </div>
 
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="flex max-lg:flex-col flex-row gap-6">
-                  <div className="flex flex-1 items-center max-lg:flex-col max-lg:items-start gap-3">
+            {/* Form Section - Enhanced */}
+            <form onSubmit={handleSubmit} className="space-y-5 mt-6">
+                {/* Name Fields */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
                     <label
                       htmlFor="lastName"
-                      className="w-24 text-xl max-lg:text-[16px] text-[#606060] font-normal"
+                      className="block text-base font-semibold text-slate-700"
                     >
                       Họ:
                     </label>
@@ -493,17 +581,19 @@ const Profile = () => {
                       name="lastName"
                       value={formData.lastName}
                       onChange={handleChange}
-                      placeholder="Họ"
+                      placeholder="Nhập họ của bạn"
                       title="Họ"
                       autoComplete="family-name"
-                      className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-blue-400 outline-none"
+                      className="w-full border-2 border-slate-200 rounded-xl px-4 py-3 text-base 
+                               focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none 
+                               transition-all hover:border-slate-300"
                     />
                   </div>
 
-                  <div className="flex flex-1 items-center max-lg:flex-col max-lg:items-start gap-3">
+                  <div className="space-y-1.5">
                     <label
                       htmlFor="firstName"
-                      className="w-24 text-xl max-lg:text-[16px] text-[#606060] font-normal"
+                      className="block text-base font-semibold text-slate-700"
                     >
                       Tên:
                     </label>
@@ -513,58 +603,69 @@ const Profile = () => {
                       name="firstName"
                       value={formData.firstName}
                       onChange={handleChange}
-                      placeholder="Tên"
+                      placeholder="Nhập tên của bạn"
                       title="Tên"
                       autoComplete="given-name"
-                      className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-blue-400 outline-none"
+                      className="w-full border-2 border-slate-200 rounded-xl px-4 py-3 text-base 
+                               focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none 
+                               transition-all hover:border-slate-300"
                     />
                   </div>
                 </div>
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                  <label className="w-24 text-xl max-lg:text-[16px] text-[#606060] font-normal">
+
+                {/* Gender Field */}
+                <div className="space-y-2">
+                  <label className="block text-base font-semibold text-slate-700">
                     Giới tính:
                   </label>
-                  <div className="flex gap-6 text-xl max-lg:text-[16px]">
+                  <div className="flex gap-6 text-base">
                     {["Nam", "Nữ", "Khác"].map((g) => (
-                      <label key={g} className="flex items-center gap-2">
+                      <label key={g} className="flex items-center gap-3 cursor-pointer group">
                         <input
                           type="radio"
                           name="gender"
                           value={g}
                           checked={formData.gender === g}
                           onChange={handleChange}
-                          className="accent-blue-500"
+                          className="w-5 h-5 text-blue-600 focus:ring-2 focus:ring-blue-500"
                         />
-                        {g}
+                        <span className="group-hover:text-blue-600 transition-colors font-medium">
+                          {g}
+                        </span>
                       </label>
                     ))}
                   </div>
                 </div>
+
+                {/* Contact Fields */}
                 {[
                   {
                     label: "Email:",
                     name: "email",
                     type: "email",
-                    placeholder: "Email",
+                    placeholder: "example@email.com",
                   },
                   {
                     label: "SĐT:",
                     name: "phone",
                     type: "text",
-                    placeholder: "Số điện thoại",
+                    placeholder: "0123456789",
                   },
                   {
                     label: "Địa chỉ:",
                     name: "address",
                     type: "text",
-                    placeholder: "Địa chỉ",
+                    placeholder: "Nhập địa chỉ của bạn",
                   },
                 ].map((field) => (
                   <div
                     key={field.name}
-                    className="flex flex-col sm:flex-row sm:items-center gap-2"
+                    className="space-y-1.5"
                   >
-                    <label className="text-[#606060] font-normal w-auto sm:w-24">
+                    <label
+                      htmlFor={`field-${field.name}`}
+                      className="block text-base font-semibold text-slate-700"
+                    >
                       {field.label}
                     </label>
                     <input
@@ -582,24 +683,26 @@ const Profile = () => {
                           ? "tel"
                           : "street-address"
                       }
-                      className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-blue-400 outline-none"
-                      // make email read-only (cannot be changed from profile page)
+                      className="w-full border-2 border-slate-200 rounded-xl px-4 py-3 text-base 
+                               focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none 
+                               transition-all hover:border-slate-300 disabled:bg-slate-50 
+                               disabled:text-slate-500 disabled:cursor-not-allowed"
                       readOnly={field.name === "email"}
                       disabled={field.name === "email"}
                     />
                   </div>
                 ))}
 
-                {/* Inline message shown above the Save button */}
-                <div className="flex justify-center pt-2">
+                {/* Message & Save Button */}
+                <div className="flex flex-col items-center pt-4 space-y-3">
                   {message.text && (
                     <div
-                      className={`mb-3 px-4 py-2 rounded-md text-sm ${
+                      className={`px-5 py-3 rounded-xl text-sm font-medium shadow-lg ${
                         message.type === "success"
-                          ? "bg-green-50 text-green-800 border border-green-200"
+                          ? "bg-gradient-to-r from-green-50 to-emerald-50 text-green-800 border-2 border-green-200"
                           : message.type === "error"
-                          ? "bg-red-50 text-red-800 border border-red-200"
-                          : "bg-blue-50 text-blue-800 border border-blue-200"
+                          ? "bg-gradient-to-r from-red-50 to-rose-50 text-red-800 border-2 border-red-200"
+                          : "bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-800 border-2 border-blue-200"
                       }`}
                       role="status"
                       aria-live="polite"
@@ -607,19 +710,19 @@ const Profile = () => {
                       {message.text}
                     </div>
                   )}
-                </div>
 
-                <div className="flex justify-center pt-4">
                   <button
                     type="submit"
-                    className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white font-normal px-6 py-2 rounded-lg transition group"
+                    className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-600 
+                             hover:from-blue-600 hover:to-indigo-700 text-white font-semibold 
+                             px-8 py-3 rounded-xl transition-all shadow-xl hover:shadow-2xl 
+                             hover:scale-105 active:scale-95 group text-base"
                   >
-                    <FiSave className="text-xl group-hover:text-blue-100 transition" />
-                    <span className="text-lg sm:text-xl">Lưu hồ sơ</span>
+                    <FiSave className="text-lg group-hover:rotate-12 transition-transform" />
+                    <span>Lưu hồ sơ</span>
                   </button>
                 </div>
               </form>
-            </div>
           </div>
         </div>
       </main>
