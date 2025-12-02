@@ -32,11 +32,11 @@ async function callPythonVerify(action, data) {
     let stderr = "";
     let stdinWritten = false;
     
-    // Timeout 30s để xử lý ảnh lớn
+    // Timeout 60s để xử lý ảnh lớn
     const timeout = setTimeout(() => {
       pythonProcess.kill();
-      reject(new Error("Python verification timeout after 30s"));
-    }, 30000);
+      reject(new Error("Python verification timeout after 60s"));
+    }, 60000);
 
     pythonProcess.stdout.on("data", (data) => {
       stdout += data.toString("utf8");
