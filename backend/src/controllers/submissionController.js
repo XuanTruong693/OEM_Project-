@@ -1,102 +1,188 @@
 const { pool } = require("../config/db");
+const { broadcastCheatingEvent } = require("../services/socketService");
 
 const CHEATING_TYPES = {
-  "blocked_key": "high",
-  "visibility_hidden": "medium",
-  "fullscreen_lost": "high",
-  "window_blur": "medium",
-  "tab_switch": "high",
-  "alt_tab": "high",
-  "multiple_faces": "high",
-  "no_face_detected": "medium",
-  "copy_paste": "high",
+  blocked_key: "high",
+  visibility_hidden: "medium",
+  fullscreen_lost: "high",
+  window_blur: "medium",
+  tab_switch: "high",
+  alt_tab: "high",
+  multiple_faces: "high",
+  no_face_detected: "medium",
+  copy_paste: "high",
 };
 
+// Deduplication: Track recently processed events to prevent duplicates
+// Key: `${submissionId}-${eventType}`, Value: timestamp
+const recentEvents = new Map();
+const DEDUP_WINDOW = 500; // milliseconds
+
 exports.postProctorEvent = async (req, res) => {
-  const submissionId = req.params.submissionId || req.params.id; 
+  const submissionId = req.params.submissionId || req.params.id;
   const { event_type, details } = req.body;
-  
-  //console.log(`📝 [Proctor] Received event: ${event_type} for submission ${submissionId}`, { body: req.body });
-  
+
   // Validate required fields
   if (!event_type) {
-    //console.error("❌ [Proctor] Missing event_type");
+    console.error("❌ [Proctor] Missing event_type");
     return res.status(400).json({ error: "event_type is required" });
   }
-  
+
   if (!submissionId || isNaN(parseInt(submissionId))) {
-    //console.error("❌ [Proctor] Invalid submissionId:", submissionId);
+    console.error("❌ [Proctor] Invalid submissionId:", submissionId);
     return res.status(400).json({ error: "Invalid submissionId" });
   }
-  
+
+  // ✅ DEDUPLICATION: Prevent duplicate events within 500ms window
+  const eventKey = `${submissionId}-${event_type}`;
+  const lastEventTime = recentEvents.get(eventKey);
+  const now = Date.now();
+
+  if (lastEventTime && now - lastEventTime < DEDUP_WINDOW) {
+    console.log(
+      `⏸️ [Proctor] DUPLICATE EVENT THROTTLED: ${eventKey} (${
+        now - lastEventTime
+      }ms since last)`
+    );
+    return res.status(429).json({
+      error: "Event throttled - duplicate within window",
+      throttledMs: DEDUP_WINDOW,
+    });
+  }
+
+  // Mark this event as processed
+  recentEvents.set(eventKey, now);
+
+  // Cleanup old entries (keep only last 1 hour)
+  if (recentEvents.size > 1000) {
+    const cutoff = now - 60 * 60 * 1000;
+    for (const [key, time] of recentEvents.entries()) {
+      if (time < cutoff) recentEvents.delete(key);
+    }
+  }
+
   let conn;
   try {
     conn = await pool.getConnection();
-    await conn.beginTransaction();
-    
     const severity = CHEATING_TYPES[event_type];
     const isCheating = !!severity;
-    
+
     let updatedCheatingCount = null;
-    
+
     if (isCheating) {
       // Get submission details (student_id, exam_id)
       const [subRows] = await conn.query(
-        "SELECT user_id, exam_id FROM submissions WHERE id = ?",
+        "SELECT user_id, exam_id FROM submissions WHERE id = ? LIMIT 1",
         [submissionId]
       );
-      
+
       if (subRows && subRows[0]) {
         const { user_id: studentId, exam_id: examId } = subRows[0];
-        
-        // Insert into cheating_logs table (trigger will auto-update cheating_count)
-        const [insertResult] = await conn.query(
-          `INSERT INTO cheating_logs 
-           (submission_id, student_id, exam_id, event_type, event_details, severity) 
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [
-            submissionId,
-            studentId,
-            examId,
-            event_type,
-            JSON.stringify(details || {}),
-            severity
-          ]
+
+        // Get student name for notification
+        const [studentRows] = await conn.query(
+          "SELECT full_name FROM users WHERE id = ? LIMIT 1",
+          [studentId]
         );
-        
-        //console.log(`✅ [Proctor] Cheating logged with ID: ${insertResult.insertId}`);
-        
-        // Get updated count (trigger already updated submissions.cheating_count)
+        const studentName =
+          studentRows?.[0]?.full_name || `Student ${studentId}`;
+
+        // ✅ Insert into cheating_logs table WITHOUT transaction (to avoid deadlock)
+        let insertSuccessful = false;
+        try {
+          const [insertResult] = await conn.query(
+            `INSERT INTO cheating_logs 
+             (submission_id, student_id, exam_id, event_type, event_details, severity) 
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [
+              submissionId,
+              studentId,
+              examId,
+              event_type,
+              JSON.stringify(details || {}),
+              severity,
+            ]
+          );
+          insertSuccessful = true;
+          //console.log(`✅ [Proctor] Cheating logged with ID: ${insertResult.insertId}`);
+        } catch (insertErr) {
+          console.warn(
+            "⚠️ [Proctor] Insert error, retrying:",
+            insertErr.message
+          );
+          // Retry once after small delay
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          try {
+            await conn.query(
+              `INSERT INTO cheating_logs 
+               (submission_id, student_id, exam_id, event_type, event_details, severity) 
+               VALUES (?, ?, ?, ?, ?, ?)`,
+              [
+                submissionId,
+                studentId,
+                examId,
+                event_type,
+                JSON.stringify(details || {}),
+                severity,
+              ]
+            );
+            insertSuccessful = true;
+          } catch (retryErr) {
+            console.error("❌ [Proctor] Retry failed:", retryErr.message);
+            insertSuccessful = false;
+          }
+        }
+
+        // ✅ Trigger will auto-update cheating_count after INSERT, no need to manually UPDATE
+        // This avoids double-counting and ensures accuracy via COUNT(*)
+
+        // Get updated count
         const [countResult] = await conn.query(
-          "SELECT cheating_count FROM submissions WHERE id = ?",
+          "SELECT cheating_count FROM submissions WHERE id = ? LIMIT 1",
           [submissionId]
         );
-        
+
         updatedCheatingCount = countResult[0]?.cheating_count || 0;
-        
-        //console.log(`📊 [Proctor] Current cheating_count: ${updatedCheatingCount}`);
+
+        console.log(
+          `📊 [Proctor] Current cheating_count: ${updatedCheatingCount} for submission ${submissionId}`
+        );
+
+        // ✅ BROADCAST cheating event tới tất cả instructors của exam này
+        broadcastCheatingEvent(examId, {
+          submissionId: parseInt(submissionId),
+          studentId: parseInt(studentId),
+          studentName,
+          eventType: event_type,
+          severity,
+          detectedAt: new Date(),
+          eventDetails: details || {},
+          cheatingCount: updatedCheatingCount,
+        });
       }
     } else {
       //console.log(`ℹ️ [Proctor] Non-cheating event: ${event_type}`);
     }
-    
-    await conn.commit();
+
     conn.release();
-    
+
     res.status(200).json({
       success: true,
       is_cheating: isCheating,
       severity: severity || null,
       cheating_count: updatedCheatingCount,
-      message: isCheating ? `Cheating event logged: ${event_type}` : `Event logged: ${event_type}`
+      message: isCheating
+        ? `Cheating event logged: ${event_type}`
+        : `Event logged: ${event_type}`,
     });
   } catch (err) {
     if (conn) {
-      await conn.rollback();
       conn.release();
     }
     console.error("❌ [Proctor] Error logging event:", err);
-    res.status(500).json({ error: "Failed to log proctor event", details: err.message });
+    res
+      .status(500)
+      .json({ error: "Failed to log proctor event", details: err.message });
   }
 };
 
@@ -207,7 +293,7 @@ exports.getStudentCheatingDetails = async (req, res) => {
        ORDER BY cl.detected_at DESC`,
       [submissionId]
     );
-    
+
     const [summary] = await conn.query(
       `SELECT 
         COUNT(*) AS total_incidents,
@@ -220,11 +306,11 @@ exports.getStudentCheatingDetails = async (req, res) => {
        WHERE submission_id = ?`,
       [submissionId]
     );
-    
+
     conn.release();
     res.json({
       logs: cheatingLogs,
-      summary: summary[0] || {}
+      summary: summary[0] || {},
     });
   } catch (err) {
     console.error("Error getting cheating details:", err);
@@ -302,29 +388,35 @@ exports.getExamResults = async (req, res) => {
 // Reset cheating logs cho một submission (chỉ dùng cho testing/debugging)
 exports.resetCheatingLogs = async (req, res) => {
   const submissionId = req.params.submissionId || req.params.id;
-  
+
   if (!submissionId || isNaN(parseInt(submissionId))) {
     return res.status(400).json({ error: "Invalid submissionId" });
   }
-  
+
   let conn;
   try {
     conn = await pool.getConnection();
     await conn.beginTransaction();
-    
+
     // Xóa tất cả cheating logs của submission này
-    await conn.query("DELETE FROM cheating_logs WHERE submission_id = ?", [submissionId]);
-    
+    await conn.query("DELETE FROM cheating_logs WHERE submission_id = ?", [
+      submissionId,
+    ]);
+
     // Reset cheating_count về 0
-    await conn.query("UPDATE submissions SET cheating_count = 0 WHERE id = ?", [submissionId]);
-    
+    await conn.query("UPDATE submissions SET cheating_count = 0 WHERE id = ?", [
+      submissionId,
+    ]);
+
     await conn.commit();
     conn.release();
-    
-    console.log(`✅ [Reset] Cleared cheating logs for submission ${submissionId}`);
-    res.json({ 
-      success: true, 
-      message: `Cheating logs cleared for submission ${submissionId}` 
+
+    console.log(
+      `✅ [Reset] Cleared cheating logs for submission ${submissionId}`
+    );
+    res.json({
+      success: true,
+      message: `Cheating logs cleared for submission ${submissionId}`,
     });
   } catch (err) {
     if (conn) {
@@ -332,7 +424,9 @@ exports.resetCheatingLogs = async (req, res) => {
       conn.release();
     }
     console.error("❌ [Reset] Error clearing cheating logs:", err);
-    res.status(500).json({ error: "Failed to clear cheating logs", details: err.message });
+    res
+      .status(500)
+      .json({ error: "Failed to clear cheating logs", details: err.message });
   }
 };
 
@@ -357,14 +451,14 @@ exports.deleteStudentExamRecord = async (req, res) => {
 // Nếu exam đã archived, tự động lấy submission có điểm cao nhất
 exports.getSubmissionQuestions = async (req, res) => {
   const submissionId = req.params.submissionId || req.params.id;
-  
+
   if (!submissionId || isNaN(parseInt(submissionId))) {
     return res.status(400).json({ error: "Invalid submissionId" });
   }
-  
+
   try {
     const conn = await pool.getConnection();
-    
+
     // Lấy exam_id, user_id và exam status từ submission
     const [subRows] = await conn.query(
       `SELECT s.exam_id, s.user_id, e.status as exam_status 
@@ -373,18 +467,22 @@ exports.getSubmissionQuestions = async (req, res) => {
        WHERE s.id = ?`,
       [submissionId]
     );
-    
+
     if (!subRows || subRows.length === 0) {
       conn.release();
       return res.status(404).json({ error: "Submission not found" });
     }
-    
-    const { exam_id: examId, user_id: studentId, exam_status: examStatus } = subRows[0];
-    
+
+    const {
+      exam_id: examId,
+      user_id: studentId,
+      exam_status: examStatus,
+    } = subRows[0];
+
     // ✅ Nếu exam đã archived, lấy submission có điểm cao nhất của sinh viên này
     let actualSubmissionId = submissionId;
-    
-    if (examStatus === 'archived') {
+
+    if (examStatus === "archived") {
       const [bestSub] = await conn.query(
         `SELECT id FROM submissions
          WHERE exam_id = ? AND user_id = ?
@@ -392,13 +490,15 @@ exports.getSubmissionQuestions = async (req, res) => {
          LIMIT 1`,
         [examId, studentId]
       );
-      
+
       if (bestSub && bestSub[0]) {
         actualSubmissionId = bestSub[0].id;
-        console.log(`✅ [Submission] Exam archived - using best submission ${actualSubmissionId} instead of ${submissionId}`);
+        console.log(
+          `✅ [Submission] Exam archived - using best submission ${actualSubmissionId} instead of ${submissionId}`
+        );
       }
     }
-    
+
     // Lấy tất cả câu hỏi của bài thi
     const [questions] = await conn.query(
       `SELECT id as question_id, question_text, type, points, order_index 
@@ -407,7 +507,7 @@ exports.getSubmissionQuestions = async (req, res) => {
        ORDER BY order_index ASC, id ASC`,
       [examId]
     );
-    
+
     // Lấy tất cả options cho các câu MCQ
     const [options] = await conn.query(
       `SELECT eo.id as option_id, eo.question_id, eo.option_text, eo.is_correct
@@ -417,7 +517,7 @@ exports.getSubmissionQuestions = async (req, res) => {
        ORDER BY eo.id ASC`,
       [examId]
     );
-    
+
     // ✅ Lấy câu trả lời từ submission có điểm cao nhất
     const [answers] = await conn.query(
       `SELECT question_id, answer_text, selected_option_id, score, status
@@ -425,9 +525,9 @@ exports.getSubmissionQuestions = async (req, res) => {
        WHERE submission_id = ? AND student_id = ?`,
       [actualSubmissionId, studentId]
     );
-    
+
     conn.release();
-    
+
     res.json({
       questions,
       options,
@@ -437,11 +537,13 @@ exports.getSubmissionQuestions = async (req, res) => {
       submission_id: actualSubmissionId,
       original_submission_id: submissionId,
       is_best_submission: actualSubmissionId === parseInt(submissionId),
-      exam_status: examStatus
+      exam_status: examStatus,
     });
-    
   } catch (err) {
     console.error("❌ [Submission] Error fetching questions:", err);
-    res.status(500).json({ error: "Failed to fetch submission questions", details: err.message });
+    res.status(500).json({
+      error: "Failed to fetch submission questions",
+      details: err.message,
+    });
   }
 };

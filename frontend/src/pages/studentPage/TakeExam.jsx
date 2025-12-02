@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
+import io from "socket.io-client";
 
 export default function TakeExam() {
   const { examId } = useParams();
   const [search] = useSearchParams();
   const navigate = useNavigate();
   const submissionId = search.get("submission_id");
+  const socketRef = useRef(null);
 
   // ===== State =====
   const [theme, setTheme] = useState(
@@ -31,6 +33,7 @@ export default function TakeExam() {
   const cleanupListenersRef = useRef(null); // Lưu hàm cleanup để gọi khi nộp bài
   const submittedRef = useRef(false); // Ref để tracking submitted state (tránh stale closure)
   const monitoringActiveRef = useRef(false); // Ref để tracking khi nào bắt đầu giám sát (sau grace period)
+  const lastViolationTimeRef = useRef({}); // Track last time each event was reported (prevent duplicates)
   const [unansweredQuestions, setUnansweredQuestions] = useState([]); // Danh sách câu bỏ trống
 
   const qRefs = useRef({});
@@ -40,23 +43,23 @@ export default function TakeExam() {
   // ===== Block navigation after submit =====
   useEffect(() => {
     if (!submitted) return;
-    
+
     const handlePopState = (e) => {
       e.preventDefault();
       console.warn("⚠️ [TakeExam] Navigation blocked - exam already submitted");
-      
+
       // Logout và xóa toàn bộ token
       localStorage.removeItem("token");
       localStorage.removeItem("user");
       sessionStorage.clear();
-      
+
       // Redirect về verify-room
       window.location.href = "/verify-room";
     };
-    
+
     window.addEventListener("popstate", handlePopState);
     window.history.pushState(null, "", window.location.href);
-    
+
     return () => window.removeEventListener("popstate", handlePopState);
   }, [submitted]);
 
@@ -76,18 +79,25 @@ export default function TakeExam() {
         navigate("/verify-room");
         return;
       }
-      
+
       // GUARD: Kiểm tra submission đã nộp chưa
       try {
-        const checkRes = await axiosClient.get(`/submissions/${submissionId}/status`);
-        if (checkRes.data?.submitted_at || ['submitted', 'graded'].includes(checkRes.data?.status)) {
-          console.warn("⚠️ [TakeExam] Submission already submitted, logging out...");
-          
+        const checkRes = await axiosClient.get(
+          `/submissions/${submissionId}/status`
+        );
+        if (
+          checkRes.data?.submitted_at ||
+          ["submitted", "graded"].includes(checkRes.data?.status)
+        ) {
+          console.warn(
+            "⚠️ [TakeExam] Submission already submitted, logging out..."
+          );
+
           // Logout và xóa token
           localStorage.removeItem("token");
           localStorage.removeItem("user");
           sessionStorage.clear();
-          
+
           // Redirect về verify-room
           window.location.href = "/verify-room";
           return;
@@ -95,7 +105,7 @@ export default function TakeExam() {
       } catch (err) {
         console.error("❌ [TakeExam] Error checking submission status:", err);
       }
-      
+
       try {
         const res = await axiosClient.post(
           `/submissions/${submissionId}/start`
@@ -139,7 +149,9 @@ export default function TakeExam() {
         if (document.documentElement.requestFullscreen) {
           try {
             await document.documentElement.requestFullscreen().catch(() => {
-              console.log("ℹ️ [TakeExam] Fullscreen request ignored (need user gesture)");
+              console.log(
+                "ℹ️ [TakeExam] Fullscreen request ignored (need user gesture)"
+              );
             });
           } catch (err) {
             console.log("ℹ️ [TakeExam] Fullscreen not available:", err.message);
@@ -153,13 +165,22 @@ export default function TakeExam() {
 
     const postProctor = async (evt, details = {}) => {
       try {
-        const response = await axiosClient.post(`/submissions/${submissionId}/proctor-event`, {
-          event_type: evt,
-          details,
-        });
-        //console.log(`✅ [Proctor] ${evt} logged:`, response.data);
+        console.log(
+          `📤 [Proctor] Sending event: ${evt} for submission ${submissionId}`
+        );
+        const response = await axiosClient.post(
+          `/submissions/${submissionId}/proctor-event`,
+          {
+            event_type: evt,
+            details,
+          }
+        );
+        console.log(`✅ [Proctor] ${evt} logged:`, response.data);
       } catch (error) {
-        //console.error(`❌ [Proctor] Failed to log ${evt}:`, error.response?.data || error.message);
+        console.error(
+          `❌ [Proctor] Failed to log ${evt}:`,
+          error.response?.data || error.message
+        );
       }
     };
 
@@ -175,16 +196,35 @@ export default function TakeExam() {
     const penalize = (evt, msg, key = null) => {
       // ✅ Không tính vi phạm nếu đã nộp bài
       if (submittedRef.current) {
-        console.log("🛑 [TakeExam] Violation ignored - exam already submitted:", evt);
+        console.log(
+          "🛑 [TakeExam] Violation ignored - exam already submitted:",
+          evt
+        );
         return;
       }
-      
+
       // ✅ Không tính vi phạm trước khi sinh viên bắt đầu làm bài (tránh false positive khi load trang)
       if (!monitoringActiveRef.current) {
-        console.log("⏳ [TakeExam] Violation ignored - monitoring not active yet:", evt);
+        console.log(
+          "⏳ [TakeExam] Violation ignored - monitoring not active yet:",
+          evt
+        );
         return;
       }
-      
+
+      // ✅ Throttle: Chỉ report nếu chưa report event này trong 1 giây vừa rồi
+      const now = Date.now();
+      const lastTime = lastViolationTimeRef.current[evt];
+      if (lastTime !== undefined && now - lastTime < 1000) {
+        console.log(
+          `⏸️ [TakeExam] Violation throttled (${evt}), last report: ${
+            now - lastTime
+          }ms ago`
+        );
+        return;
+      }
+      lastViolationTimeRef.current[evt] = now;
+
       setViolations((v) => {
         const nv = v + 1;
         flash(`${msg} (Cảnh cáo ${nv}/5)`, "danger", 1600);
@@ -195,7 +235,10 @@ export default function TakeExam() {
           document.documentElement.requestFullscreen
         ) {
           document.documentElement.requestFullscreen().catch((err) => {
-            console.log("ℹ️ [TakeExam] Cannot re-enter fullscreen:", err.message);
+            console.log(
+              "ℹ️ [TakeExam] Cannot re-enter fullscreen:",
+              err.message
+            );
           });
         }
         return nv;
@@ -229,12 +272,52 @@ export default function TakeExam() {
 
     start();
 
-    // ✅ Grace period: Bắt đầu giám sát sau 10 giây (tránh false positive khi load trang)
-    // Thời gian đủ để sinh viên đọc đề, tương tác với trang, và ổn định trạng thái
-    const graceTimer = setTimeout(() => {
-      monitoringActiveRef.current = true;
-      console.log("✅ [TakeExam] Monitoring activated after grace period");
-    }, 10000);
+    // ===== INIT WEBSOCKET CONNECTION =====
+    // Kết nối tới WebSocket server để báo cáo gian lận
+    // Nếu ở localhost:4000 (Vite dev), socket.io sẽ auto-proxy thông qua vite.config.js
+    // Nếu ở production, dùng environment variable
+    const socketUrl = import.meta.env.REACT_APP_API_URL
+      ? import.meta.env.REACT_APP_API_URL
+      : window.location.origin; // Auto-use current origin (localhost:4000 in dev)
+
+    const socket = io(socketUrl, {
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 5,
+      transports: ["websocket", "polling"],
+    });
+
+    socketRef.current = socket;
+
+    // Khi kết nối thành công
+    socket.on("connect", () => {
+      console.log("✅ [Student] Connected to WebSocket");
+
+      // Lấy thông tin sinh viên từ localStorage
+      const user = JSON.parse(localStorage.getItem("user") || "{}");
+      const studentName = user.full_name || `Student ${user.id}`;
+
+      // Đăng ký submission này với server
+      socket.emit("student:register-submission", {
+        submissionId: parseInt(submissionId),
+        studentId: parseInt(user.id),
+        examId: parseInt(examId),
+        studentName,
+      });
+      console.log("📝 [Student] Registered submission with WebSocket");
+    });
+
+    socket.on("disconnect", () => {
+      console.log("❌ [Student] Disconnected from WebSocket");
+    });
+
+    // ✅ START MONITORING IMMEDIATELY - Not waiting for grace period
+    // Monitor from the moment student enters exam to catch any cheating attempts
+    monitoringActiveRef.current = true;
+    console.log(
+      "✅ [TakeExam] Monitoring activated immediately upon exam start"
+    );
 
     window.addEventListener("keydown", onKey, true);
     document.addEventListener("fullscreenchange", onFs);
@@ -244,15 +327,23 @@ export default function TakeExam() {
     window.addEventListener("beforeunload", onBefore);
 
     const cleanup = () => {
-      clearTimeout(graceTimer);
       monitoringActiveRef.current = false;
+
+      // ✅ Disconnect WebSocket
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+
       window.removeEventListener("keydown", onKey, true);
       document.removeEventListener("fullscreenchange", onFs);
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("blur", onBlur);
       window.removeEventListener("contextmenu", onCtx);
       window.removeEventListener("beforeunload", onBefore);
-      console.log("🛑 [TakeExam] Monitoring stopped - all event listeners removed");
+      console.log(
+        "🛑 [TakeExam] Monitoring stopped - all event listeners removed"
+      );
     };
 
     // Lưu hàm cleanup để có thể gọi khi submit
@@ -262,30 +353,7 @@ export default function TakeExam() {
     // eslint-disable-next-line
   }, [submissionId, examId]);
 
-  // ===== Kích hoạt giám sát khi sinh viên bắt đầu tương tác =====
-  useEffect(() => {
-    // Lắng nghe sự kiện tương tác đầu tiên (click hoặc focus vào câu hỏi)
-    const handleFirstInteraction = () => {
-      if (!monitoringActiveRef.current) {
-        monitoringActiveRef.current = true;
-        console.log("✅ [TakeExam] Monitoring activated by user interaction");
-        // Gỡ listener sau khi kích hoạt
-        document.removeEventListener("click", handleFirstInteraction, true);
-        document.removeEventListener("focus", handleFirstInteraction, true);
-      }
-    };
-    
-    // Chỉ thêm listener nếu chưa submit
-    if (!submitted) {
-      document.addEventListener("click", handleFirstInteraction, true);
-      document.addEventListener("focus", handleFirstInteraction, true);
-    }
-    
-    return () => {
-      document.removeEventListener("click", handleFirstInteraction, true);
-      document.removeEventListener("focus", handleFirstInteraction, true);
-    };
-  }, [submitted]);
+  // ===== Monitoring is active from the start, no need for interaction trigger =====
 
   // ===== Timer =====
   useEffect(() => {
@@ -356,17 +424,17 @@ export default function TakeExam() {
   const handleSubmit = async (auto = false) => {
     if (submitting) return;
     setSubmitting(true);
-    
+
     // ✅ Đánh dấu đã nộp bài NGAY để dừng tracking violations
     setSubmitted(true);
     submittedRef.current = true; // ✅ Cập nhật ref để penalize function nhìn thấy ngay
-    
+
     // ✅ Dừng hoàn toàn việc theo dõi màn hình - xóa tất cả event listeners
     if (cleanupListenersRef.current) {
       cleanupListenersRef.current();
       cleanupListenersRef.current = null;
     }
-    
+
     try {
       const res = await axiosClient.post(`/submissions/${submissionId}/submit`);
       const beMcq =
@@ -392,14 +460,16 @@ export default function TakeExam() {
         setTotalScore(mcq + (beAi || 0));
       }
       setShowModal(true);
-      
+
       sessionStorage.removeItem("pending_exam_duration");
       sessionStorage.removeItem("exam_flags");
       sessionStorage.removeItem(`exam_${examId}_started`);
       localStorage.removeItem("examTheme");
-      
-      console.log("✅ [TakeExam] Exam submitted, session cleared, monitoring stopped");
-      
+
+      console.log(
+        "✅ [TakeExam] Exam submitted, session cleared, monitoring stopped"
+      );
+
       try {
         await document.exitFullscreen?.();
       } catch {}
@@ -506,7 +576,10 @@ export default function TakeExam() {
 
       {/* BODY (only MAIN scrolls) */}
       <div className="flex-1 overflow-hidden flex">
-        <div className="max-w-6xl mx-auto p-4 flex gap-4 w-full" style={{ height: "calc(100vh - 80px)" }}>
+        <div
+          className="max-w-6xl mx-auto p-4 flex gap-4 w-full"
+          style={{ height: "calc(100vh - 80px)" }}
+        >
           {/* SIDEBAR (fixed position, no scroll) */}
           <aside
             className={`rounded-2xl p-4 ${cardCls} flex-shrink-0 w-64 flex flex-col h-full`}
@@ -708,7 +781,9 @@ export default function TakeExam() {
             }`}
           >
             <div>Điểm trắc nghiệm (MCQ)</div>
-            <strong>{mcqScore != null ? Number(mcqScore).toFixed(1) : "-"}/10</strong>
+            <strong>
+              {mcqScore != null ? Number(mcqScore).toFixed(1) : "-"}/10
+            </strong>
           </div>
           <div
             className={`flex items-center justify-between py-2 border-b ${
@@ -718,11 +793,20 @@ export default function TakeExam() {
             }`}
           >
             <div>Điểm tự luận (AI)</div>
-            <strong>{aiScore != null ? Number(aiScore).toFixed(1) : "—"}/10</strong>
+            <strong>
+              {aiScore != null ? Number(aiScore).toFixed(1) : "—"}/10
+            </strong>
           </div>
           <div className="flex items-center justify-between py-2">
             <div>Tổng tạm</div>
-            <strong>{totalScore != null ? Number(totalScore).toFixed(1) : (mcqScore != null ? Number(mcqScore).toFixed(1) : "-")}/10</strong>
+            <strong>
+              {totalScore != null
+                ? Number(totalScore).toFixed(1)
+                : mcqScore != null
+                ? Number(mcqScore).toFixed(1)
+                : "-"}
+              /10
+            </strong>
           </div>
           <div
             className={`${

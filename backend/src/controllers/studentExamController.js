@@ -201,8 +201,8 @@ async function joinExam(req, res) {
 
     // Tạo submission mới cho lần thi này
     const [ins] = await sequelize.query(
-      `INSERT INTO submissions (exam_id, user_id, status, attempt_no, submitted_at) 
-       VALUES (?, ?, 'pending', ?, NULL)`,
+      `INSERT INTO submissions (exam_id, user_id, status, attempt_no, submitted_at, cheating_count) 
+       VALUES (?, ?, 'pending', ?, NULL, 0)`,
       { replacements: [exam_id, userId, nextAttempt] }
     );
     const submissionId = ins?.insertId || ins;
@@ -356,9 +356,22 @@ async function verifyStudentCardImage(req, res) {
       return res.status(404).json({ message: "Submission not found" });
     }
 
-    const cardBlob = subRows[0].student_card_blob;
+    let cardBlob = subRows[0].student_card_blob;
     if (!cardBlob) {
       return res.status(400).json({ message: "Chưa upload ảnh thẻ sinh viên" });
+    }
+
+    // Đảm bảo cardBlob là Buffer
+    if (!Buffer.isBuffer(cardBlob)) {
+      if (typeof cardBlob === "string") {
+        cardBlob = Buffer.from(cardBlob, "binary");
+      } else if (typeof cardBlob === "object") {
+        cardBlob = Buffer.from(cardBlob);
+      } else {
+        return res
+          .status(400)
+          .json({ message: "Ảnh thẻ sinh viên không hợp lệ" });
+      }
     }
 
     // Gọi Python verify
@@ -409,8 +422,24 @@ async function verifyStudentCardImage(req, res) {
       name: err.name,
       code: err.code,
     });
+
+    // Provide actionable error messages
+    let userMessage = "Lỗi xác minh thẻ SV";
+    if (
+      err.message.includes("numpy.dtype") ||
+      err.message.includes("binary incompatibility")
+    ) {
+      userMessage =
+        "🔧 Lỗi Python Environment: numpy/pandas không tương thích. Vui lòng chạy: python scripts/fix_python_env.py";
+    } else if (err.message.includes("Missing Dependencies")) {
+      userMessage = "🔧 " + err.message;
+    } else if (err.message.includes("Failed to write to Python stdin")) {
+      userMessage =
+        "🔧 Lỗi Python Process: Python không khởi động được. Vui lòng kiểm tra môi trường Python.";
+    }
+
     return res.status(500).json({
-      message: "Lỗi xác minh thẻ SV",
+      message: userMessage,
       error: err.message,
       details: err.stack,
     });
@@ -433,9 +462,20 @@ async function verifyFaceImage(req, res) {
       return res.status(404).json({ message: "Submission not found" });
     }
 
-    const faceBlob = subRows[0].face_image_blob;
+    let faceBlob = subRows[0].face_image_blob;
     if (!faceBlob) {
       return res.status(400).json({ message: "Chưa upload ảnh khuôn mặt" });
+    }
+
+    // Đảm bảo faceBlob là Buffer
+    if (!Buffer.isBuffer(faceBlob)) {
+      if (typeof faceBlob === "string") {
+        faceBlob = Buffer.from(faceBlob, "binary");
+      } else if (typeof faceBlob === "object") {
+        faceBlob = Buffer.from(faceBlob);
+      } else {
+        return res.status(400).json({ message: "Ảnh khuôn mặt không hợp lệ" });
+      }
     }
 
     // Gọi Python verify
@@ -493,13 +533,36 @@ async function compareFaceImages(req, res) {
       return res.status(404).json({ message: "Submission not found" });
     }
 
-    const { face_image_blob, student_card_blob } = subRows[0];
+    let { face_image_blob, student_card_blob } = subRows[0];
 
     if (!face_image_blob) {
       return res.status(400).json({ message: "Chưa upload ảnh khuôn mặt" });
     }
     if (!student_card_blob) {
       return res.status(400).json({ message: "Chưa upload ảnh thẻ sinh viên" });
+    }
+
+    // Đảm bảo cả 2 blobs là Buffers
+    if (!Buffer.isBuffer(face_image_blob)) {
+      if (typeof face_image_blob === "string") {
+        face_image_blob = Buffer.from(face_image_blob, "binary");
+      } else if (typeof face_image_blob === "object") {
+        face_image_blob = Buffer.from(face_image_blob);
+      } else {
+        return res.status(400).json({ message: "Ảnh khuôn mặt không hợp lệ" });
+      }
+    }
+
+    if (!Buffer.isBuffer(student_card_blob)) {
+      if (typeof student_card_blob === "string") {
+        student_card_blob = Buffer.from(student_card_blob, "binary");
+      } else if (typeof student_card_blob === "object") {
+        student_card_blob = Buffer.from(student_card_blob);
+      } else {
+        return res
+          .status(400)
+          .json({ message: "Ảnh thẻ sinh viên không hợp lệ" });
+      }
     }
 
     // Gọi Python compare (tolerance 0.35 = 65% similarity)
