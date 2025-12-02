@@ -222,6 +222,43 @@ export default function InstructorOverlay() {
     return typeMap[eventType] || eventType;
   };
 
+  // ===== Get detailed description of what student did =====
+  const getDetailedDescription = (eventType, details = {}) => {
+    const descriptions = {
+      blocked_key: () => {
+        const key = details.key || "F11";
+        return `Sinh viên đã nhấn phím ${key} - cố gắng thoát fullscreen hoặc refresh trang`;
+      },
+      fullscreen_lost: () => {
+        return `Sinh viên đã thoát chế độ toàn màn hình - có thể xem nội dung khác`;
+      },
+      visibility_hidden: () => {
+        return `Sinh viên đã chuyển qua tab khác hoặc ẩn cửa sổ trình duyệt`;
+      },
+      window_blur: () => {
+        return `Sinh viên đã click ra ngoài cửa sổ bài thi - mất tập trung`;
+      },
+      tab_switch: () => {
+        return `Sinh viên đã chuyển tab trong trình duyệt`;
+      },
+      alt_tab: () => {
+        return `Sinh viên đã sử dụng Alt+Tab để chuyển ứng dụng`;
+      },
+      copy_paste: () => {
+        return `Sinh viên đã cố gắng copy/paste nội dung`;
+      },
+      multiple_faces: () => {
+        return `Phát hiện nhiều khuôn mặt trong camera - có thể có người khác`;
+      },
+      no_face_detected: () => {
+        return `Không phát hiện khuôn mặt sinh viên - có thể rời khỏi vị trí`;
+      },
+    };
+
+    const descFunc = descriptions[eventType];
+    return descFunc ? descFunc() : `Phát hiện vi phạm: ${eventType}`;
+  };
+
   // ===== Format Severity Badge =====
   const getSeverityColor = (severity) => {
     if (severity === "high") return "bg-red-600";
@@ -269,7 +306,7 @@ export default function InstructorOverlay() {
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden border-l-8 border-red-600">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden ">
         {/* Header - Red Alert Bar */}
         <div className="bg-gradient-to-r from-red-600 to-red-700 px-6 py-4 flex items-center gap-3">
           <div className="text-4xl">🚨</div>
@@ -293,8 +330,11 @@ export default function InstructorOverlay() {
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
               Loại vi phạm
             </p>
-            <p className="text-lg font-semibold text-red-700">
+            <p className="text-lg font-semibold text-red-700 mb-2">
               {getEventTypeDisplay(event.eventType)}
+            </p>
+            <p className="text-sm text-slate-700 leading-relaxed bg-white p-3 rounded border border-slate-100">
+              📋 {getDetailedDescription(event.eventType, event.details)}
             </p>
           </div>
 
