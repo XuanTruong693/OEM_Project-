@@ -46,8 +46,9 @@ export default function VerifyRoom() {
     setSuccess("");
     try {
       // Ưu tiên gọi endpoint mới để lấy room_token
+      console.log('🔍 [VerifyRoom] Sending request with room_code:', roomCode.trim());
       const resNew = await axiosClient.post('/exams/verify-room', { room_code: roomCode.trim() });
-      console.log('[DEV] Verify room (new) response:', resNew.data);
+      console.log('✅ [VerifyRoom] Verify room (new) response:', resNew.data);
       const { exam_id, duration_minutes, room_token, require_face_check, require_student_card, monitor_screen, time_open, time_close } = resNew.data || {};
       if (room_token && exam_id) {
         // Lưu token phòng ở sessionStorage (ngắn hạn)

@@ -30,21 +30,69 @@ async function hasColumn(table, column) {
 async function verifyRoom(req, res) {
   try {
     const { room_code } = req.body || {};
+    console.log('🔍 [verifyRoom] Received room_code:', room_code, 'Length:', room_code?.length);
+    
     if (!room_code)
       return res.status(400).json({ message: "room_code is required" });
+
+    // Trim room code để tránh lỗi do khoảng trắng
+    const trimmedCode = String(room_code).trim();
+    console.log('🔍 [verifyRoom] Trimmed room_code:', trimmedCode, 'Length:', trimmedCode.length);
 
     // Check exam exists and is published
     const base = await sequelize.query(
       `SELECT id, exam_room_code, status, duration FROM exams WHERE exam_room_code = ? AND status = 'published' LIMIT 1`,
-      { replacements: [room_code] }
+      { replacements: [trimmedCode] }
     );
     const [rows] = base;
+    console.log('📊 [verifyRoom] Query result:', rows);
 
     const exam = Array.isArray(rows) ? rows[0] : rows;
-    if (!exam)
+    if (!exam) {
+      console.log('❌ [verifyRoom] Exam not found or not published for code:', trimmedCode);
+      // Kiểm tra xem exam có tồn tại không (bất kể status)
+      const [allRows] = await sequelize.query(
+        `SELECT id, exam_room_code, status FROM exams WHERE exam_room_code = ? LIMIT 1`,
+        { replacements: [trimmedCode] }
+      );
+      console.log('🔎 [verifyRoom] Check all statuses:', allRows);
+      
       return res
         .status(404)
         .json({ message: "Mã không đúng hoặc phòng chưa mở" });
+    }
+
+    console.log('✅ [verifyRoom] Found exam:', exam.id, 'Status:', exam.status);
+
+    // Kiểm tra số lần thi (nếu user đã đăng nhập)
+    if (req.user && req.user.id) {
+      const userId = req.user.id;
+      
+      // Lấy max_attempts từ exam
+      const [examSettings] = await sequelize.query(
+        `SELECT max_attempts FROM exams WHERE id = ? LIMIT 1`,
+        { replacements: [exam.id] }
+      );
+      const maxAttempts = examSettings[0]?.max_attempts || 0;
+
+      // Nếu max_attempts > 0, kiểm tra số lần đã thi
+      if (maxAttempts > 0) {
+        const [attemptCount] = await sequelize.query(
+          `SELECT COUNT(*) as attempt_count FROM submissions WHERE exam_id = ? AND user_id = ?`,
+          { replacements: [exam.id, userId] }
+        );
+        const currentAttempts = attemptCount[0]?.attempt_count || 0;
+
+        if (currentAttempts >= maxAttempts) {
+          return res.status(403).json({
+            message: `Bạn đã hết lượt thi. Số lần thi tối đa: ${maxAttempts}`,
+            max_attempts: maxAttempts,
+            current_attempts: currentAttempts,
+            reason: "max_attempts_exceeded"
+          });
+        }
+      }
+    }
 
     // Optional columns
     const [hasDurMin, hasOpen, hasClose, hasFace, hasCard, hasMonitor, hasMax] =
@@ -173,13 +221,32 @@ async function joinExam(req, res) {
 
     // Validate exam still valid
     const [rows] = await sequelize.query(
-      `SELECT id, exam_room_code, status, duration
+      `SELECT id, exam_room_code, status, duration, max_attempts
        FROM exams
        WHERE id = ? AND exam_room_code = ? AND status = 'published'`,
       { replacements: [exam_id, room_code] }
     );
     const exam = Array.isArray(rows) ? rows[0] : rows;
     if (!exam) return res.status(404).json({ message: "Exam not available" });
+
+    // Kiểm tra lại số lần thi (phòng bypass)
+    const maxAttempts = exam.max_attempts || 0;
+    if (maxAttempts > 0) {
+      const [attemptCount] = await sequelize.query(
+        `SELECT COUNT(*) as attempt_count FROM submissions WHERE exam_id = ? AND user_id = ?`,
+        { replacements: [exam_id, userId] }
+      );
+      const currentAttempts = attemptCount[0]?.attempt_count || 0;
+
+      if (currentAttempts >= maxAttempts) {
+        return res.status(403).json({
+          message: `Bạn đã hết lượt thi. Số lần thi tối đa: ${maxAttempts}`,
+          max_attempts: maxAttempts,
+          current_attempts: currentAttempts,
+          reason: "max_attempts_exceeded"
+        });
+      }
+    }
 
     // Record verified room (if table exists)
     try {

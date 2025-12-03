@@ -10,13 +10,27 @@ export default function ExamPreview() {
   const [data, setData] = React.useState({ questions: [] });
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState('');
+  const [examInfo, setExamInfo] = React.useState(null);
 
   React.useEffect(()=>{
     (async()=>{
       try {
         const res = await axiosClient.get(`/instructor/exams/${examId}/preview`);
-        setData(res.data || { questions: [] });
-      } catch(e){ setErr('Không thể tải preview đề thi.'); }
+        const previewData = res.data || { questions: [] };
+        setData(previewData);
+        
+        // Lưu thông tin exam (time_open, time_close, status)
+        const examData = {
+          time_open: previewData.time_open,
+          time_close: previewData.time_close,
+          status: previewData.status
+        };
+        console.log('📊 [ExamPreview] Exam info:', examData);
+        setExamInfo(examData);
+      } catch(e){ 
+        console.error('❌ [ExamPreview] Error:', e);
+        setErr('Không thể tải preview đề thi.'); 
+      }
       finally { setLoading(false); }
     })();
   }, [examId]);
@@ -25,6 +39,31 @@ export default function ExamPreview() {
   const total = qs.length;
   const mcq = qs.filter(q=> q.type==='MCQ').length;
   const essay = total - mcq;
+
+  // Kiểm tra xem bài thi có đang trong quá trình không
+  const isInProgress = React.useMemo(() => {
+    if (!examInfo || !examInfo.time_open || !examInfo.time_close) {
+      console.log('⚠️ [ExamPreview] Missing time info:', examInfo);
+      return false;
+    }
+    
+    const now = new Date();
+    const open = new Date(examInfo.time_open);
+    const close = new Date(examInfo.time_close);
+    
+    console.log('🕐 [ExamPreview] Time check:', {
+      now: now.toISOString(),
+      open: open.toISOString(),
+      close: close.toISOString(),
+      isAfterOpen: now >= open,
+      isBeforeClose: now <= close
+    });
+    
+    // Trong quá trình: now >= time_open && now <= time_close
+    const inProgress = now >= open && now <= close;
+    console.log(`🔍 [ExamPreview] isInProgress: ${inProgress}`);
+    return inProgress;
+  }, [examInfo]);
 
 
   const splitQA = (q) => {
@@ -102,7 +141,25 @@ export default function ExamPreview() {
 
       <div className="mt-4 flex items-center justify-between">
         <button onClick={()=> nav('/open-exam')} className="text-blue-600 hover:underline">← Quay lại danh sách</button>
-        <button onClick={()=> nav(`/exam-settings/${examId}`)} className="px-4 py-2 rounded-lg bg-gradient-to-b from-emerald-500 to-emerald-600 text-white shadow hover:brightness-105">Bắt đầu mở phòng</button>
+        
+        {/* Ẩn nút "Bắt đầu mở phòng" nếu bài thi đang trong quá trình */}
+        {!isInProgress ? (
+          <button 
+            onClick={()=> nav(`/exam-settings/${examId}`)} 
+            className="px-4 py-2 rounded-lg bg-gradient-to-b from-emerald-500 to-emerald-600 text-white shadow hover:brightness-105"
+          >
+            Bắt đầu mở phòng
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <div className="px-4 py-2 rounded-lg bg-amber-50 text-amber-700 border border-amber-200">
+              <span className="font-semibold">🔒 Bài thi đang diễn ra</span>
+              <div className="text-xs mt-1">
+                Kết thúc: {examInfo?.time_close ? new Date(examInfo.time_close).toLocaleString() : '-'}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

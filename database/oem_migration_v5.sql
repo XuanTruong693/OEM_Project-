@@ -37,36 +37,34 @@ CREATE TABLE users (
     INDEX idx_users_role (role)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
--- 2.2 exams (không dùng 'courses'; dùng instructor_id trực tiếp)
+-- 2.2 exams
 CREATE TABLE exams (
-  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  instructor_id INT UNSIGNED NOT NULL,
-  title VARCHAR(100) NOT NULL,
-  duration INT NOT NULL CHECK (duration > 0),
-
--- Sprint 2
-duration_minutes INT NOT NULL DEFAULT 60,
-  time_open DATETIME NULL,
-  time_close DATETIME NULL,
-  max_points DECIMAL(10,2) NULL,
-  require_face_check TINYINT(1) NOT NULL DEFAULT 0,
-  require_student_card TINYINT(1) NOT NULL DEFAULT 0,
-  monitor_screen TINYINT(1) NOT NULL DEFAULT 0,
-
-  exam_room_code VARCHAR(64) NULL,
-  status ENUM('draft','published','archived') DEFAULT 'draft',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-
-  UNIQUE KEY uq_exams_room_code (exam_room_code),
-  INDEX idx_exams_instructor (instructor_id),
-  INDEX idx_exams_status_room (status, exam_room_code),
-  INDEX idx_exams_time_open (time_open),
-
-  CONSTRAINT fk_exams_instructor
-    FOREIGN KEY (instructor_id) REFERENCES users(id)
-    ON UPDATE CASCADE ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    instructor_id INT UNSIGNED NOT NULL,
+    title VARCHAR(100) NOT NULL,
+    duration INT NOT NULL CHECK (duration > 0),
+    duration_minutes INT NOT NULL DEFAULT 60,
+    time_open DATETIME NULL,
+    time_close DATETIME NULL,
+    max_points DECIMAL(10, 2) NULL,
+    require_face_check TINYINT(1) NOT NULL DEFAULT 0,
+    require_student_card TINYINT(1) NOT NULL DEFAULT 0,
+    monitor_screen TINYINT(1) NOT NULL DEFAULT 0,
+    max_attempts INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0 = unlimited, >0 = limit retake attempts',
+    exam_room_code VARCHAR(64) NULL,
+    status ENUM(
+        'draft',
+        'published',
+        'archived'
+    ) DEFAULT 'draft',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_exams_room_code (exam_room_code),
+    INDEX idx_exams_instructor (instructor_id),
+    INDEX idx_exams_status_room (status, exam_room_code),
+    INDEX idx_exams_time_open (time_open),
+    CONSTRAINT fk_exams_instructor FOREIGN KEY (instructor_id) REFERENCES users (id) ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
 -- 2.3 exam_questions
 CREATE TABLE exam_questions (
@@ -816,7 +814,6 @@ HAVING
 ORDER BY total_incidents DESC, s.submitted_at DESC;
 /* 6) Finish */
 SELECT '✅ Schema created/updated successfully (MySQL 8.0, no syntax errors)' AS message;
-
 
 -- collating cheating_count column addition and related objects
 SET @col_exists = 0;

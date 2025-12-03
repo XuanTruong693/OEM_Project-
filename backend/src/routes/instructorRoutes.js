@@ -302,6 +302,13 @@ router.get(
         { replacements: [examId] }
       );
 
+      // Lấy thông tin exam để trả về time_open, time_close, status
+      const [examInfo] = await sequelize.query(
+        `SELECT time_open, time_close, status FROM exams WHERE id = ? LIMIT 1`,
+        { replacements: [examId] }
+      );
+      const exam = examInfo && examInfo[0] ? examInfo[0] : {};
+
       const map = new Map();
       for (const r of rows || []) {
         if (!map.has(r.question_id)) {
@@ -318,7 +325,13 @@ router.get(
           map.get(r.question_id).options.push({ option_id: r.option_id, option_text: r.option_text, is_correct: !!r.is_correct });
         }
       }
-      return res.json({ exam_id: examId, questions: Array.from(map.values()) });
+      return res.json({ 
+        exam_id: examId, 
+        questions: Array.from(map.values()),
+        time_open: exam.time_open || null,
+        time_close: exam.time_close || null,
+        status: exam.status || 'draft'
+      });
     } catch (err) {
       console.error('exams/:examId/preview error:', err);
       return res.status(500).json({ message: 'Server error' });
@@ -651,6 +664,7 @@ router.post(
         require_face_check,
         require_student_card,
         monitor_screen,
+        max_attempts,
       } = req.body || {};
 
       // owner check
@@ -705,9 +719,10 @@ router.post(
            max_points = ?,
            require_face_check = ?,
            require_student_card = ?,
-           monitor_screen = ?
+           monitor_screen = ?,
+           max_attempts = ?
          WHERE id = ?`,
-        { replacements: [dur, durMin, room, fmt(openAt), fmt(closeAt), (max_points ?? null), (require_face_check?1:0), (require_student_card?1:0), (monitor_screen?1:0), examId] }
+        { replacements: [dur, durMin, room, fmt(openAt), fmt(closeAt), (max_points ?? null), (require_face_check?1:0), (require_student_card?1:0), (monitor_screen?1:0), (max_attempts ? Number(max_attempts) : 0), examId] }
       );
 
       return res.json({ ok: true, exam_id: examId, exam_room_code: room, status: 'published' });
@@ -858,6 +873,55 @@ router.get(
     } catch (err) {
       console.error('❌ Error checking exam status:', err);
       return res.status(500).json({ message: 'Server error' });
+    }
+  }
+);
+
+// ==============================
+// API: Delete Student Submission
+// DELETE /api/instructor/exams/:examId/students/:studentId
+// ==============================
+router.delete(
+  "/exams/:examId/students/:studentId",
+  verifyToken,
+  authorizeRole(["instructor"]),
+  async (req, res) => {
+    try {
+      const examId = parseInt(req.params.examId, 10);
+      const studentId = parseInt(req.params.studentId, 10);
+      const instructorId = req.user.id;
+
+      console.log(`🗑️ [Delete Submission] Instructor ${instructorId} deleting student ${studentId} from exam ${examId}`);
+
+      // Verify instructor owns this exam
+      const [examRows] = await sequelize.query(
+        `SELECT id FROM exams WHERE id = ? AND instructor_id = ? LIMIT 1`,
+        { replacements: [examId, instructorId] }
+      );
+
+      if (!examRows || examRows.length === 0) {
+        return res.status(403).json({ 
+          message: "Bạn không có quyền xóa bài thi này" 
+        });
+      }
+
+      // Delete all submissions for this student in this exam
+      // This includes cheating_logs via CASCADE
+      const [result] = await sequelize.query(
+        `DELETE FROM submissions WHERE exam_id = ? AND user_id = ?`,
+        { replacements: [examId, studentId] }
+      );
+
+      const deletedCount = result.affectedRows || 0;
+      console.log(`✅ [Delete Submission] Deleted ${deletedCount} submission(s) for student ${studentId} in exam ${examId}`);
+
+      return res.json({ 
+        message: "Đã xóa bài thi của sinh viên",
+        deleted_count: deletedCount
+      });
+    } catch (err) {
+      console.error('❌ Error deleting student submission:', err);
+      return res.status(500).json({ message: 'Lỗi khi xóa bài thi' });
     }
   }
 );

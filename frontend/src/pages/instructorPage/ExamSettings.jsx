@@ -7,10 +7,12 @@ const Label = ({ children }) => (
   <label className="text-sm text-slate-600">{children}</label>
 );
 
-const Input = ({ type = "text", value, onChange, min }) => (
+const Input = ({ type = "text", value, onChange, min, max, required }) => (
   <input
     type={type}
     min={min}
+    max={max}
+    required={required}
     className="w-full mt-1 border border-slate-300 rounded-xl p-2 bg-white transition focus:outline-none focus:ring-2 focus:ring-blue-300 hover:border-blue-300"
     value={value}
     onChange={onChange}
@@ -176,6 +178,7 @@ export default function ExamSettings() {
     time_open: "",
     time_close: "",
     max_points: "",
+    max_attempts: 0,
     require_face_check: false,
     require_student_card: false,
     monitor_screen: false,
@@ -231,6 +234,22 @@ export default function ExamSettings() {
       setErr("Vui lòng nhập thời lượng");
       return false;
     }
+    // Kiểm tra duration không được âm
+    if (Number(form.duration) <= 0 || Number(form.duration_minutes) <= 0) {
+      setErr("Thời lượng phải là số dương (lớn hơn 0)");
+      return false;
+    }
+    // Kiểm tra max_points bắt buộc
+    if (!form.max_points || form.max_points === "") {
+      setErr("Vui lòng nhập tổng điểm (bắt buộc)");
+      return false;
+    }
+    // Kiểm tra max_points từ 1-10
+    const points = Number(form.max_points);
+    if (points < 1 || points > 10) {
+      setErr("Tổng điểm phải từ 1 đến 10");
+      return false;
+    }
     return true;
   };
 
@@ -242,6 +261,7 @@ export default function ExamSettings() {
       const payload = {
         ...form,
         max_points: form.max_points ? Number(form.max_points) : null,
+        max_attempts: form.max_attempts ? Number(form.max_attempts) : 0,
         duration: Number(form.duration),
         duration_minutes: Number(form.duration_minutes),
       };
@@ -287,17 +307,21 @@ export default function ExamSettings() {
             >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label>Duration (phút)</Label>
+                  <Label>Duration (phút) *</Label>
                   <Input
                     type="number"
+                    min={1}
+                    required
                     value={form.duration}
                     onChange={(e) => onChange("duration", e.target.value)}
                   />
                 </div>
                 <div>
-                  <Label>Duration minutes</Label>
+                  <Label>Duration minutes *</Label>
                   <Input
                     type="number"
+                    min={1}
+                    required
                     value={form.duration_minutes}
                     onChange={(e) =>
                       onChange("duration_minutes", e.target.value)
@@ -323,11 +347,23 @@ export default function ExamSettings() {
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <Label>Tổng điểm (max_points)</Label>
+                  <Label>Tổng điểm (max_points) *</Label>
                   <Input
                     type="number"
+                    min={1}
+                    max={10}
+                    required
                     value={form.max_points}
                     onChange={(e) => onChange("max_points", e.target.value)}
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <Label>Số lần thi tối đa (0 = không giới hạn)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={form.max_attempts}
+                    onChange={(e) => onChange("max_attempts", e.target.value)}
                   />
                 </div>
               </div>

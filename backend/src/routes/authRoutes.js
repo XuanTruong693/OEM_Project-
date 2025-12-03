@@ -40,25 +40,24 @@ const otpStorage = new Map();
 const generateOTP = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
 };
-// Get exam by room ID or code
 const getExamByRoom = async (roomId) => {
   const sequelize = require("../config/db");
   if (!roomId) return null;
   try {
-    if (/^\d+$/.test(String(roomId))) {
-      const [rows] = await sequelize.query(
-        `SELECT id, title, exam_room_code, status FROM exams WHERE id = ? LIMIT 1`,
-        { replacements: [roomId] }
-      );
-      return Array.isArray(rows) && rows.length ? rows[0] : null;
-    }
+    const trimmedCode = String(roomId).trim();
+    console.log("🔍 [getExamByRoom] Querying by room code:", trimmedCode);
     const [rows] = await sequelize.query(
       `SELECT id, title, exam_room_code, status FROM exams WHERE exam_room_code = ? LIMIT 1`,
-      { replacements: [roomId] }
+      { replacements: [trimmedCode] }
     );
-    return Array.isArray(rows) && rows.length ? rows[0] : null;
+    const result = Array.isArray(rows) && rows.length ? rows[0] : null;
+    console.log(
+      "📊 [getExamByRoom] Query result:",
+      result ? `Exam ID: ${result.id}` : "Not found"
+    );
+    return result;
   } catch (e) {
-    console.error('[getExamByRoom] query error', e);
+    console.error("[getExamByRoom] query error", e);
     return null;
   }
 };
@@ -146,7 +145,7 @@ router.post("/verify-otp", async (req, res) => {
 
     const emailKey = email.toLowerCase().trim();
     const otpData = otpStorage.get(emailKey);
-    
+
     if (!otpData) {
       return res.status(400).json({
         message: "Mã OTP không tồn tại hoặc đã hết hạn",
@@ -299,6 +298,40 @@ router.post("/google", async (req, res) => {
           exam_room_code: exam.exam_room_code,
         });
         console.log("[Google Login] ➕ Tự động liên kết user với phòng thi.");
+      }
+
+      // Kiểm tra số lượt thi sau khi đăng nhập
+      const sequelize = require("../config/db");
+      const [maxAttemptsRows] = await sequelize.query(
+        `SELECT max_attempts FROM exams WHERE id = ? LIMIT 1`,
+        { replacements: [exam.id] }
+      );
+      const maxAttempts = maxAttemptsRows[0]?.max_attempts || 0;
+
+      if (maxAttempts > 0) {
+        const [attemptRows] = await sequelize.query(
+          `SELECT COUNT(*) as attempt_count FROM submissions WHERE exam_id = ? AND user_id = ?`,
+          { replacements: [exam.id, user.id] }
+        );
+        const currentAttempts = attemptRows[0]?.attempt_count || 0;
+
+        console.log(`[Google Login] 🔢 Kiểm tra lượt thi: ${currentAttempts}/${maxAttempts} cho exam ${exam.id}`);
+
+        if (currentAttempts >= maxAttempts) {
+          console.log(`[Google Login] ❌ Đã hết lượt thi: ${currentAttempts}/${maxAttempts}`);
+          const token = generateToken(user);
+          return res.status(403).json({
+            message: `Bạn đã hết lượt thi. Số lần thi tối đa: ${maxAttempts}`,
+            status: "error",
+            reason: "max_attempts_exceeded",
+            max_attempts: maxAttempts,
+            current_attempts: currentAttempts,
+            exam_id: exam.id,
+            exam_title: exam.title,
+            token,
+            user: { id: user.id, full_name: user.full_name, role: user.role }
+          });
+        }
       }
     }
 
@@ -534,7 +567,8 @@ router.post("/login", async (req, res) => {
     if (user.is_locked) {
       console.log(`[Login] ❌ Tài khoản bị khóa: ${email}`);
       return res.status(403).json({
-        message: "Tài khoản đã bị khóa do nhập sai mật khẩu quá 5 lần. Vui lòng sử dụng chức năng 'Quên mật khẩu' để khôi phục.",
+        message:
+          "Tài khoản đã bị khóa do nhập sai mật khẩu quá 5 lần. Vui lòng sử dụng chức năng 'Quên mật khẩu' để khôi phục.",
         status: "error",
       });
     }
@@ -548,17 +582,22 @@ router.post("/login", async (req, res) => {
 
       if (newAttempts >= 5) {
         updateData.is_locked = true;
-        message = "Tài khoản đã bị khóa do nhập sai mật khẩu quá 5 lần. Vui lòng sử dụng chức năng 'Quên mật khẩu' để khôi phục.";
+        message =
+          "Tài khoản đã bị khóa do nhập sai mật khẩu quá 5 lần. Vui lòng sử dụng chức năng 'Quên mật khẩu' để khôi phục.";
       } else {
-        message = `Mật khẩu không chính xác. Bạn còn ${5 - newAttempts} lần thử.`;
+        message = `Mật khẩu không chính xác. Bạn còn ${
+          5 - newAttempts
+        } lần thử.`;
       }
 
       await user.update(updateData);
 
-      console.log(`[Login] ❌ Sai mật khẩu cho tài khoản: ${email}. Attempts: ${newAttempts}`);
-      
+      console.log(
+        `[Login] ❌ Sai mật khẩu cho tài khoản: ${email}. Attempts: ${newAttempts}`
+      );
+
       if (newAttempts >= 5) {
-         return res.status(403).json({
+        return res.status(403).json({
           message: message,
           status: "error",
         });
@@ -622,6 +661,40 @@ router.post("/login", async (req, res) => {
           `[Login] ✅ Học viên đã có liên kết phòng thi: ${exam.exam_room_code}`
         );
       }
+
+      // Kiểm tra số lượt thi
+      const sequelize = require("../config/db");
+      const [maxAttemptsRows] = await sequelize.query(
+        `SELECT max_attempts FROM exams WHERE id = ? LIMIT 1`,
+        { replacements: [exam.id] }
+      );
+      const maxAttempts = maxAttemptsRows[0]?.max_attempts || 0;
+
+      if (maxAttempts > 0) {
+        const [attemptRows] = await sequelize.query(
+          `SELECT COUNT(*) as attempt_count FROM submissions WHERE exam_id = ? AND user_id = ?`,
+          { replacements: [exam.id, user.id] }
+        );
+        const currentAttempts = attemptRows[0]?.attempt_count || 0;
+
+        console.log(`[Login] 🔢 Kiểm tra lượt thi: ${currentAttempts}/${maxAttempts} cho exam ${exam.id}`);
+
+        if (currentAttempts >= maxAttempts) {
+          console.log(`[Login] ❌ Đã hết lượt thi: ${currentAttempts}/${maxAttempts}`);
+          const token = generateToken(user);
+          return res.status(403).json({
+            message: `Bạn đã hết lượt thi. Số lần thi tối đa: ${maxAttempts}`,
+            status: "error",
+            reason: "max_attempts_exceeded",
+            max_attempts: maxAttempts,
+            current_attempts: currentAttempts,
+            exam_id: exam.id,
+            exam_title: exam.title,
+            token,
+            user: { id: user.id, full_name: user.full_name, role: user.role }
+          });
+        }
+      }
     }
 
     const token = generateToken(user);
@@ -673,7 +746,10 @@ router.get("/verify-room/:code", async (req, res) => {
       return res.json({ valid: false, message: "Mã phòng không hợp lệ" });
     }
     if (String(exam.status) !== "published") {
-      return res.json({ valid: false, message: "Phòng thi chưa được kích hoạt" });
+      return res.json({
+        valid: false,
+        message: "Phòng thi chưa được kích hoạt",
+      });
     }
 
     return res.json({
@@ -780,10 +856,10 @@ router.post("/reset-password", async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await user.update({ 
+    await user.update({
       password_hash: hashedPassword,
       failed_login_attempts: 0,
-      is_locked: false
+      is_locked: false,
     });
 
     otpStorage.delete(emailKey);

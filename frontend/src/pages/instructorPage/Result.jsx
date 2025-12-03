@@ -793,10 +793,24 @@ export default function Result() {
     const newTotalScore = Number(r.total_score ?? 0);
     const newAiScore = Number(r.ai_score ?? 0);
 
+    // Validation 0: Không cho điểm âm
+    if (newTotalScore < 0 || newAiScore < 0) {
+      setScoreError("❌ Điểm không được là số âm!");
+      showToast("error", "Điểm không được là số âm!");
+      return;
+    }
+
     // Validation 1: Không cho điểm > 10
     if (newTotalScore > 10 || newAiScore > 10) {
       setScoreError("❌ Điểm không được vượt quá 10!");
       showToast("error", "Điểm không được vượt quá 10!");
+      return;
+    }
+
+    // Validation 1.5: Điểm phải từ 0.1-10 (không cho 0 hoặc quá nhỏ)
+    if ((newTotalScore > 0 && newTotalScore < 0.1) || (newAiScore > 0 && newAiScore < 0.1)) {
+      setScoreError("❌ Điểm phải từ 0.1 đến 10 (hoặc để 0 nếu không có điểm)!");
+      showToast("error", "Điểm phải từ 0.1 đến 10!");
       return;
     }
 
@@ -1576,23 +1590,37 @@ export default function Result() {
                             <input
                               type="number"
                               step="0.1"
-                              min="0"
+                              min="0.1"
                               max="10"
                               className="w-full text-2xl font-bold text-slate-900 bg-transparent border-none focus:outline-none"
                               value={drawer.row.total_score ?? 0}
                               onChange={(e) => {
                                 const val = e.target.value;
-                                setDrawer((d) => ({
-                                  ...d,
-                                  row: { ...d.row, total_score: val },
-                                }));
-                                if (Number(val) > 10) {
+                                const num = Number(val);
+                                
+                                // Kiểm tra số âm
+                                if (num < 0) {
+                                  setScoreError("❌ Điểm MCQ không được là số âm!");
+                                  return;
+                                }
+                                
+                                // Kiểm tra vượt quá 10
+                                if (num > 10) {
                                   setScoreError(
-                                    "❌ Điểm MCQ không được vượt quá 10!"
+                                    "❌ Điểm MCQ phải từ 0.1 đến 10!"
+                                  );
+                                } else if (val !== "" && num > 0 && num < 0.1) {
+                                  setScoreError(
+                                    "❌ Điểm MCQ tối thiểu là 0.1!"
                                   );
                                 } else {
                                   setScoreError("");
                                 }
+                                
+                                setDrawer((d) => ({
+                                  ...d,
+                                  row: { ...d.row, total_score: val },
+                                }));
                               }}
                             />
                           </div>
@@ -1609,23 +1637,37 @@ export default function Result() {
                             <input
                               type="number"
                               step="0.1"
-                              min="0"
+                              min="0.1"
                               max="10"
                               className="w-full text-2xl font-bold text-slate-900 bg-transparent border-none focus:outline-none"
                               value={drawer.row.ai_score ?? 0}
                               onChange={(e) => {
                                 const val = e.target.value;
-                                setDrawer((d) => ({
-                                  ...d,
-                                  row: { ...d.row, ai_score: val },
-                                }));
-                                if (Number(val) > 10) {
+                                const num = Number(val);
+                                
+                                // Kiểm tra số âm
+                                if (num < 0) {
+                                  setScoreError("❌ Điểm AI không được là số âm!");
+                                  return;
+                                }
+                                
+                                // Kiểm tra vượt quá 10
+                                if (num > 10) {
                                   setScoreError(
-                                    "❌ Điểm AI không được vượt quá 10!"
+                                    "❌ Điểm AI phải từ 0.1 đến 10!"
+                                  );
+                                } else if (val !== "" && num > 0 && num < 0.1) {
+                                  setScoreError(
+                                    "❌ Điểm AI tối thiểu là 0.1!"
                                   );
                                 } else {
                                   setScoreError("");
                                 }
+                                
+                                setDrawer((d) => ({
+                                  ...d,
+                                  row: { ...d.row, ai_score: val },
+                                }));
                               }}
                             />
                           </div>
