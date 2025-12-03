@@ -912,6 +912,28 @@ export default function Result() {
     });
   };
 
+  const deleteStudentExam = async (row) => {
+    if (!examId || !row.student_id) return;
+
+    const message = `⚠️ Xóa bài thi của "${row.student_name}"?\n\nHành động này không thể hoàn tác!`;
+
+    showConfirm(message, async () => {
+      try {
+        await axiosClient.delete(
+          `/instructor/exams/${examId}/students/${row.student_id}`
+        );
+
+        showToast("success", `✅ Đã xóa bài thi!`);
+
+        load(examId);
+      } catch (err) {
+        const errorMsg =
+          err?.response?.data?.message || "Lỗi khi xóa bài thi!";
+        showToast("error", `❌ ${errorMsg}`);
+      }
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/40">
       {/* Animated background blobs */}
@@ -1203,11 +1225,12 @@ export default function Result() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            openDrawer(r);
+                            deleteStudentExam(r);
                           }}
-                          className="rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 text-white px-4 py-2 shadow-lg hover:shadow-xl transition-all hover:scale-[1.05] font-medium"
+                          className="rounded-lg bg-gradient-to-br from-red-500 to-red-600 text-white px-3 py-2 shadow-lg hover:shadow-xl transition-all hover:scale-[1.05] font-medium text-sm"
+                          title="Xóa bài thi của sinh viên này"
                         >
-                          ✏️ Edit
+                          Xóa
                         </button>
                       </td>
                     </tr>
@@ -1337,6 +1360,19 @@ export default function Result() {
                       )}
                     </div>
                     <div className="ml-auto">{StatusPill(r.status)}</div>
+                  </div>
+
+                  {/* Action Button */}
+                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteStudentExam(r);
+                      }}
+                      className="w-full rounded-lg bg-gradient-to-br from-red-500 to-red-600 text-white px-3 py-2 shadow-lg hover:shadow-xl transition-all font-medium text-sm"
+                    >
+                      Xóa bài thi
+                    </button>
                   </div>
                 </div>
               ))
