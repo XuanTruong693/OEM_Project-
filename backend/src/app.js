@@ -3,6 +3,8 @@ const express = require("express");
 const cors = require("cors");
 const sequelize = require("./config/db");
 const path = require("path");
+const http = require("http");
+const { initializeSocket } = require("./services/socketService");
 const authRoutes = require("./routes/authRoutes");
 const examRoomRoutes = require("./routes/examRoomRoutes");
 const instructorRoutes = require("./routes/instructorRoutes");
@@ -85,8 +87,13 @@ sequelize
   .then(() => {
     console.log("✅ DB connected successfully");
     if (process.env.NODE_ENV !== "test") {
-      app.listen(PORT, () => {
-      console.log(`🚀 Server running at http://localhost:${PORT}`);
+      // ✅ Tạo HTTP server và khởi tạo Socket.IO
+      const httpServer = http.createServer(app);
+      initializeSocket(httpServer);
+
+      httpServer.listen(PORT, () => {
+        console.log(`🚀 Server running at http://localhost:${PORT}`);
+        console.log(`🔌 WebSocket server initialized`);
       });
     }
   })

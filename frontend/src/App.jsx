@@ -37,6 +37,7 @@ import PublishedResultsList from "./pages/instructorPage/PublishedResultsList.js
 import Result from "./pages/instructorPage/Result.jsx";
 import Setting from "./pages/instructorPage/Setting.jsx";
 import EditExam from "./pages/instructorPage/EditExam.jsx";
+import InstructorOverlay from "./pages/instructorPage/InstructorOverlay.jsx";
 
 import StudentDashboard from "./pages/studentPage/StudentDashboard.jsx";
 import PrepareExam from "./pages/studentPage/PrepareExam.jsx";
@@ -47,6 +48,7 @@ import SupportPage from "./pages/studentPage/SupportPage.jsx";
 
 import InstructorSidebar from "./components/instructor/InstructorSidebar.jsx";
 import { UiProvider } from "./context/UiContext.jsx";
+import { ExamProvider } from "./context/ExamContext.jsx";
 import Profile from "./pages/instructorPage/Profile.jsx"; // Shared for both roles
 
 import AdminDashboard from "./pages/adminPage/AdminDashboard.jsx";
@@ -73,6 +75,7 @@ function InstructorLayout() {
       <div className="flex h-screen bg-gray-50 overflow-hidden">
         <InstructorSidebar />
         <main className="flex-1 overflow-y-auto p-6 bg-gray-50">
+          <InstructorOverlay />
           <Outlet />
         </main>
       </div>
@@ -82,73 +85,74 @@ function InstructorLayout() {
 
 const App = () => {
   return (
-    <Router>
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <Layout>
-              <LandingPage />
-            </Layout>
-          }
-        />
-        <Route
-          path="/ve-chung-toi"
-          element={
-            <Layout>
-              <AboutUs />
-            </Layout>
-          }
-        />
-        <Route
-          path="/tinh-nang"
-          element={
-            <Layout>
-              <Features />
-            </Layout>
-          }
-        />
-        <Route
-          path="/tin-tuc"
-          element={
-            <Layout>
-              <News />
-            </Layout>
-          }
-        />
-        <Route
-          path="/lien-he"
-          element={
-            <Layout>
-              <Contract />
-            </Layout>
-          }
-        />
-        <Route
-          path="/student-dashboard"
-          element={
-            <ProtectedRoute requiredRole="student">
-              <StudentDashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin-dashboard"
-          element={
-            <ProtectedRoute requiredRole="admin">
-              <AdminDashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="/role" element={<RolePage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route path="/verify-room" element={<VerifyRoom />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/verify-email" element={<VerifyEmail />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
+    <ExamProvider>
+      <Router>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <Layout>
+                <LandingPage />
+              </Layout>
+            }
+          />
+          <Route
+            path="/ve-chung-toi"
+            element={
+              <Layout>
+                <AboutUs />
+              </Layout>
+            }
+          />
+          <Route
+            path="/tinh-nang"
+            element={
+              <Layout>
+                <Features />
+              </Layout>
+            }
+          />
+          <Route
+            path="/tin-tuc"
+            element={
+              <Layout>
+                <News />
+              </Layout>
+            }
+          />
+          <Route
+            path="/lien-he"
+            element={
+              <Layout>
+                <Contract />
+              </Layout>
+            }
+          />
+          <Route
+            path="/student-dashboard"
+            element={
+              <ProtectedRoute requiredRole="student">
+                <StudentDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin-dashboard"
+            element={
+              <ProtectedRoute requiredRole="admin">
+                <AdminDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/role" element={<RolePage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/verify-room" element={<VerifyRoom />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
-        {/* <Route
+          {/* <Route
           path="/student-dashboard"
           element={
             <ProtectedRoute requiredRole="student">
@@ -157,88 +161,98 @@ const App = () => {
           }
         /> */}
 
-        <Route
-          element={
-            <ProtectedRoute requiredRole="instructor">
-              <InstructorLayout />
-            </ProtectedRoute>
-          }
-        >
           <Route
-            path="/instructor-dashboard"
-            element={<InstructorDashboard />}
+            element={
+              <ProtectedRoute requiredRole="instructor">
+                <InstructorLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route
+              path="/instructor-dashboard"
+              element={<InstructorDashboard />}
+            />
+            <Route
+              path="/instructor-dashboard/exams"
+              element={<InstructorExamsList />}
+            />
+            <Route
+              path="/instructor-dashboard/submissions"
+              element={<InstructorSubmissionsList />}
+            />
+            <Route
+              path="/instructor-dashboard/students"
+              element={<InstructorStudentsList />}
+            />
+            <Route path="/exam-bank" element={<ExamBank />} />
+            <Route path="/assign-exam" element={<AssignExam />} />
+            <Route path="/open-exam" element={<OpenExam />} />
+            <Route path="/exam-settings/:examId" element={<ExamSettings />} />
+            <Route path="/exams/:examId/preview" element={<ExamPreview />} />
+            <Route path="/open-success/:examId" element={<OpenRoomSuccess />} />
+            <Route path="/results-exams" element={<PublishedResultsList />} />
+            <Route path="/result" element={<Result />} />
+            <Route path="/setting" element={<Setting />} />
+            <Route path="/instructor/exams/:id/edit" element={<EditExam />} />
+          </Route>
+
+          <Route
+            path="/student-dashboard/results"
+            element={
+              <ProtectedRoute requiredRole="student">
+                <ResultsDashboard />
+              </ProtectedRoute>
+            }
           />
-          <Route path="/instructor-dashboard/exams" element={<InstructorExamsList />} />
-          <Route path="/instructor-dashboard/submissions" element={<InstructorSubmissionsList />} />
-          <Route path="/instructor-dashboard/students" element={<InstructorStudentsList />} />
-          <Route path="/exam-bank" element={<ExamBank />} />
-          <Route path="/assign-exam" element={<AssignExam />} />
-          <Route path="/open-exam" element={<OpenExam />} />
-          <Route path="/exam-settings/:examId" element={<ExamSettings />} />
-          <Route path="/exams/:examId/preview" element={<ExamPreview />} />
-          <Route path="/open-success/:examId" element={<OpenRoomSuccess />} />
-          <Route path="/results-exams" element={<PublishedResultsList />} />
-          <Route path="/result" element={<Result />} />
-          <Route path="/setting" element={<Setting />} />
-          <Route path="/instructor/exams/:id/edit" element={<EditExam />} />
-        </Route>
 
-        <Route
-          path="/student-dashboard/results"
-          element={
-            <ProtectedRoute requiredRole="student">
-              <ResultsDashboard />
-            </ProtectedRoute>
-          }
-        />
-        
-        <Route
-          path="/student-dashboard/guidelines"
-          element={
-            <ProtectedRoute requiredRole="student">
-              <ExamGuidelines />
-            </ProtectedRoute>
-          }
-        />
+          <Route
+            path="/student-dashboard/guidelines"
+            element={
+              <ProtectedRoute requiredRole="student">
+                <ExamGuidelines />
+              </ProtectedRoute>
+            }
+          />
 
-        <Route
-          path="/student-dashboard/support"
-          element={
-            <ProtectedRoute requiredRole="student">
-              <SupportPage />
-            </ProtectedRoute>
-          }
-        />
+          <Route
+            path="/student-dashboard/support"
+            element={
+              <ProtectedRoute requiredRole="student">
+                <SupportPage />
+              </ProtectedRoute>
+            }
+          />
 
-        <Route
-          path="/profile"
-          element={
-            <ProtectedRoute>
-              <Profile />
-            </ProtectedRoute>
-          }
-        />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <Profile />
+              </ProtectedRoute>
+            }
+          />
 
-        <Route
-          path="/exam/:examId/prepare"
-          element={
-            <ProtectedRoute requiredRole="student">
-              <PrepareExam />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/exam/:examId/take"
-          element={
-            <ProtectedRoute requiredRole="student">
-              <TakeExam />
-            </ProtectedRoute>
-          }
-        />
+          <Route
+            path="/exam/:examId/prepare"
+            element={
+              <ProtectedRoute requiredRole="student">
+                <PrepareExam />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/exam/:examId/take"
+            element={
+              <ProtectedRoute requiredRole="student">
+                <TakeExam />
+              </ProtectedRoute>
+            }
+          />
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Router>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Router>
+    </ExamProvider>
   );
 };
 

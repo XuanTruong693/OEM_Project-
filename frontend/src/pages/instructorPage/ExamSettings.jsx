@@ -1,6 +1,7 @@
 import React from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
+import { useExamContext } from "../../context/ExamContext";
 
 const Label = ({ children }) => (
   <label className="text-sm text-slate-600">{children}</label>
@@ -42,8 +43,12 @@ const SectionCard = ({ icon, title, subtitle, children }) => (
           {icon}
         </div>
         <div>
-          <h2 className="font-semibold text-slate-800 leading-tight">{title}</h2>
-          {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
+          <h2 className="font-semibold text-slate-800 leading-tight">
+            {title}
+          </h2>
+          {subtitle && (
+            <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>
+          )}
         </div>
       </div>
     </div>
@@ -58,7 +63,9 @@ const ModeSwitch = ({ combined, setCombined }) => (
       <button
         onClick={() => setCombined(true)}
         className={`px-3 py-1.5 rounded-lg transition ${
-          combined ? "bg-white text-blue-700 shadow-sm" : "text-slate-600 hover:text-slate-800"
+          combined
+            ? "bg-white text-blue-700 shadow-sm"
+            : "text-slate-600 hover:text-slate-800"
         }`}
       >
         Chung
@@ -66,7 +73,9 @@ const ModeSwitch = ({ combined, setCombined }) => (
       <button
         onClick={() => setCombined(false)}
         className={`px-3 py-1.5 rounded-lg transition ${
-          !combined ? "bg-white text-blue-700 shadow-sm" : "text-slate-600 hover:text-slate-800"
+          !combined
+            ? "bg-white text-blue-700 shadow-sm"
+            : "text-slate-600 hover:text-slate-800"
         }`}
       >
         Theo tab
@@ -95,13 +104,23 @@ const Tabs = ({ tab, setTab }) => (
   </div>
 );
 
-const Page = ({ children, examId, nav, combined, setCombined, submitting, submit }) => (
+const Page = ({
+  children,
+  examId,
+  nav,
+  combined,
+  setCombined,
+  submitting,
+  submit,
+}) => (
   <div className="min-h-screen bg-slate-50">
     {/* Sticky header */}
     <header className="sticky top-0 z-20 backdrop-blur supports-[backdrop-filter]:bg-white/70 bg-white/90 border-b border-slate-200">
       <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h1 className="text-lg md:text-xl font-semibold text-slate-800">Cấu hình phòng thi</h1>
+          <h1 className="text-lg md:text-xl font-semibold text-slate-800">
+            Cấu hình phòng thi
+          </h1>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -112,7 +131,7 @@ const Page = ({ children, examId, nav, combined, setCombined, submitting, submit
             Xem lại đề
           </button>
           <button
-            onClick={() => nav('/open-exam')}
+            onClick={() => nav("/open-exam")}
             className="hidden md:inline-flex items-center gap-2 rounded-xl px-3 py-2 border border-slate-200 text-slate-700 hover:border-blue-300 hover:text-blue-700"
             title="Quay lại danh sách đề"
           >
@@ -147,9 +166,10 @@ const Page = ({ children, examId, nav, combined, setCombined, submitting, submit
 
 export default function ExamSettings() {
   const { examId } = useParams();
+  const { setActiveExamId } = useExamContext();
   const nav = useNavigate();
   const [tab, setTab] = React.useState("overview");
-  const [combined, setCombined] = React.useState(true); 
+  const [combined, setCombined] = React.useState(true);
   const [form, setForm] = React.useState({
     duration: 60,
     duration_minutes: 60,
@@ -166,6 +186,14 @@ export default function ExamSettings() {
   const [notice, setNotice] = React.useState(null);
 
   const onChange = (k, v) => setForm((s) => ({ ...s, [k]: v }));
+
+  // ===== Set active exam ID in context =====
+  React.useEffect(() => {
+    if (examId) {
+      console.log(`📍 [ExamSettings] Setting activeExamId: ${examId}`);
+      setActiveExamId(parseInt(examId));
+    }
+  }, [examId, setActiveExamId]);
 
   const nowLocal = () => {
     const d = new Date();
@@ -220,7 +248,10 @@ export default function ExamSettings() {
       const toISO = (s) => new Date(s).toISOString();
       payload.time_open = toISO(form.time_open);
       payload.time_close = toISO(form.time_close);
-      const res = await axiosClient.post(`/instructor/exams/${examId}/open`, payload);
+      const res = await axiosClient.post(
+        `/instructor/exams/${examId}/open`,
+        payload
+      );
       const code = res.data?.exam_room_code || "";
       setRoom(code);
       setNotice("Mở phòng thành công. Đang chuyển...");
@@ -235,14 +266,25 @@ export default function ExamSettings() {
   // các component con đã chuyển ra ngoài để tránh remount
 
   return (
-    <Page examId={examId} nav={nav} combined={combined} setCombined={setCombined} submitting={submitting} submit={submit}>
+    <Page
+      examId={examId}
+      nav={nav}
+      combined={combined}
+      setCombined={setCombined}
+      submitting={submitting}
+      submit={submit}
+    >
       {!combined && <Tabs tab={tab} setTab={setTab} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Left (main) */}
         <div className="lg:col-span-2 space-y-4">
           {(combined || tab === "overview") && (
-            <SectionCard icon="⚙️" title="Tổng quan" subtitle="Cấu hình thời lượng và khung giờ mở/đóng phòng">
+            <SectionCard
+              icon="⚙️"
+              title="Tổng quan"
+              subtitle="Cấu hình thời lượng và khung giờ mở/đóng phòng"
+            >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label>Duration (phút)</Label>
@@ -257,7 +299,9 @@ export default function ExamSettings() {
                   <Input
                     type="number"
                     value={form.duration_minutes}
-                    onChange={(e) => onChange("duration_minutes", e.target.value)}
+                    onChange={(e) =>
+                      onChange("duration_minutes", e.target.value)
+                    }
                   />
                 </div>
                 <div className="md:col-span-2">
@@ -291,12 +335,20 @@ export default function ExamSettings() {
           )}
 
           {(combined || tab === "anti") && (
-            <SectionCard icon="🛡️" title="Chống gian lận" subtitle="Thiết lập xác minh danh tính và kiểm soát môi trường làm bài">
+            <SectionCard
+              icon="🛡️"
+              title="Chống gian lận"
+              subtitle="Thiết lập xác minh danh tính và kiểm soát môi trường làm bài"
+            >
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium text-slate-800">Yêu cầu xác minh khuôn mặt</div>
-                    <div className="text-sm text-slate-500">Bật xác minh bằng ảnh khuôn mặt trước khi vào thi</div>
+                    <div className="font-medium text-slate-800">
+                      Yêu cầu xác minh khuôn mặt
+                    </div>
+                    <div className="text-sm text-slate-500">
+                      Bật xác minh bằng ảnh khuôn mặt trước khi vào thi
+                    </div>
                   </div>
                   <Toggle
                     checked={form.require_face_check}
@@ -305,8 +357,12 @@ export default function ExamSettings() {
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium text-slate-800">Yêu cầu xác minh thẻ SV</div>
-                    <div className="text-sm text-slate-500">Tải ảnh thẻ sinh viên để đối chiếu</div>
+                    <div className="font-medium text-slate-800">
+                      Yêu cầu xác minh thẻ SV
+                    </div>
+                    <div className="text-sm text-slate-500">
+                      Tải ảnh thẻ sinh viên để đối chiếu
+                    </div>
                   </div>
                   <Toggle
                     checked={form.require_student_card}
@@ -315,8 +371,12 @@ export default function ExamSettings() {
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium text-slate-800">Theo dõi màn hình</div>
-                    <div className="text-sm text-slate-500">Yêu cầu fullscreen, ghi nhận rời tab/thoát toàn màn hình</div>
+                    <div className="font-medium text-slate-800">
+                      Theo dõi màn hình
+                    </div>
+                    <div className="text-sm text-slate-500">
+                      Yêu cầu fullscreen, ghi nhận rời tab/thoát toàn màn hình
+                    </div>
                   </div>
                   <Toggle
                     checked={form.monitor_screen}
@@ -332,7 +392,9 @@ export default function ExamSettings() {
         <aside className="space-y-4">
           <section className="bg-gradient-to-br from-sky-50 to-indigo-50 border border-slate-200 rounded-2xl p-4">
             <div className="flex items-start gap-3">
-              <div className="h-9 w-9 rounded-xl grid place-items-center bg-white text-indigo-600 shadow-sm">ℹ️</div>
+              <div className="h-9 w-9 rounded-xl grid place-items-center bg-white text-indigo-600 shadow-sm">
+                ℹ️
+              </div>
               <div>
                 <div className="font-medium text-slate-800">Mẹo</div>
                 <ul className="mt-1 text-sm text-slate-600 list-disc list-inside space-y-1">
@@ -345,13 +407,25 @@ export default function ExamSettings() {
           </section>
 
           {(err || notice) && (
-            <section className={`${err ? "bg-rose-50" : "bg-emerald-50"} border border-slate-200 rounded-2xl p-4`}>
+            <section
+              className={`${
+                err ? "bg-rose-50" : "bg-emerald-50"
+              } border border-slate-200 rounded-2xl p-4`}
+            >
               <div className="flex items-start gap-3">
-                <div className={`h-9 w-9 rounded-xl grid place-items-center ${
-                  err ? "bg-white text-rose-600" : "bg-white text-emerald-600"
-                } shadow-sm`}>{err ? "⚠️" : "✅"}</div>
+                <div
+                  className={`h-9 w-9 rounded-xl grid place-items-center ${
+                    err ? "bg-white text-rose-600" : "bg-white text-emerald-600"
+                  } shadow-sm`}
+                >
+                  {err ? "⚠️" : "✅"}
+                </div>
                 <div>
-                  <div className={`font-medium ${err ? "text-rose-700" : "text-emerald-700"}`}>
+                  <div
+                    className={`font-medium ${
+                      err ? "text-rose-700" : "text-emerald-700"
+                    }`}
+                  >
                     {err ? "Có lỗi xảy ra" : "Thành công"}
                   </div>
                   <p className="text-sm text-slate-700 mt-1">{err || notice}</p>
@@ -361,7 +435,9 @@ export default function ExamSettings() {
           )}
 
           <section className="bg-white border border-slate-200 rounded-2xl p-4">
-            <div className="text-sm text-slate-600">Kiểm tra kỹ cấu hình trước khi mở phòng.</div>
+            <div className="text-sm text-slate-600">
+              Kiểm tra kỹ cấu hình trước khi mở phòng.
+            </div>
             <button
               disabled={submitting}
               onClick={submit}

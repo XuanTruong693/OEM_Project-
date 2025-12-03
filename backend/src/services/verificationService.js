@@ -65,6 +65,20 @@ async function callPythonVerify(action, data) {
       
       if (code !== 0) {
         console.error(`[Python ${action}] ❌ Lỗi (${elapsed}s):`, stderr);
+        
+        // Detect specific Python environment issues
+        if (stderr.includes("numpy.dtype size changed") || stderr.includes("binary incompatibility")) {
+          const msg = `🔧 Python Environment Issue: numpy/pandas version mismatch. Run: pip install --upgrade --force-reinstall numpy pandas`;
+          console.error(`[Python ${action}] ${msg}`);
+          return reject(new Error(msg));
+        }
+        
+        if (stderr.includes("ModuleNotFoundError") || stderr.includes("ImportError")) {
+          const msg = `🔧 Python Missing Dependencies: ${stderr.match(/ModuleNotFoundError.*|ImportError.*/)?.[0] || "Unknown module"}. Run: pip install -r requirements.txt`;
+          console.error(`[Python ${action}] ${msg}`);
+          return reject(new Error(msg));
+        }
+        
         return reject(new Error(`Python process exited with code ${code}: ${stderr}`));
       }
 
