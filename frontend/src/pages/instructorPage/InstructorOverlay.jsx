@@ -161,45 +161,43 @@ export default function InstructorOverlay() {
     };
   }, [examIds, examId]);
 
-  // ===== Play Alarm Sound =====
   const playAlarmSound = () => {
-    // Tạo beep sound bằng Web Audio API
     try {
-      const audioContext = new (window.AudioContext ||
-        window.webkitAudioContext)();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
+      const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYJGGS56+efTgwOUKPh8LNiHAU2j9TwynosBSx+zPLaizsKFlm46+mjUhELTKXh8LVjHwU0kNXwynosBSx+zPHbi0ILFWa46umkVBQLTavp8Ldl5wU4ktXxzYQ1BzGB0/HbikMLFluz7emkUxMLTKjr8bhmIAU7lNnwyXo0BTuA0fLciUQNFl215+mjUhMLTKfq8LVl5gU6kdXwzIU1BTuA0PLbiUUNFl616umjUhMMSann8rZmIQU6ktbxzYYzBz2C1fLej0YOFmG37emjUhMLSqno8rZmIgU6ktbxy4U1BTuA0PLciUUNFly16+mjURMMSajm8rVmIgU6ktbxy4YzCDyB0/LdjkcNFl616+mjURMMSajm8bVmIQU6ktbxyoU1BTx/0fLciUUNFly16+mjURMMS6jo8rVmIwU5kdbxy4U1BTuA0fHbikUNFl+47OmjUxMMSqnn8rZnIgU7lNbxy4YzBzuB0/HaikYNFl6z6+ijUhMMSqnn8bVnIQU6ktXxyoU1BTx/0fHbiUUNFly06+ijUhMMSqno8rVnIwU5k9bxy4UzBzuB0/LajkYOFl216+ijUhMMSanm8bVmIgU7lNbxyoUzBzx/0fHbiUQOFlu06+mjUhMMSqnn87VnIwU5k9bxy4UzBzyA0vLbjkUOFl206+mjUhMMSanm8bVmIwU6k9bxyoU0Bzx+0PHaikQOFluz6+mjUhMLSqnn8rZnIgU7k9bxyoUzBzx/0fHaiUQOFlu06+mjUxMMSajm8rVnIQU6k9bwyoU0Bzx/0PHajkQOFluz6+mjUhMMSanm8rZnIgU7k9bxy4UzBzyA0/LajkUOFl206+mjUhMMSanm8rZnIgU6k9bxyoUzBzx/0fHaiUQOFlu06+mjUhMLSqnn8rZnIwU6k9bwyoU0Bzx/0fHaikQOFl206+mjUhMMSanm8bVnIgU7k9bxyoU0Bzt/0fHaikQOFl206+mjUhMLSajm8rZnIgU7k9bxy4UzBzx/0fLajkQOFly16+mjUhMLSajm8rZnIgU7k9bxy4UzBzx/0fLajkQOFl206+mjUhMLSajm8bVnIgU7k9bxy4UzBzx/0fLajkQOFl206+mjUhMLSajm8rZnIgU6k9bxy4UzBzx/0fHaikQOFl206+mjUhMLSajm8rZnIgU6k9bxyoU0Bzt+0fHaiUQOFl206+ijUhMLSajm8bVnIgU7k9bxy4UzBzx/0fHajkQOFl206+mjUhMLSajm8bVnIgU7k9bxy4UzBzx/0fHajkQOFly16+mjUhMLSajm8bVnIgU7k9bxy4UzBzx/0fHajkUOFly16+mjUhMLSajm8bVnIgU7k9bxy4UzBzx/0fHajkQOFly16+mjUhMLSajm8rZnIgU7k9bxy4UzBzx/0fHaikQOFl206+mjUhMLSajm8rZnIgU6k9bxy4UzBzx/0fHaikQOFl206+mjUhMLSajm8rZnIgU6k9bxyoUzBzx/0fHaikQOFl206+mjUhMLSajm8rZnIgU6k9bxyoU0Bzt/0fHaikQOFly16+mjUhMLSajm8rZnIgU6k9bxyoUzBzx/0fHajkQOFl206+mjUhMLSajm8rZnIgU6k9bxyoUzBzx/0fHajkQOFl206+mjUhMLSajm8rZnIgU6k9bxyoUzBzx/0fHajkQOFl206+mjUhMLSajm8rZnIgU6k9bxyoUzBzx/0fHajkQOFl206+mjUhMLSajm8rZnIgU6k9bxyoUzBzx/0fHajkQOFl206+mjUhMLSajm8rZnIgU6k9bxy4UzBzx/0fHaikUOFly16+mjUhMLSajm8rZnIgU6k9bxy4UzBzx/0fHaikUOFl206+mjUhMLSajm8rZnIgU6k9bxy4UzBzx/0fHajkUOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkUOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkUOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fLajkUOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fLajkUOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fLajkUOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fLajkUOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fLajkUOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fLajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fLajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fLajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fLajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkQO');
+  
+      let playCount = 0;
+      const maxPlays = 12; 
+      
+      const playBeep = () => {
+        if (playCount < maxPlays) {
+          audio.currentTime = 0;
+          audio.play().catch(e => console.log('Audio play failed:', e));
+          playCount++;
+          setTimeout(playBeep, 400); 
+        }
+      };
+      
+      playBeep();
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const duration = 5; 
+      const beepInterval = 0.4;
+      const beepCount = Math.floor(duration / beepInterval);
 
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-
-      // Cài đặt âm thanh: tần số cao, thời lượng ngắn, âm thanh lặp
-      oscillator.frequency.value = 800; // Tần số cao (Hz)
-      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(
-        0.01,
-        audioContext.currentTime + 0.5
-      );
-
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.5);
-
-      // Phát 3 tiếng beep
-      for (let i = 1; i < 3; i++) {
+      for (let i = 0; i < beepCount; i++) {
         const osc = audioContext.createOscillator();
         const gain = audioContext.createGain();
         osc.connect(gain);
         gain.connect(audioContext.destination);
 
-        osc.frequency.value = 800;
-        gain.gain.setValueAtTime(0.3, audioContext.currentTime + i * 0.6);
+        osc.frequency.value = 600;
+        gain.gain.setValueAtTime(0.5, audioContext.currentTime + i * beepInterval);
         gain.gain.exponentialRampToValueAtTime(
           0.01,
-          audioContext.currentTime + i * 0.6 + 0.5
+          audioContext.currentTime + i * beepInterval + 0.3
         );
 
-        osc.start(audioContext.currentTime + i * 0.6);
-        osc.stop(audioContext.currentTime + i * 0.6 + 0.5);
+        osc.start(audioContext.currentTime + i * beepInterval);
+        osc.stop(audioContext.currentTime + i * beepInterval + 0.3);
       }
     } catch (err) {
       console.log("⚠️ [Audio] Could not play alarm sound:", err.message);
@@ -308,7 +306,7 @@ export default function InstructorOverlay() {
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden ">
         {/* Header - Red Alert Bar */}
-        <div className="bg-gradient-to-r from-red-600 to-red-700 px-6 py-4 flex items-center gap-3">
+        <div className="bg-gradient-to-r from-red-700 to-red-700 px-6 py-4 flex items-center justify-center gap-3">
           <div className="text-4xl">🚨</div>
           <h2 className="text-2xl font-bold text-white">CẢNH CÁO GIAN LẬN</h2>
         </div>

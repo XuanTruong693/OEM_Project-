@@ -35,8 +35,6 @@ function initializeSocket(httpServer) {
     // ===== INSTRUCTOR JOINS EXAM MONITORING =====
     // Giảng viên kết nối để giám sát bài thi
     socket.on("instructor:join-exam", (examId) => {
-      console.log(`📍 [Socket] Instructor ${socket.id} joining exam ${examId}`);
-
       if (!examInstructors.has(examId)) {
         examInstructors.set(examId, new Set());
       }
