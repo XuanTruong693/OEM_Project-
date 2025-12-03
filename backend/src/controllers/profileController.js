@@ -105,6 +105,8 @@ const uploadAvatar = async (req, res) => {
 		user.avatar_mimetype = req.file.mimetype || 'application/octet-stream';
 	// set avatar to an absolute endpoint the frontend can call to fetch the image
 	user.avatar = `${req.protocol}://${req.get('host')}/api/profile/avatar/${userId}`;
+		
+		console.log('[uploadAvatar] saving user avatar to DB...');
 		await user.save();
 
 		console.log('[uploadAvatar] saved avatar blob for user', userId);

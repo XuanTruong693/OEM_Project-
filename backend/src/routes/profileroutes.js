@@ -45,6 +45,18 @@ router.post('/avatar', verifyToken, upload.single('avatar'), uploadAvatar);
 // Serve avatar binary from DB
 router.get('/avatar/:id', getAvatar);
 
+// Error handling for multer
+router.use((err, req, res, next) => {
+    if (err instanceof multer.MulterError) {
+        console.error('[MulterError]', err);
+        return res.status(400).json({ success: false, message: `Lỗi upload: ${err.message}` });
+    } else if (err) {
+        console.error('[UploadError]', err);
+        return res.status(400).json({ success: false, message: err.message });
+    }
+    next();
+});
+
 // --- Debug-only route: upload test without auth to verify multer/storage works ---
 // Use this to isolate upload problems (call with form field 'avatar').
 router.post('/avatar-test', upload.single('avatar'), (req, res) => {

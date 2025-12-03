@@ -42,6 +42,16 @@ const User = sequelize.define(
       allowNull: true,
       field: "phone_number",
     },
+    failed_login_attempts: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+      allowNull: false,
+    },
+    is_locked: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: false,
+    },
   },
   { tableName: "users", timestamps: false }
 );

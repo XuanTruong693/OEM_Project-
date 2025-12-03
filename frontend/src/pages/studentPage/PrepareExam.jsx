@@ -869,7 +869,7 @@ export default function PrepareExam() {
 
           setFacesCompared(true);
           setFaceOk(true);
-          setCompareLog(`Độ tương đồng giữa 2 khuôn mặt: ${confidence}%`);
+          setCompareLog(`Độ tương đồng giữa 2 khuôn mặt: ${confidence}% > 50%`);
           console.log(
             "[Compare] ✅ Pass - Đã lưu ảnh xác minh vào DB",
             res.data
@@ -921,7 +921,7 @@ export default function PrepareExam() {
           resetMessage = "Vui lòng chụp lại ảnh thẻ sinh viên và ảnh khuôn mặt";
         }
 
-        setFaceErr(`Độ tương đồng giữa 2 khuôn mặt: ${confidence}%`);
+        setFaceErr(`Độ tương đồng giữa 2 khuôn mặt: ${confidence}% > 50%`);
         setCompareLog(
           `Khuôn mặt không khớp (độ tương đồng: ${confidence}%, yêu cầu ≥${threshold}%). ${resetMessage}`
         );

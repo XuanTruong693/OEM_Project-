@@ -1,16 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Unified verification script: Thẻ SV + Khuôn mặt + So sánh
-Input: JSON qua stdin
-Output: JSON với kết quả xác minh chi tiết
-
-Usage:
-    echo '{"action":"verify_card","card_image":"base64..."}' | python verify_images.py
-    echo '{"action":"verify_face","face_image":"base64..."}' | python verify_images.py
-    echo '{"action":"compare_faces","face_image":"base64...","card_image":"base64...","tolerance":0.35}' | python verify_images.py
-"""
-
 import sys
 import json
 import base64
@@ -28,11 +15,9 @@ spec_card = importlib.util.spec_from_file_location(
 )
 student_card_filter = importlib.util.module_from_spec(spec_card)
 spec_card.loader.exec_module(student_card_filter)
-
-# Import từ face_verification_optimized (phiên bản tối ưu tốc độ)
 spec_face = importlib.util.spec_from_file_location(
-    "face_verification_optimized",
-    os.path.join(os.path.dirname(__file__), "face_verification_optimized.py")
+    "face_verification_uniface",
+    os.path.join(os.path.dirname(__file__), "face_verification_uniface.py")
 )
 face_verification = importlib.util.module_from_spec(spec_face)
 spec_face.loader.exec_module(face_verification)
@@ -92,11 +77,10 @@ def verify_face_liveness(face_image_b64):
 
 
 def compare_two_faces(face_image_b64, card_image_b64, tolerance=0.35):
-    """So sánh 2 khuôn mặt: selfie vs thẻ SV - PHIÊN BẢN NHANH"""
+    """So sánh 2 khuôn mặt: selfie vs thẻ SV - PHIÊN BẢN UNIFACE (NHANH & NHẸ)"""
     try:
-        print(f"[Compare] Bắt đầu so sánh khuôn mặt...", file=sys.stderr, flush=True)
-        # Sử dụng hàm tối ưu
-        result = face_verification.compare_faces_fast(card_image_b64, face_image_b64, tolerance)
+        print(f"[Compare] Bắt đầu so sánh khuôn mặt với Uniface...", file=sys.stderr, flush=True)
+        result = face_verification.compare_faces_uniface(card_image_b64, face_image_b64, tolerance)
         print(f"[Compare] Kết quả: {result}", file=sys.stderr, flush=True)
         return {
             "success": True,
@@ -115,9 +99,8 @@ def compare_two_faces(face_image_b64, card_image_b64, tolerance=0.35):
 
 if __name__ == "__main__":
     try:
-        # ✅ FIX: Đọc stdin an toàn hơn, tránh deadlock với buffer lớn
         input_chunks = []
-        chunk_size = 8192  # 8KB mỗi lần đọc
+        chunk_size = 8192  
         
         while True:
             chunk = sys.stdin.read(chunk_size)

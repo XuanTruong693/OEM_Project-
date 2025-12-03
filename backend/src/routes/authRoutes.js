@@ -530,13 +530,49 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password_hash);
-    if (!isMatch) {
-      console.log(`[Login] ❌ Sai mật khẩu cho tài khoản: ${email}`);
-      return res.status(400).json({
-        message: "Mật khẩu không chính xác",
+    // Check if account is locked
+    if (user.is_locked) {
+      console.log(`[Login] ❌ Tài khoản bị khóa: ${email}`);
+      return res.status(403).json({
+        message: "Tài khoản đã bị khóa do nhập sai mật khẩu quá 5 lần. Vui lòng sử dụng chức năng 'Quên mật khẩu' để khôi phục.",
         status: "error",
       });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password_hash);
+    if (!isMatch) {
+      // Increment failed attempts
+      const newAttempts = (user.failed_login_attempts || 0) + 1;
+      let updateData = { failed_login_attempts: newAttempts };
+      let message = "Mật khẩu không chính xác";
+
+      if (newAttempts >= 5) {
+        updateData.is_locked = true;
+        message = "Tài khoản đã bị khóa do nhập sai mật khẩu quá 5 lần. Vui lòng sử dụng chức năng 'Quên mật khẩu' để khôi phục.";
+      } else {
+        message = `Mật khẩu không chính xác. Bạn còn ${5 - newAttempts} lần thử.`;
+      }
+
+      await user.update(updateData);
+
+      console.log(`[Login] ❌ Sai mật khẩu cho tài khoản: ${email}. Attempts: ${newAttempts}`);
+      
+      if (newAttempts >= 5) {
+         return res.status(403).json({
+          message: message,
+          status: "error",
+        });
+      }
+
+      return res.status(400).json({
+        message: message,
+        status: "error",
+      });
+    }
+
+    // Reset failed attempts on successful login
+    if (user.failed_login_attempts > 0) {
+      await user.update({ failed_login_attempts: 0 });
     }
     const appRole = getAppRole();
     const requestedRole = role || user.role;
@@ -744,7 +780,11 @@ router.post("/reset-password", async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await user.update({ password_hash: hashedPassword });
+    await user.update({ 
+      password_hash: hashedPassword,
+      failed_login_attempts: 0,
+      is_locked: false
+    });
 
     otpStorage.delete(emailKey);
     console.log(`[Reset Password] Mật khẩu đã được đặt lại cho ${emailKey}`);

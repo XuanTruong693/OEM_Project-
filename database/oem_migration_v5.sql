@@ -32,6 +32,8 @@ CREATE TABLE users (
     ) NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     verify_room_code BOOLEAN DEFAULT FALSE,
+    failed_login_attempts INT DEFAULT 0 NOT NULL,
+    is_locked BOOLEAN DEFAULT FALSE NOT NULL,
     INDEX idx_users_role (role)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 

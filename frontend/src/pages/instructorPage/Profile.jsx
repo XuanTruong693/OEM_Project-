@@ -534,6 +534,14 @@ const Profile = () => {
                             } catch (e) {
                               /* ignore */
                             }
+
+                            // Show success message
+                            setMessage({ text: "Cập nhật ảnh đại diện thành công!", type: "success" });
+                            if (messageTimerRef.current) clearTimeout(messageTimerRef.current);
+                            messageTimerRef.current = setTimeout(
+                              () => setMessage({ text: "", type: "" }),
+                              4000
+                            );
                           }
                         } catch (err) {
                           console.error("Avatar upload failed", err);
