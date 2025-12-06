@@ -123,6 +123,7 @@ CREATE TABLE submissions (
     proctor_flags JSON NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    cheating_count INT NOT NULL DEFAULT 0,
     UNIQUE KEY uq_submissions_exam_user_attempt (exam_id, user_id, attempt_no),
     INDEX idx_submissions_exam (exam_id),
     INDEX idx_submissions_user (user_id),
@@ -590,7 +591,7 @@ END$$
 
 DELIMITER;
 
-/* 5) Views (không còn 'courses') */
+/* 5) Views */
 
 -- 5.1 Tổng quan exam
 CREATE OR REPLACE VIEW v_exam_overview AS
