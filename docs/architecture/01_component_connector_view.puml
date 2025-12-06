@@ -1,0 +1,99 @@
+@startuml OEM_Component_Connector_View
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+!define DEVICONS https://raw.githubusercontent.com/tupadr3/plantuml-icon-font-sprites/master/devicons
+!define FONTAWESOME https://raw.githubusercontent.com/tupadr3/plantuml-icon-font-sprites/master/font-awesome-5
+!include DEVICONS/react.puml
+!include DEVICONS/nodejs.puml
+!include DEVICONS/python.puml
+!include DEVICONS/mysql.puml
+!include FONTAWESOME/users.puml
+!include FONTAWESOME/user_graduate.puml
+!include FONTAWESOME/user_tie.puml
+!include FONTAWESOME/envelope.puml
+!include FONTAWESOME/google.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Component and Connector View (C&C View)\nOEM - Online Exam Monitoring System\n(Full Architecture with AI Services)
+
+' ============ ACTORS ============
+Person(instructor, "Instructor", "Giảng viên tạo đề thi, giám sát, chấm điểm", $sprite="user_tie")
+Person(student, "Student", "Sinh viên tham gia thi trực tuyến", $sprite="user_graduate")
+Person(admin, "Administrator", "Quản trị viên hệ thống", $sprite="users")
+
+' ============ FRONTEND - WEB BROWSER ============
+System_Boundary(frontend, "Web Browser - Frontend") {
+    Container(instructor_ui, "Instructor Web App", "React, Vite", "Dashboard, tạo đề thi, giám sát gian lận, chấm điểm", $sprite="react")
+    Container(student_ui, "Student Web App", "React, Vite", "Tham gia thi, upload ảnh xác minh, làm bài", $sprite="react")
+    Container(admin_ui, "Admin Web App", "React, Vite", "Quản lý người dùng, thống kê hệ thống", $sprite="react")
+}
+
+' ============ API GATEWAY ============
+Container(api_gateway, "API Gateway", "Express.js", "Routing, authentication, CORS", $sprite="nodejs")
+
+' ============ BACKEND SERVICES ============
+System_Boundary(backend, "Backend Services - Node.js") {
+    Component(auth_service, "Auth Service", "Node.js, bcrypt, JWT", "Đăng ký, đăng nhập, quên mật khẩu", $sprite="nodejs")
+    Component(exam_service, "Exam Service", "Node.js, Express", "CRUD bài thi, quản lý phòng thi", $sprite="nodejs")
+    Component(student_service, "Student Exam Service", "Node.js, Express", "Join exam, take exam, submit", $sprite="nodejs")
+    Component(submission_service, "Submission Service", "Node.js, Express", "Chấm điểm, kết quả, AI grading", $sprite="nodejs")
+    Component(socket_service, "Socket.IO Service", "Socket.IO", "Real-time cheating alerts, WebSocket", $sprite="nodejs")
+    Component(email_service, "Email Service", "Nodemailer", "Gửi OTP, notifications", $sprite="envelope")
+    Component(verify_service, "Verification Bridge", "Node.js spawn()", "Bridge to Python AI services", $sprite="nodejs")
+}
+
+' ============ PYTHON AI SERVICES ============
+System_Boundary(python_ai, "Python AI Services") {
+    Component(face_verify, "Face Verification", "Python, OpenCV, Uniface", "Liveness check, face comparison, ArcFace embedding", $sprite="python")
+    Component(card_ocr, "Card OCR", "Python, Tesseract", "Student card validation, CCCD/MSSV extraction", $sprite="python")
+    Component(essay_nlp, "Essay Grading AI", "Python, NLP, scikit-learn", "Semantic similarity, AI scoring", $sprite="python")
+}
+
+' ============ DATABASE ============
+ContainerDb(mysql_db, "MySQL Database", "MySQL 8.0", "Stores users, exams, submissions, ai_logs, results", $sprite="mysql")
+
+' ============ EXTERNAL SERVICES ============
+System_Ext(gmail_smtp, "Gmail SMTP", "Email service for OTP", $sprite="envelope")
+System_Ext(google_oauth, "Google OAuth 2.0", "Authentication service", $sprite="google")
+
+' ============ RELATIONSHIPS ============
+Rel(instructor, instructor_ui, "Uses", "HTTPS")
+Rel(student, student_ui, "Uses", "HTTPS")
+Rel(admin, admin_ui, "Uses", "HTTPS")
+
+Rel(instructor_ui, api_gateway, "API Calls", "HTTPS/REST")
+Rel(student_ui, api_gateway, "API Calls", "HTTPS/REST")
+Rel(admin_ui, api_gateway, "API Calls", "HTTPS/REST")
+
+Rel(api_gateway, auth_service, "Routes to", "HTTP")
+Rel(api_gateway, exam_service, "Routes to", "HTTP")
+Rel(api_gateway, student_service, "Routes to", "HTTP")
+Rel(api_gateway, submission_service, "Routes to", "HTTP")
+
+Rel(auth_service, email_service, "Sends OTP", "SMTP")
+Rel(auth_service, google_oauth, "OAuth login", "HTTPS")
+Rel(email_service, gmail_smtp, "Sends email", "SMTP Port 587")
+
+Rel(student_service, verify_service, "Verify images", "function call")
+Rel(verify_service, face_verify, "Face check", "spawn()")
+Rel(verify_service, card_ocr, "Card check", "spawn()")
+
+Rel(submission_service, essay_nlp, "Grade essay", "spawn()")
+Rel(submission_service, socket_service, "Emit events", "Socket.IO")
+
+Rel_Back(socket_service, instructor_ui, "WebSocket", "Real-time alerts")
+
+Rel(auth_service, mysql_db, "Read/Write", "SQL")
+Rel(exam_service, mysql_db, "Read/Write", "SQL")
+Rel(student_service, mysql_db, "Read/Write", "SQL")
+Rel(submission_service, mysql_db, "Read/Write", "SQL")
+
+Rel(face_verify, mysql_db, "Log results", "via Node.js")
+Rel(card_ocr, mysql_db, "Log results", "via Node.js")
+Rel(essay_nlp, mysql_db, "Log AI scores", "via Node.js")
+
+SHOW_LEGEND()
+
+@enduml
