@@ -1,4 +1,3 @@
-// 📁 src/pages/instructor/EditExam.jsx
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { FiTrash2, FiPlus, FiX } from "react-icons/fi";
@@ -194,7 +193,7 @@ const EditExam = () => {
         type: normalizeType(q.type),
       }));
 
-      await axios.put(
+      const res = await axios.put(
         `http://localhost:5000/api/edit-exam/exams/${id}`,
         { ...examData, questions: updatedQuestions },
         { headers: { Authorization: `Bearer ${token}` } }
@@ -205,6 +204,14 @@ const EditExam = () => {
       const msg = added
         ? "Thêm câu hỏi thành công"
         : "Cập nhật đề thi thành công";
+      // Nếu backend trả về exam_id mới (clone), điều hướng tới edit của exam mới
+      const newExamId = res?.data?.exam_id;
+      if (newExamId) {
+        showSuccess("Đã tạo bản sao đề thi mới. Đang chuyển hướng...");
+        setTimeout(() => navigate(`/instructor/exams/${newExamId}/edit`), 1200);
+        return;
+      }
+
       if (options.stay) {
         showSuccess(msg);
         await reloadExam();

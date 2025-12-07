@@ -72,6 +72,7 @@ export default function PrepareExam() {
   const eyesOpenCountRef = useRef(0); // Đếm số lần mắt mở liên tiếp
   const isVerifyingRef = useRef(false); // Tránh verify nhiều lần
   const violationTimerRef = useRef(null); // Timer cho violation cleanup
+  const keyPressCountsRef = useRef({}); // Track consecutive presses per key in PrepareExam
 
   const loadFaceApi = async () => {
     if (faceApiRef.current.loaded) return true;
@@ -231,8 +232,8 @@ export default function PrepareExam() {
           "⚠️ CẢNH BÁO: Bạn đã thoát toàn màn hình! Hệ thống tự động khôi phục..."
         );
 
-        // Tự động quay lại fullscreen sau 500ms
-        setTimeout(async () => {
+        // Tự động quay lại fullscreen ngay lập tức (best-effort)
+        (async () => {
           try {
             if (document.documentElement.requestFullscreen) {
               await document.documentElement.requestFullscreen();
@@ -243,14 +244,16 @@ export default function PrepareExam() {
             }
           } catch (err) {
             console.error("❌ [Fullscreen Lock] Failed to re-enter:", err);
+            // Inform the student that automatic re-entry isn't possible and require manual action
             setMonitorWarning(
-              '❌ Không thể khôi phục toàn màn hình. Vui lòng nhấn lại nút "Bật toàn màn hình".'
+              '❌ Không thể khôi phục toàn màn hình tự động. Vui lòng nhấn lại nút "Bật toàn màn hình" để tiếp tục thi.'
             );
-            setTimeout(() => setMonitorWarning(""), 3000);
+            // Do not clear the warning automatically; keep showing until user acts.
             setMonitorOk(false);
-            fullscreenLockRef.current = false;
+            // Keep fullscreenLockRef true so we continue to monitor and attempt re-entry on user gestures
+            fullscreenLockRef.current = true;
           }
-        }, 500);
+        })();
       }
     };
 
@@ -302,7 +305,7 @@ export default function PrepareExam() {
         e.stopPropagation();
         e.stopImmediatePropagation(); // Ngăn tất cả listeners khác
 
-        // Xác định loại vi phạm
+        // Xác định loại phím/tổ hợp
         let keyDescription = e.key;
         if (isAltTab) keyDescription = "Alt+Tab";
         else if (isAltF4) keyDescription = "Alt+F4";
@@ -313,24 +316,65 @@ export default function PrepareExam() {
         else if (isCtrlShiftC) keyDescription = "Ctrl+Shift+C";
         else if (isCtrlU) keyDescription = "Ctrl+U";
 
-        setMonitorWarning(`🚫 Phím "${keyDescription}" bị chặn!`);
-        setTimeout(() => setMonitorWarning(""), 3000);
+        // Track consecutive presses for this keyDescription
+        const now = Date.now();
+        const entry = keyPressCountsRef.current[keyDescription] || { count: 0, last: 0, timeout: null };
+        if (now - entry.last > 3000) entry.count = 0; // reset if long gap
+        entry.count += 1;
+        entry.last = now;
 
-        // 🆕 Tự động khôi phục fullscreen nếu bị thoát
-        setTimeout(async () => {
+        if (entry.timeout) clearTimeout(entry.timeout);
+        entry.timeout = setTimeout(() => {
+          const ecur = keyPressCountsRef.current[keyDescription];
+          if (ecur) {
+            ecur.count = 0;
+            ecur.last = 0;
+          }
+        }, 3000);
+
+        keyPressCountsRef.current[keyDescription] = entry;
+
+        if (entry.count === 1) {
+          // First press: warning only
+          setMonitorWarning(`⚠️ Phát hiện phím: "${keyDescription}". Nhấn lại sẽ bị tính là vi phạm.`);
+          setTimeout(() => setMonitorWarning(""), 3000);
+
+          // Try to recover fullscreen immediately (best-effort)
+          (async () => {
+            if (!document.fullscreenElement && fullscreenLockRef.current) {
+              try {
+                await document.documentElement.requestFullscreen();
+                setMonitorWarning("");
+                console.log("✅ [Fullscreen Lock] Re-entered fullscreen automatically");
+              } catch (err) {
+                console.error("❌ [Fullscreen Lock] Failed to re-enter:", err);
+                setMonitorWarning('❌ Không thể khôi phục toàn màn hình. Vui lòng nhấn lại nút "Bật toàn màn hình".');
+                setTimeout(() => setMonitorWarning(""), 3000);
+              }
+            }
+          })();
+
+          console.warn(`⚠️ [Fullscreen Lock] Blocked key (warning): ${keyDescription}`);
+          return false;
+        }
+
+        // Second consecutive press -> escalate to stronger warning
+        setMonitorWarning(`🚫 CẢNH BÁO: Phím "${keyDescription}" nhấn nhiều lần - hành vi bị nghi ngờ gian lận!`);
+        setTimeout(() => setMonitorWarning(""), 5000);
+
+        // Ensure we re-enter fullscreen immediately
+        (async () => {
           if (!document.fullscreenElement && fullscreenLockRef.current) {
             try {
               await document.documentElement.requestFullscreen();
-              console.log(
-                "✅ [Auto Recovery] Re-entered fullscreen after blocked key"
-              );
+              console.log("✅ [Fullscreen Lock] Re-entered fullscreen after repeated blocked key");
             } catch (err) {
-              console.error("❌ [Auto Recovery] Failed:", err);
+              console.error("❌ [Fullscreen Lock] Failed:", err);
             }
           }
-        }, 300);
+        })();
 
-        console.warn(`⚠️ [Fullscreen Lock] Blocked key: ${keyDescription}`);
+        console.warn(`⚠️ [Fullscreen Lock] Blocked key (escalated): ${keyDescription}`);
         return false; // Extra safety
       }
     };
@@ -378,7 +422,7 @@ export default function PrepareExam() {
   // VI PHẠM CHỈ ĐƯỢC TÍNH TRONG TakeExam, KHÔNG PHẢI PrepareExam
   useEffect(() => {
     const onKey = (e) => {
-      const blockKeys = ["Escape", "F11"];
+      const blockKeys = ["Escape", "F11", "F3", "F4", "F5"];
       if (blockKeys.includes(e.key)) {
         e.preventDefault();
         e.stopPropagation();
@@ -944,6 +988,10 @@ export default function PrepareExam() {
       if (res?.data?.ok && res.data.valid) {
         setFaceVerified(true);
         setFaceUploaded(true); // Đánh dấu đã upload tạm
+        setFaceErr("");
+        if (!reqs.card) {
+          setFaceOk(true); // Nếu không yêu cầu thẻ SV thì xác minh khuôn mặt là đủ
+        }
         const confidence = res.data.liveness?.confidence?.toFixed(1) || "N/A";
         const blur = res.data.liveness?.blur_score?.toFixed(1) || "N/A";
         const contrast = res.data.liveness?.contrast_score?.toFixed(1) || "N/A";
@@ -958,6 +1006,7 @@ export default function PrepareExam() {
       } else {
         setFaceVerified(false);
         setFaceUploaded(false);
+        setFaceOk(false);
         const reasons =
           res?.data?.liveness?.reasons?.join(", ") ||
           res?.data?.message ||
@@ -988,6 +1037,7 @@ export default function PrepareExam() {
     } catch (err) {
       setFaceVerified(false);
       setFaceUploaded(false);
+      setFaceOk(false);
 
       let errorMsg = "Lỗi xác minh khuôn mặt";
       let errorType = "UNKNOWN";
@@ -1198,6 +1248,45 @@ export default function PrepareExam() {
     };
   }, []);
 
+  const needFaceCardMatch = useMemo(
+    () => reqs.face && reqs.card,
+    [reqs.face, reqs.card]
+  );
+
+  const faceStepDone = useMemo(() => {
+    if (!reqs.face) return false;
+    if (needFaceCardMatch) return faceOk && !!uploadSuccessMsg;
+    return faceOk;
+  }, [reqs.face, needFaceCardMatch, faceOk, uploadSuccessMsg]);
+
+  const monitorBlockers = useMemo(() => {
+    if (!reqs.monitor) return [];
+
+    const blockers = [];
+    if (reqs.card && !cardOk) {
+      blockers.push("Hoàn tất Bước 1 (Thẻ SV)");
+    }
+    if (reqs.face) {
+      if (needFaceCardMatch) {
+        if (!faceOk) blockers.push("Hoàn tất so sánh khuôn mặt");
+        else if (!uploadSuccessMsg)
+          blockers.push("Tải lên ảnh đã xác minh");
+      } else if (!faceOk) {
+        blockers.push("Hoàn tất xác minh khuôn mặt");
+      }
+    }
+
+    return blockers;
+  }, [
+    reqs.monitor,
+    reqs.card,
+    reqs.face,
+    needFaceCardMatch,
+    cardOk,
+    faceOk,
+    uploadSuccessMsg,
+  ]);
+
   const canStart = useMemo(() => {
     return (
       (!reqs.face || faceOk) &&
@@ -1216,15 +1305,8 @@ export default function PrepareExam() {
 
   const allowMonitor = useMemo(() => {
     if (!reqs.monitor) return false;
-
-    // Kiểm tra bước 1: Thẻ SV
-    if (reqs.card && !cardOk) return false;
-
-    // Kiểm tra bước 2: Khuôn mặt - phải hoàn thành TẤT CẢ: verify + compare + upload
-    if (reqs.face && (!faceOk || !uploadSuccessMsg)) return false;
-
-    return true;
-  }, [reqs, faceOk, cardOk, uploadSuccessMsg]);
+    return monitorBlockers.length === 0;
+  }, [reqs.monitor, monitorBlockers]);
 
   const shellBg =
     theme === "dark"
@@ -1540,7 +1622,7 @@ export default function PrepareExam() {
                 </p>
                 <span
                   className={`text-xs ${
-                    faceOk && uploadSuccessMsg
+                    faceStepDone
                       ? "text-emerald-400"
                       : faceErr
                       ? "text-red-500"
@@ -1549,7 +1631,7 @@ export default function PrepareExam() {
                       : "text-slate-500"
                   }`}
                 >
-                  {faceOk && uploadSuccessMsg
+                  {faceStepDone
                     ? "✅ Đã hoàn thành"
                     : faceErr
                     ? "❌ Lỗi"
@@ -1835,16 +1917,9 @@ export default function PrepareExam() {
                       Bước 3 đã bị khóa
                     </p>
                     <p className="text-slate-300 text-sm">
-                      {reqs.card && !cardOk && "Hoàn tất Bước 1 (Thẻ SV) và "}
-                      {reqs.face &&
-                        (!faceOk || !uploadSuccessMsg) &&
-                        "Hoàn tất Bước 2 (Khuôn mặt + Upload thẻ sinh viên)"}
-                      {reqs.card &&
-                      !cardOk &&
-                      reqs.face &&
-                      (!faceOk || !uploadSuccessMsg)
-                        ? ""
-                        : " để mở khóa"}
+                      {(monitorBlockers.join(" và ") ||
+                        "Hoàn tất các bước yêu cầu") +
+                        " để mở khóa"}
                     </p>
                   </div>
                 </div>

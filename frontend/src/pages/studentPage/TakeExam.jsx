@@ -8,7 +8,7 @@ export default function TakeExam() {
   const [search] = useSearchParams();
   const navigate = useNavigate();
   const submissionId = search.get("submission_id");
-  
+
   // ===== Refs =====
   const socketRef = useRef(null);
   const qRefs = useRef({});
@@ -18,6 +18,9 @@ export default function TakeExam() {
   const submittedRef = useRef(false); // Ref để tracking submitted state (tránh stale closure)
   const monitoringActiveRef = useRef(false); // Ref để tracking khi nào bắt đầu giám sát (sau grace period)
   const lastViolationTimeRef = useRef({}); // Track last time each event was reported (prevent duplicates)
+  const keyPressCountsRef = useRef({}); // Track consecutive presses per key to allow 1 safe press
+  const failedReentryRef = useRef({}); // Track keys where automatic fullscreen re-entry failed (first-press)
+  const fullscreenExitCountsRef = useRef({ count: 0, last: 0, timeout: null });
 
   // ===== State =====
   const [theme, setTheme] = useState(
@@ -148,7 +151,11 @@ export default function TakeExam() {
         setExamTitle(res.data?.exam_title || `Bài thi #${examId}`);
 
         // Hiển thị thông báo bắt đầu giám sát
-        flash("📹 Hệ thống giám sát đã kích hoạt. Giữ toàn màn hình!", "warn", 3000);
+        flash(
+          "📹 Hệ thống giám sát đã kích hoạt. Giữ toàn màn hình!",
+          "warn",
+          3000
+        );
 
         if (document.documentElement.requestFullscreen) {
           try {
@@ -198,7 +205,6 @@ export default function TakeExam() {
     };
 
     const penalize = (evt, msg, key = null) => {
-  
       if (submittedRef.current) {
         console.log(
           "🛑 [TakeExam] Violation ignored - exam already submitted:",
@@ -207,12 +213,24 @@ export default function TakeExam() {
         return;
       }
 
+      // Extra-safety: require both local monitoring active and sessionStorage flag
       if (!monitoringActiveRef.current) {
         console.log(
           "⏳ [TakeExam] Violation ignored - monitoring not active yet (grace period):",
           evt
         );
         return;
+      }
+      try {
+        if (sessionStorage.getItem("exam_monitoring_active") !== "1") {
+          console.log(
+            "⏳ [TakeExam] Violation ignored - session monitoring flag not set",
+            evt
+          );
+          return;
+        }
+      } catch (e) {
+        // ignore storage errors and proceed
       }
 
       const now = Date.now();
@@ -227,53 +245,194 @@ export default function TakeExam() {
       }
       lastViolationTimeRef.current[evt] = now;
 
+      // Report to backend (non-blocking)
+      try {
+        postProctor(evt, { message: msg, key });
+      } catch (e) {}
+
+      // Update local violation count and notify student
       setViolations((v) => {
         const nv = v + 1;
-        
-        // Hiển thị thông báo kèm số lần vi phạm trong 10 giây
-        flash(`🚨 VI PHẠM LẦN ${nv}: ${msg} (Cảnh cáo ${nv}/5)`, "danger", 10000);
-        
-        // Gửi số lần vi phạm lên backend
-        postProctor(evt, { message: msg, key, violationNumber: nv });
-        
-        // Tự động nộp bài nếu đạt 5 vi phạm
         if (nv >= 5) {
-          flash("⚠️ Đã đạt 5 vi phạm! Tự động nộp bài...", "danger", 3000);
-          setTimeout(() => handleSubmit(true), 1000);
-        } else if (
-          !document.fullscreenElement &&
-          document.documentElement.requestFullscreen
-        ) {
-          // Tự động quay lại fullscreen
-          document.documentElement.requestFullscreen().catch((err) => {
-            console.log(
-              "ℹ️ [TakeExam] Cannot re-enter fullscreen:",
-              err.message
-            );
-          });
+          flash(`🚨 Vi phạm: ${nv}/5 — Hệ thống sẽ tự động nộp bài nếu tiếp tục vi phạm.`, "danger", 8000);
+          // Attempt auto-submit (best-effort)
+          try {
+            handleSubmit(true);
+          } catch (e) {}
+        } else if (nv >= 3) {
+          flash(`❌ Vi phạm: ${nv}/5 — Cảnh báo nghiêm trọng`, "danger", 6000);
+        } else {
+          flash(`❌ Vi phạm: ${nv}/5`, "danger", 4000);
         }
         return nv;
       });
+
+      // done
     };
 
+    // Fullscreenchange handler (separate from penalize)
     const onFs = () => {
-      if (!document.fullscreenElement)
+      if (!document.fullscreenElement) {
+        const now = Date.now();
+        const fe = fullscreenExitCountsRef.current || { count: 0, last: 0, timeout: null };
+
+        // Reset if last exit was long ago
+        if (now - fe.last > 3000) fe.count = 0;
+        fe.count += 1;
+        fe.last = now;
+
+        // Clear previous reset timer
+        if (fe.timeout) clearTimeout(fe.timeout);
+        fe.timeout = setTimeout(() => {
+          fullscreenExitCountsRef.current = { count: 0, last: 0, timeout: null };
+        }, 3000);
+
+        fullscreenExitCountsRef.current = fe;
+
+        if (fe.count === 1) {
+          // First fullscreen exit: warning only, try to recover but do not penalize
+          flash("⚠️ Thoát toàn màn hình (phát hiện 1 lần). Nhấn lại sẽ bị tính là vi phạm.", "warn", 4000);
+          if (document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen().catch((err) => {
+              console.log("ℹ️ [TakeExam] Cannot re-enter fullscreen on fullscreenchange (first exit):", err?.message || err);
+              // mark failed re-entry so UI can instruct the user
+              try { failedReentryRef.current['fullscreen'] = true; } catch (e) {}
+              flash("❌ Không thể tự quay lại toàn màn hình. Vui lòng nhấn lại nút 'Bật toàn màn hình' (không tính vi phạm).", "warn", 8000);
+            });
+          }
+          return;
+        }
+
+        // Second (or more) fullscreen exit within window -> count as violation
+        // Reset counter
+        if (fe.timeout) {
+          clearTimeout(fe.timeout);
+          fe.timeout = null;
+        }
+        fullscreenExitCountsRef.current = { count: 0, last: 0, timeout: null };
+
         penalize("fullscreen_lost", "Thoát toàn màn hình");
+        if (document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen().catch((err) => {
+            console.log("ℹ️ [TakeExam] Cannot re-enter fullscreen on fullscreenchange (escalated):", err?.message || err);
+          });
+        }
+      }
     };
     const onVis = () => {
       if (document.hidden) penalize("visibility_hidden", "Rời tab / ẩn cửa sổ");
     };
     const onBlur = () => penalize("window_blur", "Rời cửa sổ");
     const onKey = (e) => {
-      const block = ["Escape", "F11", "F5"];
-      if (
-        block.includes(e.key) ||
-        (e.ctrlKey && ["r", "R", "w", "W"].includes(e.key))
-      ) {
-        e.preventDefault();
-        e.stopPropagation();
-        penalize("blocked_key", `Phím bị chặn: ${e.key}`, e.key);
+      // Keys and combinations we want to monitor for potential cheating
+      const blockKeys = ["Escape", "F11", "F3", "F4", "F5", "F12", "Tab"]; // Allow one accidental press for these keys
+      const combos = [
+        {
+          check: () => e.ctrlKey && ["r", "R"].includes(e.key),
+          id: `Ctrl+${e.key}`,
+        },
+        {
+          check: () => e.ctrlKey && ["c", "C"].includes(e.key),
+          id: `Ctrl+${e.key}`,
+        },
+        {
+          check: () => e.ctrlKey && e.shiftKey && ["i", "I"].includes(e.key),
+          id: `Ctrl+Shift+I`,
+        },
+        {
+          check: () => e.ctrlKey && e.shiftKey && ["j", "J"].includes(e.key),
+          id: `Ctrl+Shift+J`,
+        },
+        { check: () => e.altKey && e.key === "Tab", id: "Alt+Tab" },
+        { check: () => e.altKey && e.key === "F4", id: "Alt+F4" },
+      ];
+
+      let matched = false;
+      let keyId = e.key;
+      if (blockKeys.includes(e.key)) matched = true;
+      for (const c of combos) {
+        if (c.check()) {
+          matched = true;
+          keyId = c.id;
+          break;
+        }
       }
+
+      if (!matched) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      const now = Date.now();
+      const entry = keyPressCountsRef.current[keyId] || {
+        count: 0,
+        last: 0,
+        timeout: null,
+      };
+
+      // Reset count if last press was long ago (>3s)
+      if (now - entry.last > 3000) entry.count = 0;
+
+      entry.count += 1;
+      entry.last = now;
+
+      // Clear any existing reset timer
+      if (entry.timeout) clearTimeout(entry.timeout);
+      // Reset after 3s of inactivity
+      entry.timeout = setTimeout(() => {
+        const ecur = keyPressCountsRef.current[keyId];
+        if (ecur) {
+          ecur.count = 0;
+          ecur.last = 0;
+        }
+        // Clear any failed re-entry marker for this key
+        try {
+          delete failedReentryRef.current[keyId];
+        } catch (e) {}
+      }, 3000);
+
+      keyPressCountsRef.current[keyId] = entry;
+
+      if (entry.count === 1) {
+        flash(
+          `⚠️ Phát hiện phím bị chặn: ${keyId}. Nhấn lại sẽ bị tính là vi phạm.`,
+          "warn",
+          3000
+        );
+        if (
+          !document.fullscreenElement &&
+          document.documentElement.requestFullscreen
+        ) {
+          document.documentElement.requestFullscreen().catch((err) => {
+            console.log(
+              "ℹ️ [TakeExam] Cannot re-enter fullscreen (first-press):",
+              err?.message || err
+            );
+            try {
+              failedReentryRef.current[keyId] = true;
+            } catch (e) {}
+            flash(
+              "❌ Không thể tự quay lại toàn màn hình. Vui lòng nhấn lại nút 'Bật toàn màn hình' (không tính vi phạm).",
+              "warn",
+              8000
+            );
+          });
+        }
+        return;
+      }
+
+      entry.count = 0;
+      if (entry.timeout) {
+        clearTimeout(entry.timeout);
+        entry.timeout = null;
+      }
+      // clear failed reentry marker when escalating to violation
+      try {
+        delete failedReentryRef.current[keyId];
+      } catch (e) {}
+
+      // Build a readable message
+      const human = keyId;
+      penalize("blocked_key", `Phím bị chặn: ${human}`, keyId);
     };
     const onCtx = (e) => e.preventDefault();
     const onBefore = (e) => {
@@ -320,9 +479,10 @@ export default function TakeExam() {
     });
     const activateMonitoring = setTimeout(() => {
       monitoringActiveRef.current = true;
-      console.log(
-        "✅ [TakeExam] Monitoring activated after 2s grace period"
-      );
+      console.log("✅ [TakeExam] Monitoring activated after 2s grace period");
+      try {
+        sessionStorage.setItem("exam_monitoring_active", "1");
+      } catch {}
     }, 2000);
 
     window.addEventListener("keydown", onKey, true);
@@ -335,6 +495,9 @@ export default function TakeExam() {
     const cleanup = () => {
       clearTimeout(activateMonitoring);
       monitoringActiveRef.current = false;
+      try {
+        sessionStorage.removeItem("exam_monitoring_active");
+      } catch {}
 
       // ✅ Disconnect WebSocket
       if (socketRef.current) {
@@ -356,9 +519,7 @@ export default function TakeExam() {
     cleanupListenersRef.current = cleanup;
 
     return cleanup;
-
   }, [submissionId, examId]);
-
 
   // ===== Timer =====
   useEffect(() => {
@@ -431,7 +592,7 @@ export default function TakeExam() {
     setSubmitting(true);
 
     setSubmitted(true);
-    submittedRef.current = true; 
+    submittedRef.current = true;
 
     //Dừng hoàn toàn việc theo dõi màn hình - xóa tất cả event listeners
     if (cleanupListenersRef.current) {
@@ -627,15 +788,19 @@ export default function TakeExam() {
               ))}
             </div>
             <div className="mt-3 p-2 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700">
-              <p className={`${
-                theme === "dark" ? "text-yellow-300" : "text-yellow-800"
-              } text-xs font-semibold flex items-center gap-1`}>
+              <p
+                className={`${
+                  theme === "dark" ? "text-yellow-300" : "text-yellow-800"
+                } text-xs font-semibold flex items-center gap-1`}
+              >
                 <span>⚠️</span>
                 <span>Hệ thống giám sát đang hoạt động</span>
               </p>
-              <p className={`${
-                theme === "dark" ? "text-yellow-400" : "text-yellow-700"
-              } text-[10px] mt-1`}>
+              <p
+                className={`${
+                  theme === "dark" ? "text-yellow-400" : "text-yellow-700"
+                } text-[10px] mt-1`}
+              >
                 Giữ toàn màn hình. Rời tab/ESC/F11 sẽ bị cảnh cáo.
               </p>
               {violations > 0 && (
@@ -644,7 +809,9 @@ export default function TakeExam() {
                     🚨 Vi phạm: {violations}/5
                   </p>
                   <p className="text-red-500 dark:text-red-300 text-[10px] mt-0.5">
-                    {violations >= 3 ? "Cảnh báo nghiêm trọng!" : "Lưu ý tuân thủ quy định"}
+                    {violations >= 3
+                      ? "Cảnh báo nghiêm trọng!"
+                      : "Lưu ý tuân thủ quy định"}
                   </p>
                 </div>
               )}
@@ -781,11 +948,15 @@ export default function TakeExam() {
           <div className="flex items-center gap-2 md:gap-3">
             {toast.kind === "danger" && violations > 0 && (
               <div className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-full flex items-center justify-center flex-shrink-0 animate-bounce">
-                <span className="text-red-600 text-lg md:text-xl font-bold">{violations}</span>
+                <span className="text-red-600 text-lg md:text-xl font-bold">
+                  {violations}
+                </span>
               </div>
             )}
             <div className="flex-1 min-w-0">
-              <p className="text-xs md:text-sm leading-tight break-words">{toast.msg}</p>
+              <p className="text-xs md:text-sm leading-tight break-words">
+                {toast.msg}
+              </p>
               {toast.kind === "danger" && (
                 <p className="text-[10px] md:text-xs mt-1 opacity-80">
                   Cảnh báo này sẽ tự động tắt sau 10 giây
@@ -806,7 +977,9 @@ export default function TakeExam() {
           className={`w-full max-w-[560px] p-4 md:p-6 rounded-xl md:rounded-2xl border border-slate-200 shadow-2xl text-slate-800 bg-white`}
           style={{ backgroundColor: "#ffffff", color: "#0f172a" }}
         >
-          <h2 className="text-base md:text-lg font-bold mb-2">Kết quả tạm thời</h2>
+          <h2 className="text-base md:text-lg font-bold mb-2">
+            Kết quả tạm thời
+          </h2>
           <div
             className={`flex items-center justify-between py-2 border-b text-sm md:text-base ${
               theme === "dark"

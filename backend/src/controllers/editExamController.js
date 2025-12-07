@@ -1,4 +1,3 @@
-// controllers/editExamController.js
 const sequelize = require("../config/db");
 const { QueryTypes } = require("sequelize");
 
@@ -169,43 +168,94 @@ const updateExam = async (req, res) => {
       if (isExpiredWindow(exam[0].time_close)) resetToDraft = true;
     }
 
-    // Cập nhật thông tin đề thi
-    if (resetToDraft) {
-      await sequelize.query(
-        `UPDATE exams SET title = ?, duration = ?, status = 'draft', updated_at = NOW() WHERE id = ?`,
-        { replacements: [title, duration, id], transaction }
-      );
-    } else {
-      await sequelize.query(
-        `UPDATE exams SET title = ?, duration = ?, updated_at = NOW() WHERE id = ?`,
-        { replacements: [title, duration, id], transaction }
-      );
+    if (exam[0].status === 'draft') {
+   
+      try {
+        await sequelize.query(
+          `UPDATE exams SET title = ?, duration = ?, updated_at = NOW() WHERE id = ?`,
+          { replacements: [title, duration || null, id], type: QueryTypes.UPDATE, transaction }
+        );
+      } catch (uErr) {
+        console.error('❌ Error updating exam row (draft):', uErr);
+        throw uErr;
+      }
+
+      // delete existing questions/options for this exam and insert new ones
+      await sequelize.query(`DELETE FROM exam_options WHERE question_id IN (SELECT id FROM exam_questions WHERE exam_id = ?)`, { replacements: [id], transaction }).catch(()=>{});
+      await sequelize.query(`DELETE FROM exam_questions WHERE exam_id = ?`, { replacements: [id], transaction }).catch(()=>{});
+
+      for (let i = 0; i < questions.length; i++) {
+        const q = questions[i];
+        const type = q.type?.toLowerCase() === "essay" ? "essay" : "MCQ";
+        const modelAnswer = type === "essay" ? q.modelAnswer || null : null;
+
+        const [questionId] = await sequelize.query(
+          `INSERT INTO exam_questions (exam_id, question_text, type, points, order_index, model_answer) 
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          {
+            replacements: [id, q.content, type, q.points, i, modelAnswer],
+            type: QueryTypes.INSERT,
+            transaction,
+          }
+        );
+
+        if (type === "MCQ" && q.options?.length > 0) {
+          for (const opt of q.options) {
+            await sequelize.query(
+              `INSERT INTO exam_options (question_id, option_text, is_correct) VALUES (?, ?, ?)`,
+              {
+                replacements: [questionId, opt.content, opt.is_correct ? 1 : 0],
+                transaction,
+              }
+            );
+          }
+        }
+      }
+
+      await transaction.commit();
+      return res.json({ status: 'success', message: 'Đã cập nhật đề thi (draft).', exam_id: id });
     }
 
-    // Xóa câu hỏi và option cũ
-    await sequelize.query(
-      `DELETE eo FROM exam_options eo 
-       INNER JOIN exam_questions eq ON eo.question_id = eq.id 
-       WHERE eq.exam_id = ?`,
-      { replacements: [id], transaction }
+    // Otherwise (published/archived) -> create a clone and keep original intact
+    const [origRows] = await sequelize.query(
+      `SELECT instructor_id, duration, duration_minutes, max_points, require_face_check, require_student_card, monitor_screen, max_attempts
+       FROM exams WHERE id = ? LIMIT 1`,
+      { replacements: [id], type: QueryTypes.SELECT, transaction }
     );
-    await sequelize.query(`DELETE FROM exam_questions WHERE exam_id = ?`, {
-      replacements: [id],
-      transaction,
-    });
+    const orig = Array.isArray(origRows) ? origRows[0] : origRows || {};
 
-    // Thêm lại câu hỏi mới
+    const [insExam] = await sequelize.query(
+      `INSERT INTO exams (instructor_id, title, duration, duration_minutes, max_points, require_face_check, require_student_card, monitor_screen, max_attempts, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', NOW(), NOW())`,
+      {
+        replacements: [
+          instructorId,
+          title,
+          duration || orig.duration || null,
+          orig.duration_minutes || null,
+          orig.max_points || null,
+          orig.require_face_check ? 1 : 0,
+          orig.require_student_card ? 1 : 0,
+          orig.monitor_screen ? 1 : 0,
+          orig.max_attempts || 0,
+        ],
+        type: QueryTypes.INSERT,
+        transaction,
+      }
+    );
+    const newExamId = insExam?.insertId || insExam;
+
+    // Copy câu hỏi và options từ payload vào exam mới
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
       const type = q.type?.toLowerCase() === "essay" ? "essay" : "MCQ";
-
       const modelAnswer = type === "essay" ? q.modelAnswer || null : null;
 
       const [questionId] = await sequelize.query(
         `INSERT INTO exam_questions (exam_id, question_text, type, points, order_index, model_answer) 
          VALUES (?, ?, ?, ?, ?, ?)`,
         {
-          replacements: [id, q.content, type, q.points, i, modelAnswer],
+          replacements: [newExamId, q.content, type, q.points, i, modelAnswer],
           type: QueryTypes.INSERT,
           transaction,
         }
@@ -225,11 +275,10 @@ const updateExam = async (req, res) => {
     }
 
     await transaction.commit();
-    res.json({
+    return res.json({
       status: "success",
-      message: resetToDraft
-        ? "Cập nhật đề thi thành công! Trạng thái đã chuyển về draft để mở phòng lại."
-        : "Cập nhật đề thi thành công!",
+      message: "Đã tạo bản sao đề thi mới và giữ nguyên đề cũ.",
+      exam_id: newExamId,
     });
   } catch (error) {
     await transaction.rollback();

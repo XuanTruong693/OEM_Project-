@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const sequelize = require("../config/db");
 const { verifyToken, authorizeRole } = require("../middleware/authMiddleware");
-const crypto = require('crypto');
+const crypto = require("crypto");
 
 // ==============================
 // 📊 1️⃣ API: Lấy thống kê tổng
@@ -48,7 +48,7 @@ router.get(
     try {
       const instructorId = req.user.id;
       console.log("📋 Fetching submissions for instructor:", instructorId);
-      
+
       const [rows] = await sequelize.query(
         `
         SELECT 
@@ -72,7 +72,7 @@ router.get(
         `,
         { replacements: [instructorId] }
       );
-      
+
       console.log("✅ Found", rows.length, "submissions");
       return res.json(rows || []);
     } catch (err) {
@@ -80,10 +80,13 @@ router.get(
       console.error("❌ Error details:", err.message);
       console.error("❌ SQL Error code:", err.original?.code);
       console.error("❌ SQL Error errno:", err.original?.errno);
-      return res.status(500).json({ 
+      return res.status(500).json({
         message: "Internal server error",
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined,
-        sqlCode: process.env.NODE_ENV === 'development' ? err.original?.code : undefined
+        error: process.env.NODE_ENV === "development" ? err.message : undefined,
+        sqlCode:
+          process.env.NODE_ENV === "development"
+            ? err.original?.code
+            : undefined,
       });
     }
   }
@@ -174,7 +177,6 @@ router.get(
   }
 );
 
-
 // ==============================
 // 📄 4️⃣ Instructor: Danh sách đề thi của tôi
 // ==============================
@@ -193,8 +195,8 @@ router.get(
       );
       return res.json(rows || []);
     } catch (err) {
-      console.error('instructor/exams/my error:', err);
-      return res.status(500).json({ message: 'Server error' });
+      console.error("instructor/exams/my error:", err);
+      return res.status(500).json({ message: "Server error" });
     }
   }
 );
@@ -212,11 +214,12 @@ router.get(
       const lastCount = parseInt(req.query.lastCount, 10) || 0;
       const timeout = 25000; // 25 seconds max wait
       const checkInterval = 1000; // Check every 1 second
-      
-      if (!Number.isFinite(examId)) return res.status(400).json({ message: 'examId invalid' });
-      
+
+      if (!Number.isFinite(examId))
+        return res.status(400).json({ message: "examId invalid" });
+
       const startTime = Date.now();
-      
+
       const checkCount = async () => {
         const [result] = await sequelize.query(
           `SELECT COUNT(*) as count FROM submissions WHERE exam_id = ?`,
@@ -224,26 +227,26 @@ router.get(
         );
         return result[0]?.count || 0;
       };
-      
+
       // Poll until count changes or timeout
       const poll = async () => {
         while (Date.now() - startTime < timeout) {
           const currentCount = await checkCount();
-          
+
           if (currentCount !== lastCount) {
             return res.json({ count: currentCount, hasChanges: true });
           }
-          
-          await new Promise(resolve => setTimeout(resolve, checkInterval));
+
+          await new Promise((resolve) => setTimeout(resolve, checkInterval));
         }
-        
+
         return res.json({ count: lastCount, hasChanges: false });
       };
-      
+
       await poll();
     } catch (err) {
-      console.error('Long polling error:', err);
-      return res.status(500).json({ message: 'Server error' });
+      console.error("Long polling error:", err);
+      return res.status(500).json({ message: "Server error" });
     }
   }
 );
@@ -275,13 +278,14 @@ router.get(
   async (req, res) => {
     try {
       const examId = parseInt(req.params.examId, 10);
-      if (!Number.isFinite(examId)) return res.status(400).json({ message: 'examId invalid' });
+      if (!Number.isFinite(examId))
+        return res.status(400).json({ message: "examId invalid" });
       // ownership or published view-only
       const ok = await ensureExamOwnership(examId, req.user.id);
       if (!ok) {
         const er = await getExamRow(examId);
-        if (!er || String(er.status) !== 'published') {
-          return res.status(403).json({ message: 'Not owner of exam' });
+        if (!er || String(er.status) !== "published") {
+          return res.status(403).json({ message: "Not owner of exam" });
         }
       }
 
@@ -322,19 +326,25 @@ router.get(
           });
         }
         if (r.option_id) {
-          map.get(r.question_id).options.push({ option_id: r.option_id, option_text: r.option_text, is_correct: !!r.is_correct });
+          map
+            .get(r.question_id)
+            .options.push({
+              option_id: r.option_id,
+              option_text: r.option_text,
+              is_correct: !!r.is_correct,
+            });
         }
       }
-      return res.json({ 
-        exam_id: examId, 
+      return res.json({
+        exam_id: examId,
         questions: Array.from(map.values()),
         time_open: exam.time_open || null,
         time_close: exam.time_close || null,
-        status: exam.status || 'draft'
+        status: exam.status || "draft",
       });
     } catch (err) {
-      console.error('exams/:examId/preview error:', err);
-      return res.status(500).json({ message: 'Server error' });
+      console.error("exams/:examId/preview error:", err);
+      return res.status(500).json({ message: "Server error" });
     }
   }
 );
@@ -347,13 +357,14 @@ router.get(
   async (req, res) => {
     try {
       const examId = parseInt(req.params.examId, 10);
-      if (!Number.isFinite(examId)) return res.status(400).json({ message: 'examId invalid' });
+      if (!Number.isFinite(examId))
+        return res.status(400).json({ message: "examId invalid" });
       const ok = await ensureExamOwnership(examId, req.user.id);
       if (!ok) {
         // allow view-only if exam is published (to reduce friction per request)
         const er = await getExamRow(examId);
-        if (!er || String(er.status) !== 'published') {
-          return res.status(403).json({ message: 'Not owner of exam' });
+        if (!er || String(er.status) !== "published") {
+          return res.status(403).json({ message: "Not owner of exam" });
         }
       }
 
@@ -375,16 +386,22 @@ router.get(
       // Fallback quick summary
       const [[q1]] = await sequelize.query(
         `SELECT COUNT(*) AS total_submissions, MAX(submitted_at) AS last_submission_time
-         FROM submissions WHERE exam_id = ?`, { replacements: [examId] }
+         FROM submissions WHERE exam_id = ?`,
+        { replacements: [examId] }
       );
       const [[q2]] = await sequelize.query(
         `SELECT COUNT(DISTINCT user_id) AS total_students FROM submissions WHERE exam_id = ?`,
         { replacements: [examId] }
       );
-      return res.json({ exam_id: examId, total_submissions: q1?.total_submissions||0, total_students: q2?.total_students||0, last_submission_time: q1?.last_submission_time || null });
+      return res.json({
+        exam_id: examId,
+        total_submissions: q1?.total_submissions || 0,
+        total_students: q2?.total_students || 0,
+        last_submission_time: q1?.last_submission_time || null,
+      });
     } catch (err) {
-      console.error('exams/:examId/summary error:', err);
-      return res.status(500).json({ message: 'Server error' });
+      console.error("exams/:examId/summary error:", err);
+      return res.status(500).json({ message: "Server error" });
     }
   }
 );
@@ -404,13 +421,29 @@ router.get(
         if (Array.isArray(rows)) return res.json(rows);
       } catch {}
       // Fallback quick stats
-      const [[a]] = await sequelize.query(`SELECT COUNT(*) AS total_exams FROM exams WHERE instructor_id = ?`, { replacements: [req.user.id] });
-      const [[b]] = await sequelize.query(`SELECT COUNT(*) AS total_submissions, AVG(total_score) AS avg_score FROM submissions s JOIN exams e ON e.id=s.exam_id WHERE e.instructor_id = ?`, { replacements: [req.user.id] });
-      const [[c]] = await sequelize.query(`SELECT COUNT(DISTINCT s.user_id) AS total_students FROM submissions s JOIN exams e ON e.id=s.exam_id WHERE e.instructor_id = ?`, { replacements: [req.user.id] });
-      return res.json([{ total_exams: a?.total_exams||0, total_submissions: b?.total_submissions||0, avg_score: b?.avg_score||0, total_students: c?.total_students||0 }]);
+      const [[a]] = await sequelize.query(
+        `SELECT COUNT(*) AS total_exams FROM exams WHERE instructor_id = ?`,
+        { replacements: [req.user.id] }
+      );
+      const [[b]] = await sequelize.query(
+        `SELECT COUNT(*) AS total_submissions, AVG(total_score) AS avg_score FROM submissions s JOIN exams e ON e.id=s.exam_id WHERE e.instructor_id = ?`,
+        { replacements: [req.user.id] }
+      );
+      const [[c]] = await sequelize.query(
+        `SELECT COUNT(DISTINCT s.user_id) AS total_students FROM submissions s JOIN exams e ON e.id=s.exam_id WHERE e.instructor_id = ?`,
+        { replacements: [req.user.id] }
+      );
+      return res.json([
+        {
+          total_exams: a?.total_exams || 0,
+          total_submissions: b?.total_submissions || 0,
+          avg_score: b?.avg_score || 0,
+          total_students: c?.total_students || 0,
+        },
+      ]);
     } catch (err) {
-      console.error('exams/overview error:', err);
-      return res.status(500).json({ message: 'Server error' });
+      console.error("exams/overview error:", err);
+      return res.status(500).json({ message: "Server error" });
     }
   }
 );
@@ -423,24 +456,31 @@ router.get(
   async (req, res) => {
     try {
       const examId = parseInt(req.params.examId, 10);
-      
-      if (!Number.isFinite(examId)) return res.status(400).json({ message: 'examId invalid' });
+
+      if (!Number.isFinite(examId))
+        return res.status(400).json({ message: "examId invalid" });
       const ok = await ensureExamOwnership(examId, req.user.id);
       if (!ok) {
         const er = await getExamRow(examId);
-        if (!er || String(er.status) !== 'published') {
-          return res.status(403).json({ message: 'Not owner of exam' });
+        if (!er || String(er.status) !== "published") {
+          return res.status(403).json({ message: "Not owner of exam" });
         }
       }
 
       try {
-        const results = await sequelize.query(`CALL sp_get_exam_results(?, 'instructor', ?);`, { replacements: [examId, req.user.id] });
-        
+        const results = await sequelize.query(
+          `CALL sp_get_exam_results(?, 'instructor', ?);`,
+          { replacements: [examId, req.user.id] }
+        );
+
         let data = Array.isArray(results) ? results : [];
-        
+
         return res.json(data);
       } catch (e) {
-        console.warn(`⚠️ [Results] Stored procedure failed, using fallback query:`, e.message);
+        console.warn(
+          `⚠️ [Results] Stored procedure failed, using fallback query:`,
+          e.message
+        );
         // Fallback: join basics
         const [rows] = await sequelize.query(
           `SELECT 
@@ -463,13 +503,14 @@ router.get(
            LEFT JOIN exam_questions q ON q.id = sa.question_id
            WHERE s.exam_id = ?
            GROUP BY s.id
-           ORDER BY u.full_name`, { replacements: [examId] }
+           ORDER BY u.full_name`,
+          { replacements: [examId] }
         );
         return res.json(rows || []);
       }
     } catch (err) {
-      console.error('exams/:examId/results error:', err);
-      return res.status(500).json({ message: 'Server error' });
+      console.error("exams/:examId/results error:", err);
+      return res.status(500).json({ message: "Server error" });
     }
   }
 );
@@ -482,13 +523,14 @@ router.post(
   async (req, res) => {
     try {
       const examId = parseInt(req.params.examId, 10);
-      if (!Number.isFinite(examId)) return res.status(400).json({ message: 'examId invalid' });
-      
+      if (!Number.isFinite(examId))
+        return res.status(400).json({ message: "examId invalid" });
+
       const ok = await ensureExamOwnership(examId, req.user.id);
       if (!ok) {
         const er = await getExamRow(examId);
-        if (!er || String(er.status) !== 'published') {
-          return res.status(403).json({ message: 'Not owner of exam' });
+        if (!er || String(er.status) !== "published") {
+          return res.status(403).json({ message: "Not owner of exam" });
         }
       }
 
@@ -506,16 +548,20 @@ router.post(
       );
 
       const approvedCount = result.affectedRows || 0;
-      console.log(`✅ [ApproveAll] Approved ${approvedCount} submissions for exam ${examId}`);
+      console.log(
+        `✅ [ApproveAll] Approved ${approvedCount} submissions for exam ${examId}`
+      );
 
-      return res.json({ 
-        success: true, 
+      return res.json({
+        success: true,
         approved: approvedCount,
-        message: `Đã duyệt ${approvedCount} bài thi`
+        message: `Đã duyệt ${approvedCount} bài thi`,
       });
     } catch (err) {
-      console.error('❌ [ApproveAll] Error:', err);
-      return res.status(500).json({ message: 'Server error', error: err.message });
+      console.error("❌ [ApproveAll] Error:", err);
+      return res
+        .status(500)
+        .json({ message: "Server error", error: err.message });
     }
   }
 );
@@ -530,21 +576,26 @@ router.put(
       const examId = parseInt(req.params.examId, 10);
       const studentId = parseInt(req.params.studentId, 10);
       const { total_score, ai_score, student_name } = req.body || {};
-      if (!Number.isFinite(examId) || !Number.isFinite(studentId)) return res.status(400).json({ message: 'invalid ids' });
+      if (!Number.isFinite(examId) || !Number.isFinite(studentId))
+        return res.status(400).json({ message: "invalid ids" });
       const ok = await ensureExamOwnership(examId, req.user.id);
       if (!ok) {
         const er = await getExamRow(examId);
-        if (!er || String(er.status) !== 'published') {
-          return res.status(403).json({ message: 'Not owner of exam' });
+        if (!er || String(er.status) !== "published") {
+          return res.status(403).json({ message: "Not owner of exam" });
         }
       }
 
       const mcq = total_score != null ? Number(total_score) : null;
       const ai = ai_score != null ? Number(ai_score) : null;
-      if ((mcq != null && isNaN(mcq)) || (ai != null && isNaN(ai))) return res.status(400).json({ message: 'score must be number' });
+      if ((mcq != null && isNaN(mcq)) || (ai != null && isNaN(ai)))
+        return res.status(400).json({ message: "score must be number" });
 
       try {
-        await sequelize.query(`CALL sp_update_student_exam_record(?, ?, ?, ?, ?);`, { replacements: [examId, studentId, student_name || null, mcq, ai] });
+        await sequelize.query(
+          `CALL sp_update_student_exam_record(?, ?, ?, ?, ?);`,
+          { replacements: [examId, studentId, student_name || null, mcq, ai] }
+        );
       } catch (e) {
         // Fallback direct update
         await sequelize.query(
@@ -562,16 +613,21 @@ router.put(
       }
       // return updated row
       try {
-        const [rows] = await sequelize.query(`CALL sp_get_exam_results(?, 'instructor', ?);`, { replacements: [examId, req.user.id] });
+        const [rows] = await sequelize.query(
+          `CALL sp_get_exam_results(?, 'instructor', ?);`,
+          { replacements: [examId, req.user.id] }
+        );
         const data = Array.isArray(rows) ? rows : [];
-        const row = data.find(r => Number(r.student_id) === Number(studentId));
+        const row = data.find(
+          (r) => Number(r.student_id) === Number(studentId)
+        );
         return res.json(row || { ok: true });
       } catch {
         return res.json({ ok: true });
       }
     } catch (err) {
-      console.error('PUT score error:', err);
-      return res.status(500).json({ message: 'Server error' });
+      console.error("PUT score error:", err);
+      return res.status(500).json({ message: "Server error" });
     }
   }
 );
@@ -584,25 +640,31 @@ router.post(
   async (req, res) => {
     try {
       const examId = parseInt(req.params.examId, 10);
-      if (!Number.isFinite(examId)) return res.status(400).json({ message: 'examId invalid' });
+      if (!Number.isFinite(examId))
+        return res.status(400).json({ message: "examId invalid" });
       const ok = await ensureExamOwnership(examId, req.user.id);
-      if (!ok) return res.status(403).json({ message: 'Not owner of exam' });
+      if (!ok) return res.status(403).json({ message: "Not owner of exam" });
       const list = Array.isArray(req.body?.items) ? req.body.items : [];
       for (const it of list) {
         const sid = Number(it.studentId);
         const mcq = it.mcq != null ? Number(it.mcq) : null;
         const ai = it.ai != null ? Number(it.ai) : null;
-        try { await sequelize.query(`CALL sp_update_student_exam_record(?, ?, ?, ?, ?);`, { replacements: [examId, sid, it.student_name || null, mcq, ai] }); } catch {}
+        try {
+          await sequelize.query(
+            `CALL sp_update_student_exam_record(?, ?, ?, ?, ?);`,
+            { replacements: [examId, sid, it.student_name || null, mcq, ai] }
+          );
+        } catch {}
       }
       return res.json({ ok: true });
     } catch (err) {
-      console.error('confirm-bulk error:', err);
-      return res.status(500).json({ message: 'Server error' });
+      console.error("confirm-bulk error:", err);
+      return res.status(500).json({ message: "Server error" });
     }
   }
 );
 // ==============================
-// 🔍 5️⃣ Instructor: Xem preview câu hỏi một đề
+// Instructor: Xem preview câu hỏi một đề
 // ==============================
 router.get(
   "/exams/:id/preview",
@@ -616,7 +678,7 @@ router.get(
         { replacements: [examId, req.user.id] }
       );
       const ok = Array.isArray(ownerCheck[0]) && ownerCheck[0].length > 0;
-      if (!ok) return res.status(404).json({ message: 'Exam not found' });
+      if (!ok) return res.status(404).json({ message: "Exam not found" });
 
       // questions
       const [qRows] = await sequelize.query(
@@ -624,29 +686,37 @@ router.get(
         { replacements: [examId] }
       );
       const questions = Array.isArray(qRows) ? qRows : [];
-      const ids = questions.filter(q => q.type === 'MCQ').map(q => q.question_id);
+      const ids = questions
+        .filter((q) => q.type === "MCQ")
+        .map((q) => q.question_id);
       let optionsByQ = {};
       if (ids.length) {
         const [oRows] = await sequelize.query(
-          `SELECT question_id, id AS option_id, option_text, is_correct FROM exam_options WHERE question_id IN (${ids.map(()=>'?').join(',')}) ORDER BY id ASC`,
+          `SELECT question_id, id AS option_id, option_text, is_correct FROM exam_options WHERE question_id IN (${ids
+            .map(() => "?")
+            .join(",")}) ORDER BY id ASC`,
           { replacements: ids }
         );
-        (Array.isArray(oRows) ? oRows : []).forEach(o => {
+        (Array.isArray(oRows) ? oRows : []).forEach((o) => {
           optionsByQ[o.question_id] ||= [];
           optionsByQ[o.question_id].push(o);
         });
       }
-      const merged = questions.map(q => q.type === 'MCQ' ? { ...q, options: optionsByQ[q.question_id] || [] } : q);
+      const merged = questions.map((q) =>
+        q.type === "MCQ"
+          ? { ...q, options: optionsByQ[q.question_id] || [] }
+          : q
+      );
       return res.json({ exam_id: examId, questions: merged });
     } catch (err) {
-      console.error('instructor/exams/:id/preview error:', err);
-      return res.status(500).json({ message: 'Server error' });
+      console.error("instructor/exams/:id/preview error:", err);
+      return res.status(500).json({ message: "Server error" });
     }
   }
 );
 
 // ==============================
-// 🚀 6️⃣ Instructor: Mở phòng thi (publish + cấu hình)
+// Instructor: Mở phòng thi (publish + cấu hình)
 // ==============================
 router.post(
   "/exams/:id/open",
@@ -668,30 +738,44 @@ router.post(
       } = req.body || {};
 
       // owner check
-      const [own] = await sequelize.query(`SELECT id FROM exams WHERE id = ? AND instructor_id = ? LIMIT 1`, { replacements: [examId, req.user.id] });
-      if (!Array.isArray(own) || own.length === 0) return res.status(404).json({ message: 'Exam not found' });
+      const [own] = await sequelize.query(
+        `SELECT id FROM exams WHERE id = ? AND instructor_id = ? LIMIT 1`,
+        { replacements: [examId, req.user.id] }
+      );
+      if (!Array.isArray(own) || own.length === 0)
+        return res.status(404).json({ message: "Exam not found" });
 
       // validate time
       const now = new Date();
       const openAt = time_open ? new Date(time_open) : null;
       const closeAt = time_close ? new Date(time_close) : null;
       if (!openAt || !closeAt || isNaN(openAt) || isNaN(closeAt)) {
-        return res.status(400).json({ message: 'time_open/time_close invalid' });
+        return res
+          .status(400)
+          .json({ message: "time_open/time_close invalid" });
       }
       if (openAt.getTime() < now.getTime()) {
-        return res.status(400).json({ message: 'time_open must be now or future' });
+        return res
+          .status(400)
+          .json({ message: "time_open must be now or future" });
       }
       if (closeAt.getTime() <= openAt.getTime()) {
-        return res.status(400).json({ message: 'time_close must be after time_open' });
+        return res
+          .status(400)
+          .json({ message: "time_close must be after time_open" });
       }
 
       // generate 6-char room code (A-Z0-9)
-      const genCode = () => crypto.randomBytes(4).toString('hex').slice(0,6).toUpperCase();
+      const genCode = () =>
+        crypto.randomBytes(4).toString("hex").slice(0, 6).toUpperCase();
       let room = genCode();
       try {
         // try ensure uniqueness a few times
-        for (let i=0;i<5;i++) {
-          const [r] = await sequelize.query(`SELECT 1 FROM exams WHERE exam_room_code = ? LIMIT 1`, { replacements: [room] });
+        for (let i = 0; i < 5; i++) {
+          const [r] = await sequelize.query(
+            `SELECT 1 FROM exams WHERE exam_room_code = ? LIMIT 1`,
+            { replacements: [room] }
+          );
           if (!Array.isArray(r) || r.length === 0) break;
           room = genCode();
         }
@@ -701,11 +785,13 @@ router.post(
       const dur = Number(duration || duration_minutes || 0) || null;
       const durMin = Number(duration_minutes || duration || 0) || null;
 
-      const fmt = (d)=> {
+      const fmt = (d) => {
         // accept ISO/local datetime; format to 'YYYY-MM-DD HH:MM:SS'
-        const pad = (n)=> String(n).padStart(2,'0');
+        const pad = (n) => String(n).padStart(2, "0");
         const dt = new Date(d);
-        return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}:00`;
+        return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(
+          dt.getDate()
+        )} ${pad(dt.getHours())}:${pad(dt.getMinutes())}:00`;
       };
 
       await sequelize.query(
@@ -722,20 +808,38 @@ router.post(
            monitor_screen = ?,
            max_attempts = ?
          WHERE id = ?`,
-        { replacements: [dur, durMin, room, fmt(openAt), fmt(closeAt), (max_points ?? null), (require_face_check?1:0), (require_student_card?1:0), (monitor_screen?1:0), (max_attempts ? Number(max_attempts) : 0), examId] }
+        {
+          replacements: [
+            dur,
+            durMin,
+            room,
+            fmt(openAt),
+            fmt(closeAt),
+            max_points ?? null,
+            require_face_check ? 1 : 0,
+            require_student_card ? 1 : 0,
+            monitor_screen ? 1 : 0,
+            max_attempts ? Number(max_attempts) : 0,
+            examId,
+          ],
+        }
       );
 
-      return res.json({ ok: true, exam_id: examId, exam_room_code: room, status: 'published' });
+      return res.json({
+        ok: true,
+        exam_id: examId,
+        exam_room_code: room,
+        status: "published",
+      });
     } catch (err) {
-      console.error('instructor/exams/:id/open error:', err);
-      return res.status(500).json({ message: 'Server error' });
+      console.error("instructor/exams/:id/open error:", err);
+      return res.status(500).json({ message: "Server error" });
     }
   }
 );
 
-
 // =======================================
-// 👤 3️⃣ API: Lấy thông tin user theo ID
+// API: Lấy thông tin user theo ID
 // =======================================
 router.get("/user/info", verifyToken, async (req, res) => {
   try {
@@ -754,7 +858,7 @@ router.get("/user/info", verifyToken, async (req, res) => {
 });
 
 // ==============================
-// 🖼️ API: Get Face Image Blob
+// API: Get Face Image Blob
 // ==============================
 router.get(
   "/submissions/:submissionId/face-image",
@@ -763,18 +867,18 @@ router.get(
   async (req, res) => {
     try {
       const submissionId = parseInt(req.params.submissionId, 10);
-      
+
       const [rows] = await sequelize.query(
         `SELECT face_image_blob, face_image_mimetype FROM submissions WHERE id = ?`,
         { replacements: [submissionId] }
       );
-      
+
       if (!rows || rows.length === 0 || !rows[0].face_image_blob) {
         return res.status(404).json({ message: "Face image not found" });
       }
-      
-      const mimeType = rows[0].face_image_mimetype || 'image/jpeg';
-      res.setHeader('Content-Type', mimeType);
+
+      const mimeType = rows[0].face_image_mimetype || "image/jpeg";
+      res.setHeader("Content-Type", mimeType);
       res.send(rows[0].face_image_blob);
     } catch (err) {
       console.error("❌ Error fetching face image:", err);
@@ -793,18 +897,20 @@ router.get(
   async (req, res) => {
     try {
       const submissionId = parseInt(req.params.submissionId, 10);
-      
+
       const [rows] = await sequelize.query(
         `SELECT student_card_blob, student_card_mimetype FROM submissions WHERE id = ?`,
         { replacements: [submissionId] }
       );
-      
+
       if (!rows || rows.length === 0 || !rows[0].student_card_blob) {
-        return res.status(404).json({ message: "Student card image not found" });
+        return res
+          .status(404)
+          .json({ message: "Student card image not found" });
       }
-      
-      const mimeType = rows[0].student_card_mimetype || 'image/jpeg';
-      res.setHeader('Content-Type', mimeType);
+
+      const mimeType = rows[0].student_card_mimetype || "image/jpeg";
+      res.setHeader("Content-Type", mimeType);
       res.send(rows[0].student_card_blob);
     } catch (err) {
       console.error("❌ Error fetching student card:", err);
@@ -823,7 +929,8 @@ router.get(
   async (req, res) => {
     try {
       const examId = parseInt(req.params.examId, 10);
-      if (!Number.isFinite(examId)) return res.status(400).json({ message: 'examId invalid' });
+      if (!Number.isFinite(examId))
+        return res.status(400).json({ message: "examId invalid" });
 
       // Lấy thông tin exam
       const [rows] = await sequelize.query(
@@ -832,11 +939,11 @@ router.get(
          FROM exams 
          WHERE id = ? AND instructor_id = ?
          LIMIT 1`,
-        { replacements: [process.env.APP_TZ || '+07:00', examId, req.user.id] }
+        { replacements: [process.env.APP_TZ || "+07:00", examId, req.user.id] }
       );
 
       if (!rows || rows.length === 0) {
-        return res.status(404).json({ message: 'Exam not found' });
+        return res.status(404).json({ message: "Exam not found" });
       }
 
       const exam = rows[0];
@@ -845,20 +952,22 @@ router.get(
       let statusChanged = false;
 
       // Nếu exam đang published và đã quá time_close, chuyển sang archived
-      if (currentStatus === 'published' && exam.time_close) {
+      if (currentStatus === "published" && exam.time_close) {
         const now = new Date(exam.server_now);
         const closeTime = new Date(exam.time_close);
-        
+
         if (now >= closeTime) {
           // Archive exam
           await sequelize.query(
             `UPDATE exams SET status = 'archived' WHERE id = ?`,
             { replacements: [examId] }
           );
-          newStatus = 'archived';
+          newStatus = "archived";
           statusChanged = true;
-          
-          console.log(`✅ [Auto-Archive] Exam ${examId} archived at ${exam.server_now}, time_close was ${exam.time_close}`);
+
+          console.log(
+            `✅ [Auto-Archive] Exam ${examId} archived at ${exam.server_now}, time_close was ${exam.time_close}`
+          );
         }
       }
 
@@ -868,11 +977,11 @@ router.get(
         current_status: newStatus,
         status_changed: statusChanged,
         time_close: exam.time_close,
-        server_now: exam.server_now
+        server_now: exam.server_now,
       });
     } catch (err) {
-      console.error('❌ Error checking exam status:', err);
-      return res.status(500).json({ message: 'Server error' });
+      console.error("❌ Error checking exam status:", err);
+      return res.status(500).json({ message: "Server error" });
     }
   }
 );
@@ -891,7 +1000,9 @@ router.delete(
       const studentId = parseInt(req.params.studentId, 10);
       const instructorId = req.user.id;
 
-      console.log(`🗑️ [Delete Submission] Instructor ${instructorId} deleting student ${studentId} from exam ${examId}`);
+      console.log(
+        `🗑️ [Delete Submission] Instructor ${instructorId} deleting student ${studentId} from exam ${examId}`
+      );
 
       // Verify instructor owns this exam
       const [examRows] = await sequelize.query(
@@ -900,28 +1011,166 @@ router.delete(
       );
 
       if (!examRows || examRows.length === 0) {
-        return res.status(403).json({ 
-          message: "Bạn không có quyền xóa bài thi này" 
+        return res.status(403).json({
+          message: "Bạn không có quyền xóa bài thi này",
         });
       }
 
-      // Delete all submissions for this student in this exam
-      // This includes cheating_logs via CASCADE
       const [result] = await sequelize.query(
         `DELETE FROM submissions WHERE exam_id = ? AND user_id = ?`,
         { replacements: [examId, studentId] }
       );
 
       const deletedCount = result.affectedRows || 0;
-      console.log(`✅ [Delete Submission] Deleted ${deletedCount} submission(s) for student ${studentId} in exam ${examId}`);
+      console.log(
+        `✅ [Delete Submission] Deleted ${deletedCount} submission(s) for student ${studentId} in exam ${examId}`
+      );
 
-      return res.json({ 
+      return res.json({
         message: "Đã xóa bài thi của sinh viên",
-        deleted_count: deletedCount
+        deleted_count: deletedCount,
       });
     } catch (err) {
-      console.error('❌ Error deleting student submission:', err);
-      return res.status(500).json({ message: 'Lỗi khi xóa bài thi' });
+      console.error("❌ Error deleting student submission:", err);
+      return res.status(500).json({ message: "Lỗi khi xóa bài thi" });
+    }
+  }
+);
+
+router.post(
+  "/exams/:id/purge",
+  verifyToken,
+  authorizeRole(["instructor"]),
+  async (req, res) => {
+    try {
+      const examId = parseInt(req.params.id, 10);
+      const instructorId = req.user.id;
+      if (!Number.isFinite(examId))
+        return res.status(400).json({ message: "examId invalid" });
+
+      // ownership check
+      const [own] = await sequelize.query(
+        `SELECT id FROM exams WHERE id = ? AND instructor_id = ? LIMIT 1`,
+        { replacements: [examId, instructorId] }
+      );
+      if (!Array.isArray(own) || own.length === 0)
+        return res.status(404).json({ message: "Exam not found" });
+
+      // Delete submissions (should cascade to student_answers / cheating logs if FK cascade configured)
+      const [result] = await sequelize.query(
+        `DELETE FROM submissions WHERE exam_id = ?`,
+        { replacements: [examId] }
+      );
+      const deleted = result.affectedRows || 0;
+
+      console.log(
+        `🧹 [PurgeExam] Instructor ${instructorId} purged ${deleted} submissions for exam ${examId}`
+      );
+      return res.json({ ok: true, deleted_count: deleted });
+    } catch (err) {
+      console.error("❌ Error purging exam data:", err);
+      return res
+        .status(500)
+        .json({ message: "Server error while purging exam data" });
+    }
+  }
+);
+router.post(
+  "/exams/:id/clone",
+  verifyToken,
+  authorizeRole(["instructor"]),
+  async (req, res) => {
+    const transaction = await sequelize.transaction();
+    try {
+      const examId = parseInt(req.params.id, 10);
+      const instructorId = req.user.id;
+      if (!Number.isFinite(examId)) {
+        await transaction.rollback();
+        return res.status(400).json({ message: "examId invalid" });
+      }
+
+      // ownership
+      const [own] = await sequelize.query(
+        `SELECT * FROM exams WHERE id = ? AND instructor_id = ? LIMIT 1`,
+        { replacements: [examId, instructorId], transaction }
+      );
+      if (!Array.isArray(own) || own.length === 0) {
+        await transaction.rollback();
+        return res.status(404).json({ message: "Exam not found" });
+      }
+
+      // copy exam metadata (keep as draft)
+      const src = own[0];
+      const [ins] = await sequelize.query(
+        `INSERT INTO exams (instructor_id, title, duration, duration_minutes, max_points, require_face_check, require_student_card, monitor_screen, max_attempts, status, created_at, updated_at)
+         VALUES (?, CONCAT(?, ' (copy)'), ?, ?, ?, ?, ?, ?, ?, 'draft', NOW(), NOW())`,
+        {
+          replacements: [
+            instructorId,
+            src.title || "",
+            src.duration || null,
+            src.duration_minutes || null,
+            src.max_points || null,
+            src.require_face_check ? 1 : 0,
+            src.require_student_card ? 1 : 0,
+            src.monitor_screen ? 1 : 0,
+            src.max_attempts || 0,
+          ],
+          transaction,
+        }
+      );
+      const newExamId = ins?.insertId || ins;
+
+      // copy questions
+      const [qRows] = await sequelize.query(
+        `SELECT id, question_text, type, points, order_index, model_answer FROM exam_questions WHERE exam_id = ? ORDER BY order_index, id`,
+        { replacements: [examId], transaction }
+      );
+      for (const q of qRows || []) {
+        const [qIns] = await sequelize.query(
+          `INSERT INTO exam_questions (exam_id, question_text, type, points, order_index, model_answer) VALUES (?, ?, ?, ?, ?, ?)`,
+          {
+            replacements: [
+              newExamId,
+              q.question_text,
+              q.type,
+              q.points,
+              q.order_index,
+              q.model_answer || null,
+            ],
+            transaction,
+          }
+        );
+        const newQId = qIns?.insertId || qIns;
+        // copy options
+        if (q.type === "MCQ") {
+          const [oRows] = await sequelize.query(
+            `SELECT option_text, is_correct FROM exam_options WHERE question_id = ? ORDER BY id`,
+            { replacements: [q.id], transaction }
+          );
+          for (const o of oRows || []) {
+            await sequelize.query(
+              `INSERT INTO exam_options (question_id, option_text, is_correct) VALUES (?, ?, ?)`,
+              {
+                replacements: [newQId, o.option_text, o.is_correct ? 1 : 0],
+                transaction,
+              }
+            );
+          }
+        }
+      }
+
+      await transaction.commit();
+      console.log(
+        `✅ [CloneExam] Instructor ${instructorId} cloned exam ${examId} -> ${newExamId}`
+      );
+      return res.json({ ok: true, exam_id: newExamId });
+    } catch (err) {
+      await transaction.rollback();
+      console.error("❌ Error cloning exam:", err);
+      return res
+        .status(500)
+        .json({ message: "Server error while cloning exam" });
     }
   }
 );
