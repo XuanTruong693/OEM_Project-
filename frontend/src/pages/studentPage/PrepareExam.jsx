@@ -21,6 +21,13 @@ export default function PrepareExam() {
   const [examInfo, setExamInfo] = useState(null);
   const [faceErr, setFaceErr] = useState("");
   const [cardErr, setCardErr] = useState("");
+
+  //Multiple screen detection
+  const [multiScreenDetected, setMultiScreenDetected] = useState(false);
+  const [screenCount, setScreenCount] = useState(1);
+  const [monitorWarning, setMonitorWarning] = useState("");
+  const [showMultiScreenModal, setShowMultiScreenModal] = useState(false);
+  const fullscreenLockRef = useRef(false);
   // Live guide + preview states
   const [faceGuideOk, setFaceGuideOk] = useState(false);
   const [faceGuideMsg, setFaceGuideMsg] = useState(
@@ -64,6 +71,7 @@ export default function PrepareExam() {
   const prevFacePositionRef = useRef(null); // Lưu vị trí khuôn mặt trước đó
   const eyesOpenCountRef = useRef(0); // Đếm số lần mắt mở liên tiếp
   const isVerifyingRef = useRef(false); // Tránh verify nhiều lần
+  const violationTimerRef = useRef(null); // Timer cho violation cleanup
 
   const loadFaceApi = async () => {
     if (faceApiRef.current.loaded) return true;
@@ -209,6 +217,163 @@ export default function PrepareExam() {
     })();
   }, [examId, submissionId]);
 
+  // 🆕 Fullscreen lock - Tự động trở lại fullscreen khi thoát
+  useEffect(() => {
+    if (!monitorOk || !fullscreenLockRef.current) return;
+
+    const handleFullscreenChange = async () => {
+      // Nếu thoát fullscreen (document.fullscreenElement === null)
+      if (!document.fullscreenElement && fullscreenLockRef.current) {
+        console.warn(
+          "⚠️ [Fullscreen Lock] User exited fullscreen - forcing re-entry"
+        );
+        setMonitorWarning(
+          "⚠️ CẢNH BÁO: Bạn đã thoát toàn màn hình! Hệ thống tự động khôi phục..."
+        );
+
+        // Tự động quay lại fullscreen sau 500ms
+        setTimeout(async () => {
+          try {
+            if (document.documentElement.requestFullscreen) {
+              await document.documentElement.requestFullscreen();
+              setMonitorWarning(""); // Xóa warning khi đã quay lại
+              console.log(
+                "✅ [Fullscreen Lock] Re-entered fullscreen automatically"
+              );
+            }
+          } catch (err) {
+            console.error("❌ [Fullscreen Lock] Failed to re-enter:", err);
+            setMonitorWarning(
+              '❌ Không thể khôi phục toàn màn hình. Vui lòng nhấn lại nút "Bật toàn màn hình".'
+            );
+            setTimeout(() => setMonitorWarning(""), 3000);
+            setMonitorOk(false);
+            fullscreenLockRef.current = false;
+          }
+        }, 500);
+      }
+    };
+
+    const handleKeyDown = (e) => {
+      if (!fullscreenLockRef.current) return;
+
+      // 🆕 Danh sách TẤT CẢ phím bị chặn khi fullscreen locked
+      const blockedKeys = [
+        "Escape", // Thoát fullscreen
+        "F11", // Toggle fullscreen
+        "F5", // Refresh
+        "F3", // Search
+        "F12", // DevTools
+        "Tab", // Switch focus (nếu kết hợp Alt)
+        "F4", // Close window (nếu kết hợp Alt)
+      ];
+
+      // Kiểm tra phím đơn
+      const isBlockedKey = blockedKeys.includes(e.key);
+
+      // Kiểm tra tổ hợp phím
+      const isAltTab = e.altKey && e.key === "Tab";
+      const isAltF4 = e.altKey && e.key === "F4";
+      const isCtrlW = e.ctrlKey && (e.key === "w" || e.key === "W");
+      const isCtrlR = e.ctrlKey && (e.key === "r" || e.key === "R");
+      const isCtrlShiftI =
+        e.ctrlKey && e.shiftKey && (e.key === "i" || e.key === "I"); // DevTools
+      const isCtrlShiftJ =
+        e.ctrlKey && e.shiftKey && (e.key === "j" || e.key === "J"); // Console
+      const isCtrlShiftC =
+        e.ctrlKey && e.shiftKey && (e.key === "c" || e.key === "C"); // Inspect
+      const isCtrlU = e.ctrlKey && (e.key === "u" || e.key === "U"); // View source
+      const isCmdOption = e.metaKey && e.altKey; // Mac: Command+Option combinations
+
+      const isDangerousCombination =
+        isAltTab ||
+        isAltF4 ||
+        isCtrlW ||
+        isCtrlR ||
+        isCtrlShiftI ||
+        isCtrlShiftJ ||
+        isCtrlShiftC ||
+        isCtrlU ||
+        isCmdOption;
+
+      // Nếu là phím nguy hiểm hoặc tổ hợp nguy hiểm
+      if (isBlockedKey || isDangerousCombination) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation(); // Ngăn tất cả listeners khác
+
+        // Xác định loại vi phạm
+        let keyDescription = e.key;
+        if (isAltTab) keyDescription = "Alt+Tab";
+        else if (isAltF4) keyDescription = "Alt+F4";
+        else if (isCtrlW) keyDescription = "Ctrl+W";
+        else if (isCtrlR) keyDescription = "Ctrl+R";
+        else if (isCtrlShiftI) keyDescription = "Ctrl+Shift+I";
+        else if (isCtrlShiftJ) keyDescription = "Ctrl+Shift+J";
+        else if (isCtrlShiftC) keyDescription = "Ctrl+Shift+C";
+        else if (isCtrlU) keyDescription = "Ctrl+U";
+
+        setMonitorWarning(`🚫 Phím "${keyDescription}" bị chặn!`);
+        setTimeout(() => setMonitorWarning(""), 3000);
+
+        // 🆕 Tự động khôi phục fullscreen nếu bị thoát
+        setTimeout(async () => {
+          if (!document.fullscreenElement && fullscreenLockRef.current) {
+            try {
+              await document.documentElement.requestFullscreen();
+              console.log(
+                "✅ [Auto Recovery] Re-entered fullscreen after blocked key"
+              );
+            } catch (err) {
+              console.error("❌ [Auto Recovery] Failed:", err);
+            }
+          }
+        }, 300);
+
+        console.warn(`⚠️ [Fullscreen Lock] Blocked key: ${keyDescription}`);
+        return false; // Extra safety
+      }
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    window.addEventListener("keydown", handleKeyDown, true); // Capture phase để bắt trước
+    window.addEventListener("keyup", handleKeyDown, true); // Bắt cả keyup để chắc chắn
+
+    // 🆕 Chặn right-click menu khi fullscreen locked
+    const handleContextMenu = (e) => {
+      if (fullscreenLockRef.current) {
+        e.preventDefault();
+        setMonitorWarning("🚫 Không được phép mở menu chuột phải!");
+        setTimeout(() => setMonitorWarning(""), 3000);
+      }
+    };
+
+    // 🆕 Chặn print screen
+    const handleBeforePrint = (e) => {
+      if (fullscreenLockRef.current) {
+        e.preventDefault();
+        setMonitorWarning("🚫 Không được phép in màn hình!");
+        setTimeout(() => setMonitorWarning(""), 3000);
+      }
+    };
+
+    document.addEventListener("contextmenu", handleContextMenu);
+    window.addEventListener("beforeprint", handleBeforePrint);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("keyup", handleKeyDown, true);
+      document.removeEventListener("contextmenu", handleContextMenu);
+      window.removeEventListener("beforeprint", handleBeforePrint);
+
+      // 🆕 Cleanup violation timer
+      if (violationTimerRef.current) {
+        clearTimeout(violationTimerRef.current);
+      }
+    };
+  }, [monitorOk, submissionId]);
+
   // Chặn một số phím (chỉ để bảo vệ UI, không tính vi phạm)
   // VI PHẠM CHỈ ĐƯỢC TÍNH TRONG TakeExam, KHÔNG PHẢI PrepareExam
   useEffect(() => {
@@ -278,17 +443,66 @@ export default function PrepareExam() {
     }
   };
 
-  // Bật fullscreen (không gửi proctor event vì chưa bắt đầu làm bài)
+  // Bật fullscreen với kiểm tra nhiều màn hình
   const enableMonitor = async () => {
     try {
+      // 🆕 Kiểm tra số lượng màn hình
+      const screens = window.screen;
+      const hasMultipleScreens =
+        screens.isExtended ||
+        (window.screenLeft !== 0 && window.screenTop !== 0);
+
+      // Sử dụng Screen Detection API nếu có
+      let detectedScreenCount = 1;
+      if ("getScreenDetails" in window) {
+        try {
+          const screenDetails = await window.getScreenDetails();
+          detectedScreenCount = screenDetails.screens?.length || 1;
+        } catch (err) {
+          // Fallback: Ước tính dựa vào window position
+          const windowOutsidePrimary =
+            window.screenLeft < 0 || window.screenLeft > window.screen.width;
+          detectedScreenCount = windowOutsidePrimary ? 2 : 1;
+        }
+      } else {
+        // Fallback detection method
+        const windowOutsidePrimary =
+          window.screenLeft < 0 || window.screenLeft > window.screen.width;
+        detectedScreenCount = windowOutsidePrimary ? 2 : 1;
+      }
+
+      setScreenCount(detectedScreenCount);
+
+      // ⚠️ Nếu phát hiện nhiều màn hình
+      if (detectedScreenCount > 1) {
+        setMultiScreenDetected(true);
+        setMonitorWarning(
+          `⚠️ Phát hiện ${detectedScreenCount} màn hình! Vui lòng TẮT màn hình phụ và CHỈ SỬ DỤNG 1 màn hình chính để thi. Sau khi tắt, nhấn lại "Bật toàn màn hình".`
+        );
+        setMonitorOk(false);
+
+        // 🆕 Hiển thị modal thay vì alert
+        setShowMultiScreenModal(true);
+        return;
+      }
+
+      // ✅ Chỉ có 1 màn hình - cho phép bật fullscreen
       if (document.documentElement.requestFullscreen) {
         await document.documentElement.requestFullscreen();
       }
-      // ✅ KHÔNG gửi proctor event ở PrepareExam
-      // Monitoring chỉ bắt đầu khi vào TakeExam
+
       setMonitorOk(true);
-    } catch {
+      setMultiScreenDetected(false);
+      setMonitorWarning("");
+      fullscreenLockRef.current = true; // 🔒 Kích hoạt khóa fullscreen
+
+      console.log(
+        "✅ [Monitor] Fullscreen enabled with lock - single screen confirmed"
+      );
+    } catch (err) {
+      console.error("❌ [Monitor] Fullscreen error:", err);
       setMonitorOk(false);
+      setMonitorWarning("❌ Không thể bật toàn màn hình. Vui lòng thử lại.");
     }
   };
 
@@ -607,12 +821,40 @@ export default function PrepareExam() {
         setCardVerified(true);
         setCardOk(true);
         setCardErr("");
-        const mssv = res.data.details?.mssv || "";
-        const fields = res.data.details?.fields_matched?.join(", ") || "";
-        setCardVerifyLog(
-          `✅ Thẻ SV hợp lệ!\\nMSSV: ${mssv}\\nTrường phát hiện: ${fields}`
-        );
-        console.log("[Card Verify] ✅", res.data.details);
+
+        // Debug: Log toàn bộ response
+        console.log("[Card Verify] Full Response:", res.data);
+
+        const details = res.data.details || {};
+        const cccd = details.cccd || ""; // CCCD riêng (12 số)
+        const studentId = details.student_id || ""; // MSSV riêng (9-11 số)
+        const primaryId = res.data.mssv || details.mssv || ""; // Mã định danh chính
+        const fields = details.fields_matched || [];
+        const fieldsText = fields.map((f) => `  • ${f}`).join("\n");
+
+        console.log("[Card Verify] CCCD:", cccd);
+        console.log("[Card Verify] Student ID:", studentId);
+        console.log("[Card Verify] Primary ID:", primaryId);
+
+        // Xây dựng text hiển thị
+        let displayText = `✅ Thẻ SV hợp lệ!`;
+
+        // Ưu tiên hiển thị CCCD nếu có (12 số)
+        if (cccd) {
+          displayText += `\n\nCCCD: ${cccd}`;
+          console.log("[Card Verify] ✅ Hiển thị CCCD:", cccd);
+        }
+
+        // Hiển thị MSSV nếu có (9-11 số) và khác với CCCD
+        if (studentId && studentId !== cccd) {
+          displayText += `\n\nMSSV: ${studentId}`;
+          console.log("[Card Verify] ✅ Hiển thị MSSV:", studentId);
+        }
+
+        displayText += `\n\nTrường phát hiện:\n${fieldsText}`;
+
+        setCardVerifyLog(displayText);
+        console.log("[Card Verify] Fields matched:", fields);
       } else {
         setCardVerified(false);
         setCardOk(false);
@@ -964,19 +1206,14 @@ export default function PrepareExam() {
     );
   }, [reqs, faceOk, cardOk, monitorOk]);
 
-  // Bước 1: Thẻ SV - luôn cho phép nếu được yêu cầu
   const allowCard = useMemo(() => reqs.card, [reqs]);
 
-  // Bước 2: Khuôn mặt - CHỈ cho phép KHI bước 1 hoàn thành (cardOk === true)
-  // Tuy nhiên, nếu đã từng bắt đầu verify (faceVerified/faceUploaded) thì vẫn cho phép chụp lại
   const allowFace = useMemo(() => {
     if (!reqs.face) return false;
-    if (!reqs.card) return true; // Nếu không yêu cầu thẻ thì cho phép luôn
-    // Cho phép nếu đã hoàn thành bước 1 HOẶC đã từng upload/verify face (cho phép retry)
+    if (!reqs.card) return true; 
     return cardOk || faceUploaded || faceVerified;
   }, [reqs, cardOk, faceUploaded, faceVerified]);
 
-  // Bước 3: Giám sát - CHỈ cho phép KHI cả bước 1 VÀ 2 hoàn thành + đã upload verified images
   const allowMonitor = useMemo(() => {
     if (!reqs.monitor) return false;
 
@@ -989,7 +1226,6 @@ export default function PrepareExam() {
     return true;
   }, [reqs, faceOk, cardOk, uploadSuccessMsg]);
 
-  // Shared styles like TakeExam
   const shellBg =
     theme === "dark"
       ? "bg-[radial-gradient(1200px_600px_at_15%_-10%,#1b2a52_0,transparent_60%),radial-gradient(1200px_800px_at_120%_10%,#1a1e3b_0,transparent_55%),linear-gradient(180deg,#070b14_0%,#0b1220_100%)]"
@@ -1645,13 +1881,156 @@ export default function PrepareExam() {
                 Yêu cầu bật toàn màn hình. Hệ thống sẽ ghi nhận rời tab/thoát
                 fullscreen.
               </p>
+
+              {/* Cảnh báo */}
+              {monitorWarning && (
+                <div
+                  className={`mt-3 p-4 rounded-xl border-2 shadow-lg ${
+                    multiScreenDetected
+                      ? "bg-red-50 border-red-300 dark:bg-red-900/20 dark:border-red-500"
+                      : "bg-yellow-50 border-yellow-300 dark:bg-yellow-900/20 dark:border-yellow-500"
+                  }`}
+                >
+                  <p
+                    className={`text-sm font-bold ${
+                      multiScreenDetected
+                        ? "text-red-700 dark:text-red-300"
+                        : "text-yellow-700 dark:text-yellow-300"
+                    }`}
+                  >
+                    {monitorWarning}
+                  </p>
+
+                  {multiScreenDetected && (
+                    <div className="mt-2 text-xs text-red-600 dark:text-red-400">
+                      <p className="font-bold">📌 Hướng dẫn:</p>
+                      <ul className="list-disc list-inside mt-1 space-y-1">
+                        <li>
+                          Ngắt kết nối màn hình phụ (rút dây HDMI/DisplayPort)
+                        </li>
+                        <li>
+                          Hoặc vào Settings → Display → chọn "Show only on 1"
+                        </li>
+                        <li>Sau đó nhấn lại nút "Bật toàn màn hình"</li>
+                      </ul>
+                      <p className="mt-2 font-semibold">
+                        🖥️ Số màn hình phát hiện:{" "}
+                        <span className="text-red-700 dark:text-red-300">
+                          {screenCount}
+                        </span>
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+              {monitorOk && !multiScreenDetected && (
+                <div className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-300 dark:bg-emerald-900/20 dark:border-emerald-500">
+                  <p className="text-sm text-emerald-700 dark:text-emerald-300 font-semibold mb-2">
+                    ✅ <strong>Chế độ fullscreen đã khóa</strong>
+                  </p>
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400 mb-2">
+                    Hệ thống sẽ tự động khôi phục fullscreen nếu bạn cố thoát.
+                    Giảng viên sẽ nhận được thông báo về mọi vi phạm.
+                  </p>
+                  <details className="text-xs text-emerald-600 dark:text-emerald-400">
+                    <summary className="cursor-pointer font-semibold hover:text-emerald-700 dark:hover:text-emerald-300">
+                      🔒 Các phím/hành động bị chặn (click để xem)
+                    </summary>
+                    <ul className="mt-2 ml-4 space-y-1 list-disc">
+                      <li>
+                        <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
+                          Esc
+                        </kbd>{" "}
+                        - Thoát fullscreen
+                      </li>
+                      <li>
+                        <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
+                          F11
+                        </kbd>{" "}
+                        - Toggle fullscreen
+                      </li>
+                      <li>
+                        <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
+                          F5
+                        </kbd>{" "}
+                        - Refresh trang
+                      </li>
+                      <li>
+                        <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
+                          F3
+                        </kbd>{" "}
+                        - Tìm kiếm
+                      </li>
+                      <li>
+                        <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
+                          F12
+                        </kbd>{" "}
+                        - DevTools
+                      </li>
+                      <li>
+                        <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
+                          Alt+Tab
+                        </kbd>{" "}
+                        - Chuyển cửa sổ
+                      </li>
+                      <li>
+                        <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
+                          Alt+F4
+                        </kbd>{" "}
+                        - Đóng cửa sổ
+                      </li>
+                      <li>
+                        <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
+                          Ctrl+W
+                        </kbd>{" "}
+                        - Đóng tab
+                      </li>
+                      <li>
+                        <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
+                          Ctrl+R
+                        </kbd>{" "}
+                        - Refresh
+                      </li>
+                      <li>
+                        <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
+                          Ctrl+Shift+I/J/C
+                        </kbd>{" "}
+                        - DevTools
+                      </li>
+                      <li>
+                        <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
+                          Ctrl+U
+                        </kbd>{" "}
+                        - View source
+                      </li>
+                      <li>
+                        🖱️ <strong>Chuột phải</strong> - Menu context
+                      </li>
+                      <li>
+                        🖨️ <strong>Print Screen</strong> - In màn hình
+                      </li>
+                    </ul>
+                  </details>
+                </div>
+              )}
+
               <button
                 className={`mt-3 px-3 py-2 rounded-lg text-white font-semibold shadow transition hover:brightness-105 disabled:opacity-60 disabled:cursor-not-allowed
-                ${monitorOk ? "bg-emerald-600" : "bg-blue-600"}`}
+                ${
+                  monitorOk
+                    ? "bg-emerald-600"
+                    : multiScreenDetected
+                    ? "bg-red-600"
+                    : "bg-blue-600"
+                }`}
                 onClick={enableMonitor}
                 disabled={!allowMonitor}
               >
-                {monitorOk ? "✔️ Đã bật giám sát" : "Bật toàn màn hình"}
+                {monitorOk
+                  ? "✔️ Đã bật giám sát"
+                  : multiScreenDetected
+                  ? "🔄 Kiểm tra lại màn hình"
+                  : "Bật toàn màn hình"}
               </button>
             </div>
           )}
@@ -1684,6 +2063,163 @@ export default function PrepareExam() {
           </button>
         </section>
       </main>
+
+      {/* 🆕 MODAL CẢNH BÁO NHIỀU MÀN HÌNH */}
+      {showMultiScreenModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div
+            className={`w-full max-w-md sm:max-w-lg md:max-w-xl transform transition-all animate-slideUp ${
+              theme === "dark"
+                ? "bg-gradient-to-br from-slate-800 to-slate-900 border-red-500/50"
+                : "bg-white"
+            } rounded-2xl shadow-2xl border-2 border-red-500`}
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-r from-red-600 to-red-700 px-6 py-4 rounded-t-2xl">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
+                  <span className="text-3xl">🚫</span>
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">
+                    HỆ THỐNG PHÁT HIỆN {screenCount} MÀN HÌNH!
+                  </h3>
+                  <p className="text-red-100 text-sm">
+                    Cảnh báo vi phạm quy định thi
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-5 space-y-4">
+              {/* Main message */}
+              <div
+                className={`p-4 rounded-xl border-2 ${
+                  theme === "dark"
+                    ? "bg-red-900/20 border-red-500/30"
+                    : "bg-red-50 border-red-200"
+                }`}
+              >
+                <p
+                  className={`text-base font-semibold ${
+                    theme === "dark" ? "text-red-200" : "text-red-800"
+                  }`}
+                >
+                  ⚠️ Để đảm bảo tính công bằng, bạn chỉ được phép sử dụng{" "}
+                  <span className="underline">1 màn hình chính</span>.
+                </p>
+              </div>
+
+              {/* Screen count display */}
+              <div className="flex items-center justify-between p-4 bg-gradient-to-r from-red-100 to-orange-100 dark:from-red-900/30 dark:to-orange-900/30 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-red-600 rounded-lg flex items-center justify-center">
+                    <span className="text-2xl">🖥️</span>
+                  </div>
+                  <div>
+                    <p
+                      className={`text-sm ${
+                        theme === "dark" ? "text-slate-300" : "text-slate-600"
+                      }`}
+                    >
+                      Số màn hình phát hiện
+                    </p>
+                    <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+                      {screenCount}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-4xl animate-pulse">⚠️</div>
+              </div>
+
+              {/* Instructions */}
+              <div
+                className={`p-4 rounded-xl ${
+                  theme === "dark"
+                    ? "bg-slate-700/50 border border-slate-600"
+                    : "bg-blue-50 border border-blue-200"
+                }`}
+              >
+                <p
+                  className={`font-bold mb-3 flex items-center gap-2 ${
+                    theme === "dark" ? "text-blue-300" : "text-blue-800"
+                  }`}
+                >
+                  <span className="text-xl">📌</span> Vui lòng thực hiện:
+                </p>
+                <ol
+                  className={`space-y-2 ${
+                    theme === "dark" ? "text-slate-300" : "text-slate-700"
+                  }`}
+                >
+                  <li className="flex items-start gap-3">
+                    <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                      1
+                    </span>
+                    <span className="flex-1">
+                      Ngắt kết nối màn hình phụ (rút dây HDMI/DisplayPort)
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                      2
+                    </span>
+                    <span className="flex-1">
+                      Hoặc tắt chế độ mở rộng màn hình:
+                      <br />
+                      <code
+                        className={`text-xs px-2 py-1 rounded mt-1 inline-block ${
+                          theme === "dark"
+                            ? "bg-slate-800 text-emerald-300"
+                            : "bg-slate-100 text-slate-800"
+                        }`}
+                      >
+                        Settings → Display → "Show only on 1"
+                      </code>
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                      3
+                    </span>
+                    <span className="flex-1">
+                      Sau đó nhấn lại nút <strong>"Bật toàn màn hình"</strong>
+                    </span>
+                  </li>
+                </ol>
+              </div>
+
+              {/* Warning note */}
+              <div
+                className={`p-3 rounded-lg border-l-4 border-yellow-500 ${
+                  theme === "dark" ? "bg-yellow-900/20" : "bg-yellow-50"
+                }`}
+              >
+                <p
+                  className={`text-sm ${
+                    theme === "dark" ? "text-yellow-200" : "text-yellow-800"
+                  }`}
+                >
+                  <strong>⚡ Lưu ý:</strong> Việc sử dụng nhiều màn hình trong
+                  khi thi có thể bị coi là gian lận và dẫn đến hủy bỏ kết quả
+                  thi.
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 rounded-b-2xl flex flex-col sm:flex-row gap-3 sm:justify-end">
+              <button
+                onClick={() => setShowMultiScreenModal(false)}
+                className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold rounded-xl shadow-lg transition transform hover:scale-105 active:scale-95"
+              >
+                ✅ Tôi đã hiểu
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

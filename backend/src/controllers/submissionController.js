@@ -5,6 +5,7 @@ const CHEATING_TYPES = {
   blocked_key: "high",
   visibility_hidden: "medium",
   fullscreen_lost: "high",
+  fullscreen_exit_attempt: "high",
   window_blur: "medium",
   tab_switch: "high",
   alt_tab: "high",
@@ -13,10 +14,8 @@ const CHEATING_TYPES = {
   copy_paste: "high",
 };
 
-// Deduplication: Track recently processed events to prevent duplicates
-// Key: `${submissionId}-${eventType}`, Value: timestamp
 const recentEvents = new Map();
-const DEDUP_WINDOW = 500; // milliseconds
+const DEDUP_WINDOW = 500; 
 
 exports.postProctorEvent = async (req, res) => {
   const submissionId = req.params.submissionId || req.params.id;
@@ -33,7 +32,6 @@ exports.postProctorEvent = async (req, res) => {
     return res.status(400).json({ error: "Invalid submissionId" });
   }
 
-  // ✅ DEDUPLICATION: Prevent duplicate events within 500ms window
   const eventKey = `${submissionId}-${event_type}`;
   const lastEventTime = recentEvents.get(eventKey);
   const now = Date.now();
@@ -50,10 +48,8 @@ exports.postProctorEvent = async (req, res) => {
     });
   }
 
-  // Mark this event as processed
   recentEvents.set(eventKey, now);
 
-  // Cleanup old entries (keep only last 1 hour)
   if (recentEvents.size > 1000) {
     const cutoff = now - 60 * 60 * 1000;
     for (const [key, time] of recentEvents.entries()) {
@@ -70,7 +66,7 @@ exports.postProctorEvent = async (req, res) => {
     let updatedCheatingCount = null;
 
     if (isCheating) {
-      // Get submission details (student_id, exam_id)
+
       const [subRows] = await conn.query(
         "SELECT user_id, exam_id FROM submissions WHERE id = ? LIMIT 1",
         [submissionId]
@@ -132,10 +128,6 @@ exports.postProctorEvent = async (req, res) => {
             insertSuccessful = false;
           }
         }
-
-        // ✅ Trigger will auto-update cheating_count after INSERT, no need to manually UPDATE
-        // This avoids double-counting and ensures accuracy via COUNT(*)
-
         // Get updated count
         const [countResult] = await conn.query(
           "SELECT cheating_count FROM submissions WHERE id = ? LIMIT 1",
@@ -148,7 +140,7 @@ exports.postProctorEvent = async (req, res) => {
           `📊 [Proctor] Current cheating_count: ${updatedCheatingCount} for submission ${submissionId}`
         );
 
-        // ✅ BROADCAST cheating event tới tất cả instructors của exam này
+        //cheating event tới tất cả instructors của exam này
         broadcastCheatingEvent(examId, {
           submissionId: parseInt(submissionId),
           studentId: parseInt(studentId),
@@ -447,8 +439,6 @@ exports.deleteStudentExamRecord = async (req, res) => {
   }
 };
 
-// Lấy câu hỏi và đáp án của sinh viên cho một submission
-// Nếu exam đã archived, tự động lấy submission có điểm cao nhất
 exports.getSubmissionQuestions = async (req, res) => {
   const submissionId = req.params.submissionId || req.params.id;
 
@@ -479,7 +469,7 @@ exports.getSubmissionQuestions = async (req, res) => {
       exam_status: examStatus,
     } = subRows[0];
 
-    // ✅ Nếu exam đã archived, lấy submission có điểm cao nhất của sinh viên này
+    // Nếu exam đã archived, lấy submission có điểm cao nhất của sinh viên này
     let actualSubmissionId = submissionId;
 
     if (examStatus === "archived") {
@@ -518,7 +508,7 @@ exports.getSubmissionQuestions = async (req, res) => {
       [examId]
     );
 
-    // ✅ Lấy câu trả lời từ submission có điểm cao nhất
+    // Lấy câu trả lời từ submission có điểm cao nhất
     const [answers] = await conn.query(
       `SELECT question_id, answer_text, selected_option_id, score, status
        FROM student_answers

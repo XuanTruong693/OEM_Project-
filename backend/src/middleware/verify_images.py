@@ -38,10 +38,12 @@ def verify_student_card(card_image_b64):
     try:
         img_bytes = base64.b64decode(card_image_b64)
         valid, details = student_card_filter.verify_student_card_from_bytes(img_bytes)
+        
         return {
             "success": True,
             "valid": valid,
-            "details": details
+            "details": details,
+            "mssv": details.get('mssv')  # Trả MSSV để hiển thị
         }
     except Exception as e:
         return {

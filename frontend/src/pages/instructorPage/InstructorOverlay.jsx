@@ -72,10 +72,7 @@ export default function InstructorOverlay() {
       `🔌 [InstructorOverlay] Connecting to WebSocket for exams:`,
       idsToJoin
     );
-
     // Kết nối tới WebSocket server
-    // Nếu ở localhost:4000 (Vite dev), socket.io sẽ auto-proxy thông qua vite.config.js
-    // Nếu ở production, dùng environment variable
     const socketUrl = import.meta.env.REACT_APP_API_URL
       ? import.meta.env.REACT_APP_API_URL
       : window.location.origin; // Auto-use current origin (localhost:4000 in dev)
@@ -210,6 +207,7 @@ export default function InstructorOverlay() {
       blocked_key: "Phím bị chặn",
       visibility_hidden: "Rời tab / ẩn cửa sổ",
       fullscreen_lost: "Thoát toàn màn hình",
+      fullscreen_exit_attempt: "Cố thoát fullscreen", // 🆕
       window_blur: "Rời cửa sổ",
       tab_switch: "Chuyển tab",
       alt_tab: "Alt + Tab",
@@ -225,10 +223,15 @@ export default function InstructorOverlay() {
     const descriptions = {
       blocked_key: () => {
         const key = details.key || "F11";
-        return `Sinh viên đã nhấn phím ${key} - cố gắng thoát fullscreen hoặc refresh trang`;
+        const stage = details.stage || "exam";
+        return `Sinh viên đã nhấn phím ${key} ${stage === 'prepare' ? 'trong giai đoạn chuẩn bị' : ''} - cố gắng thoát fullscreen hoặc refresh trang`;
       },
       fullscreen_lost: () => {
         return `Sinh viên đã thoát chế độ toàn màn hình - có thể xem nội dung khác`;
+      },
+      fullscreen_exit_attempt: () => { // 🆕
+        const stage = details.stage || "exam";
+        return `Sinh viên cố gắng thoát fullscreen ${stage === 'prepare' ? 'trong PrepareExam' : 'trong TakeExam'} - Hệ thống đã tự động khôi phục`;
       },
       visibility_hidden: () => {
         return `Sinh viên đã chuyển qua tab khác hoặc ẩn cửa sổ trình duyệt`;

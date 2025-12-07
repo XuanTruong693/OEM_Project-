@@ -97,20 +97,94 @@ def preprocess_image(image_path: str):
 
 # Kiểm tra CCCD (12 chữ số)
 def extract_cccd(text: str) -> Optional[str]:
-    # Tìm cả số dính vào chữ và số riêng biệt
-    matches = re.findall(r"\d{12}", text.replace(" ", "").replace("-", ""))
-    return matches[0] if matches else None
+    import sys
+
+    # Loại bỏ khoảng trắng, dấu gạch, dấu chấm
+    clean = text.replace(" ", "").replace("-", "").replace(".", "")
+    matches = re.findall(r"\d{12}", clean)
+    if matches:
+        print(
+            f"[OCR] 🔍 Tìm thấy {len(matches)} dãy 12 số: {matches}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return matches[0]
+    for keyword in ["cccd", "cmnd", "cmt"]:
+        pattern = rf"{keyword}\D{{0,5}}([\dOoIlSsB]{{10,14}})"
+        match = re.search(pattern, clean.lower())
+        if match:
+            raw_number = match.group(1).upper()
+            cleaned = raw_number.replace("O", "0").replace("o", "0")
+            cleaned = cleaned.replace("I", "1").replace("l", "1")
+            cleaned = cleaned.replace("S", "5").replace("s", "5")
+            cleaned = cleaned.replace("B", "8")
+            cleaned = re.sub(r"\D", "", cleaned)
+
+            if len(cleaned) == 12:
+                print(
+                    f"[OCR] ✅ Tìm thấy CCCD gần '{keyword}': {raw_number} → làm sạch: {cleaned}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return cleaned
+            elif 11 <= len(cleaned) <= 13:
+                if len(cleaned) == 13:
+                    cleaned = cleaned[:12]
+                elif len(cleaned) == 11:
+                    print(
+                        f"[OCR] ⚠️ CCCD gần '{keyword}' thiếu 1 số: {cleaned}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    return cleaned  # Vẫn trả về, để validation quyết định
+                print(
+                    f"[OCR] ✅ Tìm thấy CCCD gần '{keyword}': {raw_number} → làm sạch: {cleaned}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return cleaned
+
+    print(f"[OCR] ❌ Không tìm thấy CCCD 12 số trong text", file=sys.stderr, flush=True)
+    return None
 
 
-# Kiểm tra MSSV (8-11 số, KHÔNG phải 12 số CCCD)
 def extract_mssv(text: str) -> Optional[str]:
-    # Loại bỏ khoảng trắng và dấu gạch ngang
-    clean_text = text.replace(" ", "").replace("-", "")
-    # Tìm tất cả dãy số 8-11 chữ số
-    matches = re.findall(r"\d{8,11}", clean_text)
-    # Loại bỏ các số 12 chữ số (CCCD)
-    matches = [m for m in matches if len(m) >= 8 and len(m) <= 11]
-    return matches[0] if matches else None
+    import sys
+
+    clean_text = text.replace(" ", "").replace("-", "").upper()
+    numeric_matches = re.findall(r"\d{9,11}", clean_text)
+    numeric_matches = [m for m in numeric_matches if len(m) >= 9 and len(m) <= 11]
+    alphanumeric_matches = re.findall(r"[A-Z0-9]{9,11}", clean_text)
+    alphanumeric_matches = [
+        m
+        for m in alphanumeric_matches
+        if re.search(r"[A-Z]", m)
+        and re.search(r"\d", m)
+        and len(m) >= 9
+        and len(m) <= 11
+    ]
+
+    # Gộp cả 2 loại
+    all_matches = numeric_matches + alphanumeric_matches
+    filtered_matches = []
+    for match in all_matches:
+        match_pos = clean_text.find(match)
+        if match_pos > 0:
+            before_text = clean_text[max(0, match_pos - 10) : match_pos]
+            if any(kw in before_text.lower() for kw in ["cccd", "cmnd", "cmt"]):
+                print(
+                    f"[OCR] ⚠️ Bỏ qua MSSV candidate '{match}' (gần keyword CCCD/CMND)",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                continue
+        filtered_matches.append(match)
+
+    if not filtered_matches:
+        return None
+    filtered_matches.sort(key=len, reverse=True)
+
+    return filtered_matches[0]
 
 
 # Kiểm tra có chữ CCCD hoặc CMND
@@ -146,7 +220,6 @@ def is_student_card(image_path: str) -> Tuple[bool, Dict[str, object]]:
     reasons: List[str] = []
     for field, keywords in FIELDS.items():
         if field == "edu_domain":
-            # Kiểm tra riêng cho edu domain
             if has_edu_domain(text):
                 matched_fields.append(field)
         else:
@@ -154,19 +227,16 @@ def is_student_card(image_path: str) -> Tuple[bool, Dict[str, object]]:
                 if fuzzy_contains(text, kw):
                     matched_fields.append(field)
                     break
-
-    # Kiểm tra MSSV (8-11 chữ số)
     mssv = extract_mssv(text)
     if mssv:
         if "mssv" not in matched_fields:
             matched_fields.append("mssv")
     else:
-        reasons.append("Không tìm thấy mã số sinh viên (8–11 chữ số)")
+        reasons.append("Không tìm thấy mã số sinh viên")
 
     # Kiểm tra có "Thẻ sinh viên" hoặc "Student card"
     if "student_card" not in matched_fields:
         reasons.append("Không tìm thấy chữ 'Thẻ sinh viên' hoặc 'Student Card'")
-
     # Kiểm tra có "Đại học" hoặc "University"
     if "university" not in matched_fields:
         reasons.append("Không tìm thấy chữ 'Đại học' hoặc 'University'")
@@ -174,9 +244,6 @@ def is_student_card(image_path: str) -> Tuple[bool, Dict[str, object]]:
     # Kiểm tra có domain .edu.vn hoặc .edu
     if "edu_domain" not in matched_fields:
         reasons.append("Không tìm thấy domain .edu.vn hoặc .edu")
-
-    # Heuristic: cần ít nhất 2 trong các trường bắt buộc
-    # (student_card, university, edu_domain, mssv)
     required_fields = ["student_card", "university", "edu_domain", "mssv"]
     matched_required = [f for f in matched_fields if f in required_fields]
     valid = len(matched_required) >= 2
@@ -219,15 +286,25 @@ def verify_student_card_from_bytes(
             "ocr_text": "",
             "reasons": ["Dữ liệu ảnh không hợp lệ"],
         }
-
-    # NHANH 1: Resize về kích thước TỐI ƯU (300px) ngay từ đầu
     h, w = nparr.shape[:2]
     print(f"[OCR] Progress: 10% - Kích thước gốc: {w}x{h}", file=sys.stderr, flush=True)
 
     max_dim = max(h, w)
-    target_size = 300  # Giảm xuống 300px để xử lý cực nhanh
+    target_size = 600
 
-    if max_dim != target_size:
+    if max_dim < target_size:
+        # Upscale nếu ảnh quá nhỏ
+        scale = target_size / max_dim
+        new_w = int(w * scale)
+        new_h = int(h * scale)
+        nparr = cv2.resize(nparr, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+        print(
+            f"[OCR] Progress: 20% - Resize lên {new_w}x{new_h}",
+            file=sys.stderr,
+            flush=True,
+        )
+    elif max_dim > target_size:
+        # Downscale nếu ảnh quá lớn
         scale = target_size / max_dim
         new_w = int(w * scale)
         new_h = int(h * scale)
@@ -237,56 +314,207 @@ def verify_student_card_from_bytes(
             file=sys.stderr,
             flush=True,
         )
-
-    # NHANH 2: Grayscale + Tiền xử lý để cải thiện OCR
     print(
-        "[OCR] Progress: 30% - Chuyển grayscale và tiền xử lý",
+        "[OCR] Progress: 30% - Tiền xử lý tối ưu",
         file=sys.stderr,
         flush=True,
     )
     gray = cv2.cvtColor(nparr, cv2.COLOR_BGR2GRAY)
-
-    # Tăng độ tương phản nhẹ cho text rõ hơn
-    gray = cv2.convertScaleAbs(gray, alpha=1.2, beta=10)
-
-    # NHANH 3: OCR với VIỆT NAM + ANH
+    gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=20)
+    gray = cv2.adaptiveThreshold(
+        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
+    )
     print(
-        "[OCR] Progress: 40% - Bắt đầu Tesseract OCR (vie+eng)",
+        "[OCR] Progress: 40% - Bắt đầu Tesseract OCR (vie+eng) với config tối ưu",
         file=sys.stderr,
         flush=True,
     )
-    # --oem 1: LSTM only
-    # --psm 6: uniform text block (tốt cho thẻ SV)
-    # Dùng "vie+eng" để đọc tiếng Việt
-    text = pytesseract.image_to_string(gray, lang="vie+eng", config="--oem 1 --psm 6")
-    print("[OCR] Progress: 100% - OCR hoàn tất", file=sys.stderr, flush=True)
-    text = normalize_text(text)
-
-    # Log text đã phân tích (RAW + Normalized)
-    print(f"\n[OCR] 📝 RAW Text (500 ký tự đầu):", file=sys.stderr, flush=True)
-    raw_text = pytesseract.image_to_string(
-        gray, lang="vie+eng", config="--oem 1 --psm 6"
+    custom_config = r"--oem 1 --psm 6 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789ÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂẠẢẤẦẨẪẬẮẰẲẴẶẸẺẼỀỀỂưăạảấầẩẫậắằẳẵặẹẻẽềềểỄỆỈỊỌỎỐỒỔỖỘỚỜỞỠỢỤỦỨỪễệỉịọỏốồổỗộớờởỡợụủứừỬỮỰỲỴÝỶỸửữựỳỵýỷỹ "
+    ocr_data = pytesseract.image_to_data(
+        gray, lang="vie+eng", config=custom_config, output_type=pytesseract.Output.DICT
     )
-    print(raw_text[:500], file=sys.stderr, flush=True)
+    print("[OCR] Progress: 100% - OCR hoàn tất", file=sys.stderr, flush=True)
+
+    text = " ".join([word for word in ocr_data["text"] if word.strip()])
+    text = normalize_text(text)
     print(f"\n[OCR] 📝 Normalized text: {text[:300]}...", file=sys.stderr, flush=True)
+    img_height = gray.shape[0]
+    img_width = gray.shape[1]
+    mssv_candidates = []
+    for i, word in enumerate(ocr_data["text"]):
+        if word and word.strip():
+            word_clean = word.strip().replace(" ", "").replace("-", "").upper()
+
+            # Trích xuất số thuần (9-11 chữ số)
+            numbers_in_word = re.findall(r"\d{9,11}", word_clean)
+            numbers_in_word = [n for n in numbers_in_word if 9 <= len(n) <= 11]
+
+            # Trích xuất alphanumeric (9-11 ký tự, có cả chữ và số)
+            alphanum_in_word = re.findall(r"[A-Z0-9]{9,11}", word_clean)
+            alphanum_in_word = [
+                m
+                for m in alphanum_in_word
+                if re.search(r"[A-Z]", m) and re.search(r"\d", m) and 9 <= len(m) <= 11
+            ]
+
+            # Gộp cả 2 loại
+            all_codes = numbers_in_word + alphanum_in_word
+
+            for code in all_codes:
+                word_lower = word_clean.lower()
+                if any(kw in word_lower for kw in ["cccd", "cmnd", "cmt"]):
+                    print(
+                        f"[OCR] ⚠️ Bỏ qua '{code}' vì nằm gần keyword CCCD/CMND: '{word}'",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    continue
+
+                y_position = ocr_data["top"][i]
+                x_position = ocr_data["left"][i]
+                img_width = gray.shape[1]
+                y_ratio = y_position / img_height
+                x_ratio = x_position / img_width
+
+                priority = 0
+                if 0.75 <= y_ratio <= 0.95:
+                    priority = 5  # Rất cao
+                # Ưu tiên cao: phần dưới (65-90% height)
+                elif 0.65 <= y_ratio <= 0.9:
+                    priority = 4
+                # Ưu tiên trung bình cao: nửa dưới (55-85% height)
+                elif 0.55 <= y_ratio <= 0.85:
+                    priority = 3
+                # Ưu tiên trung bình: nửa dưới (45-75% height)
+                elif 0.45 <= y_ratio <= 0.75:
+                    priority = 2
+                # Ưu tiên thấp: vị trí khác
+                else:
+                    priority = 1
+
+                mssv_candidates.append(
+                    {
+                        "number": code,
+                        "priority": priority,
+                        "length": len(code),
+                        "y_position": y_position,
+                        "x_position": x_position,
+                        "y_ratio": round(y_ratio, 2),
+                        "x_ratio": round(x_ratio, 2),
+                    }
+                )
+
+    # Log các candidates
+    if mssv_candidates:
+        print(
+            f"\n[OCR] 🔍 Tìm thấy {len(mssv_candidates)} số có thể là MSSV:",
+            file=sys.stderr,
+            flush=True,
+        )
+        for c in mssv_candidates:
+            print(
+                f"  - {c['number']} (priority={c['priority']}, len={c['length']}, pos=({c['x_ratio']}, {c['y_ratio']}))",
+                file=sys.stderr,
+                flush=True,
+            )
 
     matched_fields: List[str] = []
     reasons: List[str] = []
 
-    # KIỂM TRA 6 TRƯỜNG (4 cũ + CCCD keyword + CCCD number)
-    # 1. Tìm MSSV (8-11 chữ số, KHÔNG phải CCCD 12 số)
-    mssv = extract_mssv(text)
+    cccd_number_found = extract_cccd(text)
+
+    mssv = None
+    if mssv_candidates:
+        # Sắp xếp theo: priority cao nhất -> độ dài dài nhất -> vị trí thấp nhất (gần đáy)
+        mssv_candidates.sort(
+            key=lambda x: (-x["priority"], -x["length"], -x["y_position"])
+        )
+        mssv = mssv_candidates[0]["number"]
+        print(
+            f"[OCR] 🎯 Chọn MSSV từ bounding box: {mssv} (priority={mssv_candidates[0]['priority']})",
+            file=sys.stderr,
+            flush=True,
+        )
+    else:
+        # Fallback: dùng regex trên toàn bộ text
+        mssv = extract_mssv(text)
+        if mssv:
+            print(
+                f"[OCR] 🎯 Chọn MSSV từ regex fallback: {mssv}",
+                file=sys.stderr,
+                flush=True,
+            )
     if mssv:
+        has_letters = bool(re.search(r"[A-Z]", mssv))
+        has_digits = bool(re.search(r"\d", mssv))
+
+        # Đếm số lượng chữ số vs chữ cái
+        digit_count = sum(1 for c in mssv if c.isdigit())
+        letter_count = sum(1 for c in mssv if c.isalpha())
+        total_chars = len(mssv)
+
+        # Nếu MSSV toàn chữ cái (0 số) → OCR sai hoàn toàn
+        if digit_count == 0:
+            print(
+                f"[OCR] ❌ MSSV '{mssv}' toàn chữ cái (0 số) → Loại bỏ",
+                file=sys.stderr,
+                flush=True,
+            )
+            mssv = None
+        # Nếu MSSV có ít hơn 70% là số → OCR sai
+        elif digit_count / total_chars < 0.7:
+            print(
+                f"[OCR] ❌ MSSV '{mssv}' chỉ có {digit_count}/{total_chars} số ({digit_count/total_chars*100:.0f}%) → Loại bỏ",
+                file=sys.stderr,
+                flush=True,
+            )
+            mssv = None
+        elif has_letters and has_digits:
+            # Đếm số lần chuyển đổi giữa chữ và số
+            transitions = 0
+            for i in range(len(mssv) - 1):
+                if mssv[i].isdigit() != mssv[i + 1].isdigit():
+                    transitions += 1
+
+            # Nếu chuyển đổi > 3 lần → MSSV lộn xộn do OCR sai
+            if transitions > 3:
+                print(
+                    f"[OCR] ⚠️ MSSV '{mssv}' có {transitions} transitions (lộn xộn) → Loại bỏ",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                mssv = None  # Loại bỏ MSSV lộn xộn
+    primary_id = None
+    if cccd_number_found:
+        primary_id = cccd_number_found
+        matched_fields.append("mssv")  # Đánh dấu có mã định danh
+        print(
+            f"[OCR] ✅ ƯU TIÊN CCCD/CMND: {cccd_number_found}",
+            file=sys.stderr,
+            flush=True,
+        )
+        if not mssv:
+            reasons.append("⚠️ Không tìm thấy MSSV, sử dụng CCCD/CMND làm mã định danh")
+        else:
+            print(
+                f"[OCR] 📋 Cũng tìm thấy MSSV: {mssv} (nhưng ưu tiên CCCD)",
+                file=sys.stderr,
+                flush=True,
+            )
+    elif mssv:
+        primary_id = mssv
         matched_fields.append("mssv")
         print(f"[OCR] ✅ Tìm thấy MSSV: {mssv}", file=sys.stderr, flush=True)
+        reasons.append("⚠️ Không tìm thấy CCCD/CMND, sử dụng MSSV")
     else:
-        reasons.append("Không tìm thấy MSSV (8-11 chữ số)")
-        print("[OCR] ❌ Không tìm thấy MSSV", file=sys.stderr, flush=True)
+        reasons.append("❌ Không tìm thấy MSSV (9-11 ký tự) và CMND/CCCD (12 số)")
+        print(
+            "[OCR] ❌ Không tìm thấy MSSV hoặc CMND/CCCD", file=sys.stderr, flush=True
+        )
 
-    # 2. Tìm "Thẻ sinh viên" hoặc "Student Card"
     has_student_card = False
     for kw in FIELDS["student_card"]:
-        if fuzzy_contains(text, kw, threshold=30):  # Giảm threshold xuống 30
+        if fuzzy_contains(text, kw, threshold=30):
             has_student_card = True
             matched_fields.append("student_card")
             print(f"[OCR] ✅ Tìm thấy keyword: {kw}", file=sys.stderr, flush=True)
@@ -334,7 +562,6 @@ def verify_student_card_from_bytes(
         reasons.append("Không tìm thấy số CCCD (12 chữ số)")
         print("[OCR] ❌ Không tìm thấy số CCCD", file=sys.stderr, flush=True)
 
-    # LOGIC: Chỉ cần 1/6 trường là PASS (cực kỳ dễ dàng)
     all_fields = [
         "mssv",
         "student_card",
@@ -344,20 +571,46 @@ def verify_student_card_from_bytes(
         "cccd_number",
     ]
     matched_required = [f for f in matched_fields if f in all_fields]
-    valid = len(matched_required) >= 1
+    important_fields = [
+        "student_card",
+        "university",
+        "cccd_cmnd_keyword",
+        "cccd_number",
+        "mssv",
+    ]
+    matched_important = [f for f in matched_fields if f in important_fields]
+
+    valid = len(matched_important) >= 2
 
     print(
-        f"\n[OCR] 📊 Kết quả: {len(matched_required)}/6 trường -> {'PASS' if valid else 'FAIL'}",
+        f"\n[OCR] 📊 Kết quả: {len(matched_important)}/5 trường quan trọng ({', '.join(matched_important)}) -> {'PASS' if valid else 'FAIL'}",
         file=sys.stderr,
         flush=True,
     )
 
     if not valid:
-        reasons.append(f"Không tìm thấy bất kỳ trường hợp lệ nào (cần ít nhất 1/6)")
+        reasons.append(
+            f"⚠️ Chỉ tìm thấy {len(matched_important)}/5 trường quan trọng (cần ít nhất 2)"
+        )
+        reasons.append(
+            f"Các trường đã tìm: {', '.join(matched_important) if matched_important else 'Không có'}"
+        )
+
+    if valid and not primary_id and cccd_number_found:
+        primary_id = cccd_number_found
+        print(
+            f"[OCR] 🔄 Không có MSSV, dùng CCCD làm mã định danh: {primary_id}",
+            file=sys.stderr,
+            flush=True,
+        )
 
     return valid, {
         "fields_matched": list(set(matched_fields)),
-        "mssv": mssv,
+        "mssv": primary_id, 
+        "cccd": cccd_number_found,
+        "student_id": (
+            mssv if mssv and len(mssv) <= 11 else None
+        ),
         "ocr_text": text,
         "reasons": reasons,
     }

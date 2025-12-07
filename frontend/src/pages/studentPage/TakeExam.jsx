@@ -8,7 +8,16 @@ export default function TakeExam() {
   const [search] = useSearchParams();
   const navigate = useNavigate();
   const submissionId = search.get("submission_id");
+  
+  // ===== Refs =====
   const socketRef = useRef(null);
+  const qRefs = useRef({});
+  const toastTimerRef = useRef(null);
+  const tickRef = useRef(null);
+  const cleanupListenersRef = useRef(null); // Lưu hàm cleanup để gọi khi nộp bài
+  const submittedRef = useRef(false); // Ref để tracking submitted state (tránh stale closure)
+  const monitoringActiveRef = useRef(false); // Ref để tracking khi nào bắt đầu giám sát (sau grace period)
+  const lastViolationTimeRef = useRef({}); // Track last time each event was reported (prevent duplicates)
 
   // ===== State =====
   const [theme, setTheme] = useState(
@@ -30,15 +39,7 @@ export default function TakeExam() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false); // Đánh dấu đã nộp bài
   const [showConfirmModal, setShowConfirmModal] = useState(false); // Modal xác nhận nộp bài
-  const cleanupListenersRef = useRef(null); // Lưu hàm cleanup để gọi khi nộp bài
-  const submittedRef = useRef(false); // Ref để tracking submitted state (tránh stale closure)
-  const monitoringActiveRef = useRef(false); // Ref để tracking khi nào bắt đầu giám sát (sau grace period)
-  const lastViolationTimeRef = useRef({}); // Track last time each event was reported (prevent duplicates)
   const [unansweredQuestions, setUnansweredQuestions] = useState([]); // Danh sách câu bỏ trống
-
-  const qRefs = useRef({});
-  const toastTimerRef = useRef(null);
-  const tickRef = useRef(null);
 
   // ===== Block navigation after submit =====
   useEffect(() => {
@@ -146,6 +147,9 @@ export default function TakeExam() {
 
         setExamTitle(res.data?.exam_title || `Bài thi #${examId}`);
 
+        // Hiển thị thông báo bắt đầu giám sát
+        flash("📹 Hệ thống giám sát đã kích hoạt. Giữ toàn màn hình!", "warn", 3000);
+
         if (document.documentElement.requestFullscreen) {
           try {
             await document.documentElement.requestFullscreen().catch(() => {
@@ -194,7 +198,7 @@ export default function TakeExam() {
     };
 
     const penalize = (evt, msg, key = null) => {
-      // ✅ Không tính vi phạm nếu đã nộp bài
+  
       if (submittedRef.current) {
         console.log(
           "🛑 [TakeExam] Violation ignored - exam already submitted:",
@@ -203,16 +207,14 @@ export default function TakeExam() {
         return;
       }
 
-      // ✅ Không tính vi phạm trước khi sinh viên bắt đầu làm bài (tránh false positive khi load trang)
       if (!monitoringActiveRef.current) {
         console.log(
-          "⏳ [TakeExam] Violation ignored - monitoring not active yet:",
+          "⏳ [TakeExam] Violation ignored - monitoring not active yet (grace period):",
           evt
         );
         return;
       }
 
-      // ✅ Throttle: Chỉ report nếu chưa report event này trong 1 giây vừa rồi
       const now = Date.now();
       const lastTime = lastViolationTimeRef.current[evt];
       if (lastTime !== undefined && now - lastTime < 1000) {
@@ -227,13 +229,22 @@ export default function TakeExam() {
 
       setViolations((v) => {
         const nv = v + 1;
-        flash(`${msg} (Cảnh cáo ${nv}/5)`, "danger", 1600);
-        postProctor(evt, { message: msg, key });
-        if (nv >= 5) handleSubmit(true);
-        else if (
+        
+        // Hiển thị thông báo kèm số lần vi phạm trong 10 giây
+        flash(`🚨 VI PHẠM LẦN ${nv}: ${msg} (Cảnh cáo ${nv}/5)`, "danger", 10000);
+        
+        // Gửi số lần vi phạm lên backend
+        postProctor(evt, { message: msg, key, violationNumber: nv });
+        
+        // Tự động nộp bài nếu đạt 5 vi phạm
+        if (nv >= 5) {
+          flash("⚠️ Đã đạt 5 vi phạm! Tự động nộp bài...", "danger", 3000);
+          setTimeout(() => handleSubmit(true), 1000);
+        } else if (
           !document.fullscreenElement &&
           document.documentElement.requestFullscreen
         ) {
+          // Tự động quay lại fullscreen
           document.documentElement.requestFullscreen().catch((err) => {
             console.log(
               "ℹ️ [TakeExam] Cannot re-enter fullscreen:",
@@ -271,14 +282,10 @@ export default function TakeExam() {
     };
 
     start();
-
-    // ===== INIT WEBSOCKET CONNECTION =====
     // Kết nối tới WebSocket server để báo cáo gian lận
-    // Nếu ở localhost:4000 (Vite dev), socket.io sẽ auto-proxy thông qua vite.config.js
-    // Nếu ở production, dùng environment variable
     const socketUrl = import.meta.env.REACT_APP_API_URL
       ? import.meta.env.REACT_APP_API_URL
-      : window.location.origin; // Auto-use current origin (localhost:4000 in dev)
+      : window.location.origin;
 
     const socket = io(socketUrl, {
       reconnection: true,
@@ -311,13 +318,12 @@ export default function TakeExam() {
     socket.on("disconnect", () => {
       console.log("❌ [Student] Disconnected from WebSocket");
     });
-
-    // ✅ START MONITORING IMMEDIATELY - Not waiting for grace period
-    // Monitor from the moment student enters exam to catch any cheating attempts
-    monitoringActiveRef.current = true;
-    console.log(
-      "✅ [TakeExam] Monitoring activated immediately upon exam start"
-    );
+    const activateMonitoring = setTimeout(() => {
+      monitoringActiveRef.current = true;
+      console.log(
+        "✅ [TakeExam] Monitoring activated after 2s grace period"
+      );
+    }, 2000);
 
     window.addEventListener("keydown", onKey, true);
     document.addEventListener("fullscreenchange", onFs);
@@ -327,6 +333,7 @@ export default function TakeExam() {
     window.addEventListener("beforeunload", onBefore);
 
     const cleanup = () => {
+      clearTimeout(activateMonitoring);
       monitoringActiveRef.current = false;
 
       // ✅ Disconnect WebSocket
@@ -346,14 +353,12 @@ export default function TakeExam() {
       );
     };
 
-    // Lưu hàm cleanup để có thể gọi khi submit
     cleanupListenersRef.current = cleanup;
 
     return cleanup;
-    // eslint-disable-next-line
+
   }, [submissionId, examId]);
 
-  // ===== Monitoring is active from the start, no need for interaction trigger =====
 
   // ===== Timer =====
   useEffect(() => {
@@ -425,11 +430,10 @@ export default function TakeExam() {
     if (submitting) return;
     setSubmitting(true);
 
-    // ✅ Đánh dấu đã nộp bài NGAY để dừng tracking violations
     setSubmitted(true);
-    submittedRef.current = true; // ✅ Cập nhật ref để penalize function nhìn thấy ngay
+    submittedRef.current = true; 
 
-    // ✅ Dừng hoàn toàn việc theo dõi màn hình - xóa tất cả event listeners
+    //Dừng hoàn toàn việc theo dõi màn hình - xóa tất cả event listeners
     if (cleanupListenersRef.current) {
       cleanupListenersRef.current();
       cleanupListenersRef.current = null;
@@ -514,25 +518,25 @@ export default function TakeExam() {
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <button
             onClick={() => navigate("/")}
-            className="flex items-center gap-3"
+            className="flex items-center gap-2 md:gap-3 min-w-0"
           >
             <img
               src="/Logo.png"
               alt="logo"
-              className="h-9 w-auto rounded-md shadow-[0_0_0_4px_rgba(106,163,255,.15),_0_8px_24px_rgba(0,0,0,.35)] ring-1 ring-white/20 bg-white"
+              className="h-7 md:h-9 w-auto rounded-md shadow-[0_0_0_4px_rgba(106,163,255,.15),_0_8px_24px_rgba(0,0,0,.35)] ring-1 ring-white/20 bg-white flex-shrink-0"
             />
             <h1
-              className={`text-sm font-semibold tracking-tight ${
+              className={`text-xs md:text-sm font-semibold tracking-tight truncate ${
                 theme === "dark" ? "text-slate-100" : "text-slate-800"
               }`}
             >
               {examTitle}
             </h1>
           </button>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
             <button
               onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-              className={`px-3 py-2 rounded-lg border ${
+              className={`px-2 md:px-3 py-1.5 md:py-2 rounded-lg border text-sm md:text-base ${
                 theme === "dark"
                   ? "bg-white/10 border-white/20 text-slate-100"
                   : "bg-white border-slate-200 text-slate-800"
@@ -542,7 +546,7 @@ export default function TakeExam() {
               {theme === "dark" ? "🌙" : "☀️"}
             </button>
             <div
-              className={`font-mono font-bold text-base px-3 py-2 rounded-lg ${
+              className={`font-mono font-bold text-xs md:text-base px-2 md:px-3 py-1.5 md:py-2 rounded-lg whitespace-nowrap ${
                 theme === "dark"
                   ? "bg-white/10 border border-white/10 text-slate-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,.06),_0_8px_20px_rgba(0,0,0,.25)]"
                   : "bg-indigo-50 border border-slate-200 text-slate-800"
@@ -553,7 +557,7 @@ export default function TakeExam() {
             <button
               onClick={handleSubmitClick}
               disabled={submitting}
-              className="px-4 py-2 rounded-xl text-white font-bold shadow-[0_8px_20px_rgba(24,201,100,.28),_inset_0_-2px_0_rgba(0,0,0,.2)] disabled:opacity-60"
+              className="px-3 md:px-4 py-1.5 md:py-2 rounded-lg md:rounded-xl text-white text-xs md:text-base font-bold shadow-[0_8px_20px_rgba(24,201,100,.28),_inset_0_-2px_0_rgba(0,0,0,.2)] disabled:opacity-60 whitespace-nowrap"
               style={{ background: "linear-gradient(180deg,#00cf7f,#17a55c)" }}
             >
               {submitting ? "Đang nộp..." : "Nộp bài"}
@@ -577,12 +581,12 @@ export default function TakeExam() {
       {/* BODY (only MAIN scrolls) */}
       <div className="flex-1 overflow-hidden flex">
         <div
-          className="max-w-6xl mx-auto p-4 flex gap-4 w-full"
+          className="max-w-6xl mx-auto p-2 md:p-4 flex gap-2 md:gap-4 w-full"
           style={{ height: "calc(100vh - 80px)" }}
         >
-          {/* SIDEBAR (fixed position, no scroll) */}
+          {/* SIDEBAR (fixed position, no scroll) - Ẩn trên mobile */}
           <aside
-            className={`rounded-2xl p-4 ${cardCls} flex-shrink-0 w-64 flex flex-col h-full`}
+            className={`hidden lg:flex rounded-2xl p-4 ${cardCls} flex-shrink-0 w-64 flex-col h-full`}
           >
             <div className="flex items-center justify-between mb-2 flex-shrink-0">
               <h3
@@ -600,7 +604,7 @@ export default function TakeExam() {
                 {counts.answered}/{counts.total} đã làm
               </span>
             </div>
-            <div className="grid grid-cols-5 gap-2 pointer-events-auto select-none flex-shrink-0 overflow-y-auto max-h-[calc(100%-100px)]">
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 pointer-events-auto select-none flex-shrink-0 overflow-y-auto max-h-[calc(100%-100px)]">
               {questions.map((q, i) => (
                 <button
                   key={q.question_id}
@@ -622,13 +626,29 @@ export default function TakeExam() {
                 </button>
               ))}
             </div>
-            <p
-              className={`${
-                theme === "dark" ? "text-slate-400" : "text-slate-600"
-              } text-sm mt-3 flex-shrink-0`}
-            >
-              Giữ chế độ toàn màn hình. Rời tab/ESC/F11 sẽ bị cảnh cáo.
-            </p>
+            <div className="mt-3 p-2 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700">
+              <p className={`${
+                theme === "dark" ? "text-yellow-300" : "text-yellow-800"
+              } text-xs font-semibold flex items-center gap-1`}>
+                <span>⚠️</span>
+                <span>Hệ thống giám sát đang hoạt động</span>
+              </p>
+              <p className={`${
+                theme === "dark" ? "text-yellow-400" : "text-yellow-700"
+              } text-[10px] mt-1`}>
+                Giữ toàn màn hình. Rời tab/ESC/F11 sẽ bị cảnh cáo.
+              </p>
+              {violations > 0 && (
+                <div className="mt-2 pt-2 border-t border-yellow-300 dark:border-yellow-700">
+                  <p className="text-red-600 dark:text-red-400 text-xs font-bold">
+                    🚨 Vi phạm: {violations}/5
+                  </p>
+                  <p className="text-red-500 dark:text-red-300 text-[10px] mt-0.5">
+                    {violations >= 3 ? "Cảnh báo nghiêm trọng!" : "Lưu ý tuân thủ quy định"}
+                  </p>
+                </div>
+              )}
+            </div>
           </aside>
 
           {/* MAIN (scrollable) */}
@@ -644,13 +664,13 @@ export default function TakeExam() {
                 <section
                   key={q.question_id}
                   ref={(el) => (qRefs.current[q.question_id] = el)}
-                  className={`rounded-2xl p-4 ${cardCls}`}
+                  className={`rounded-xl md:rounded-2xl p-3 md:p-4 ${cardCls}`}
                 >
                   {/* Câu hỏi: trắng sáng khi dark */}
                   <div
                     className={`${
                       theme === "dark" ? "text-white" : "text-slate-800"
-                    } font-bold text-base`}
+                    } font-bold text-sm md:text-base`}
                   >
                     {idx + 1}. {q.question_text}
                   </div>
@@ -665,13 +685,13 @@ export default function TakeExam() {
                   </div>
 
                   {q.type === "MCQ" ? (
-                    <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-1.5 md:gap-2">
                       {(q.options || []).map((o) => {
                         const oid = o.option_id ?? o.id;
                         return (
                           <label
                             key={oid}
-                            className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer
+                            className={`flex items-start gap-2 md:gap-3 p-2 md:p-3 rounded-lg md:rounded-xl border cursor-pointer text-sm md:text-base
                             ${
                               theme === "dark"
                                 ? "bg-white/5 border-white/10 hover:border-blue-300/40 text-white"
@@ -681,7 +701,7 @@ export default function TakeExam() {
                             <input
                               type="radio"
                               name={`q_${q.question_id}`}
-                              className="mt-1"
+                              className="mt-0.5 md:mt-1 flex-shrink-0"
                               checked={q.__selected === oid}
                               onChange={() => {
                                 saveAnswer(q, oid);
@@ -713,9 +733,9 @@ export default function TakeExam() {
                     </div>
                   ) : (
                     <textarea
-                      rows={5}
+                      rows={4}
                       placeholder="Nhập câu trả lời…"
-                      className={`w-full rounded-xl p-3 focus:ring-2 focus:ring-blue-300
+                      className={`w-full rounded-lg md:rounded-xl p-2 md:p-3 text-sm md:text-base focus:ring-2 focus:ring-blue-300
                       ${
                         theme === "dark"
                           ? "bg-white/5 border border-white/10 text-white placeholder:text-slate-300"
@@ -749,16 +769,30 @@ export default function TakeExam() {
       {/* TOAST */}
       {!!toast.msg && (
         <div
-          className={`fixed left-1/2 -translate-x-1/2 bottom-6 z-50 text-slate-900 font-bold px-4 py-2 rounded-xl shadow-2xl
+          className={`fixed left-1/2 -translate-x-1/2 bottom-3 md:bottom-6 z-50 font-bold px-3 md:px-6 py-3 md:py-4 rounded-lg md:rounded-xl shadow-2xl max-w-[95vw] md:max-w-md w-full mx-2
             ${
               toast.kind === "danger"
-                ? "bg-red-300"
+                ? "bg-red-500 text-white border-2 border-red-700"
                 : toast.kind === "warn"
-                ? "bg-yellow-300"
-                : "bg-white"
+                ? "bg-yellow-300 text-slate-900"
+                : "bg-white text-slate-900"
             }`}
         >
-          {toast.msg}
+          <div className="flex items-center gap-2 md:gap-3">
+            {toast.kind === "danger" && violations > 0 && (
+              <div className="w-10 h-10 md:w-12 md:h-12 bg-white rounded-full flex items-center justify-center flex-shrink-0 animate-bounce">
+                <span className="text-red-600 text-lg md:text-xl font-bold">{violations}</span>
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-xs md:text-sm leading-tight break-words">{toast.msg}</p>
+              {toast.kind === "danger" && (
+                <p className="text-[10px] md:text-xs mt-1 opacity-80">
+                  Cảnh báo này sẽ tự động tắt sau 10 giây
+                </p>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -766,15 +800,15 @@ export default function TakeExam() {
       <div
         className={`fixed inset-0 z-50 ${
           showModal ? "grid" : "hidden"
-        } place-items-center bg-black/50`}
+        } place-items-center bg-black/50 p-4`}
       >
         <div
-          className={`w-[min(560px,94vw)] p-6 rounded-2xl border border-slate-200 shadow-2xl text-slate-800 bg-white`}
+          className={`w-full max-w-[560px] p-4 md:p-6 rounded-xl md:rounded-2xl border border-slate-200 shadow-2xl text-slate-800 bg-white`}
           style={{ backgroundColor: "#ffffff", color: "#0f172a" }}
         >
-          <h2 className="text-lg font-bold mb-2">Kết quả tạm thời</h2>
+          <h2 className="text-base md:text-lg font-bold mb-2">Kết quả tạm thời</h2>
           <div
-            className={`flex items-center justify-between py-2 border-b ${
+            className={`flex items-center justify-between py-2 border-b text-sm md:text-base ${
               theme === "dark"
                 ? "border-white/10"
                 : "border-dashed border-slate-300"
@@ -786,7 +820,7 @@ export default function TakeExam() {
             </strong>
           </div>
           <div
-            className={`flex items-center justify-between py-2 border-b ${
+            className={`flex items-center justify-between py-2 border-b text-sm md:text-base ${
               theme === "dark"
                 ? "border-white/10"
                 : "border-dashed border-slate-300"
@@ -797,7 +831,7 @@ export default function TakeExam() {
               {aiScore != null ? Number(aiScore).toFixed(1) : "—"}/10
             </strong>
           </div>
-          <div className="flex items-center justify-between py-2">
+          <div className="flex items-center justify-between py-2 text-sm md:text-base">
             <div>Tổng tạm</div>
             <strong>
               {totalScore != null
@@ -811,13 +845,13 @@ export default function TakeExam() {
           <div
             className={`${
               theme === "dark" ? "text-slate-300" : "text-slate-600"
-            } text-sm mt-1`}
+            } text-xs md:text-sm mt-1`}
           >
             Điểm tự luận sẽ được AI & giảng viên xác nhận sau.
           </div>
 
           <button
-            className="w-full mt-4 text-white font-extrabold tracking-wide rounded-xl py-3 shadow-[0_12px_26px_rgba(106,163,255,.35),_inset_0_-2px_0_rgba(0,0,0,.2)]"
+            className="w-full mt-4 text-white text-sm md:text-base font-extrabold tracking-wide rounded-xl py-2.5 md:py-3 shadow-[0_12px_26px_rgba(106,163,255,.35),_inset_0_-2px_0_rgba(0,0,0,.2)]"
             style={{ background: "linear-gradient(180deg,#6aa3ff,#5b82ff)" }}
             onClick={() => {
               setShowModal(false);
@@ -833,23 +867,23 @@ export default function TakeExam() {
       <div
         className={`fixed inset-0 z-50 ${
           showConfirmModal ? "grid" : "hidden"
-        } place-items-center bg-black/60 backdrop-blur-sm`}
+        } place-items-center bg-black/60 backdrop-blur-sm p-4`}
       >
         <div
-          className="w-[min(520px,94vw)] p-6 rounded-2xl border border-slate-200 shadow-2xl bg-white"
+          className="w-full max-w-[520px] p-4 md:p-6 rounded-xl md:rounded-2xl border border-slate-200 shadow-2xl bg-white max-h-[90vh] overflow-y-auto"
           style={{ backgroundColor: "#ffffff", color: "#0f172a" }}
         >
           {unansweredQuestions.length > 0 ? (
             <>
-              <div className="flex items-start gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center flex-shrink-0">
-                  <span className="text-2xl">⚠️</span>
+              <div className="flex items-start gap-2 md:gap-3 mb-3 md:mb-4">
+                <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-yellow-100 flex items-center justify-center flex-shrink-0">
+                  <span className="text-xl md:text-2xl">⚠️</span>
                 </div>
-                <div>
-                  <h2 className="text-lg font-bold text-slate-800">
+                <div className="min-w-0">
+                  <h2 className="text-base md:text-lg font-bold text-slate-800">
                     Cảnh báo: Có câu hỏi bỏ trống
                   </h2>
-                  <p className="text-sm text-slate-600 mt-1">
+                  <p className="text-xs md:text-sm text-slate-600 mt-1">
                     Bạn đang bỏ trống{" "}
                     <strong className="text-red-600">
                       {unansweredQuestions.length} câu hỏi
@@ -859,8 +893,8 @@ export default function TakeExam() {
                 </div>
               </div>
 
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4 max-h-32 overflow-y-auto">
-                <div className="flex flex-wrap gap-2">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 md:p-3 mb-3 md:mb-4 max-h-32 overflow-y-auto">
+                <div className="flex flex-wrap gap-1.5 md:gap-2">
                   {unansweredQuestions.map((q, idx) => {
                     const qIndex =
                       questions.findIndex(
@@ -873,7 +907,7 @@ export default function TakeExam() {
                           scrollTo(q.question_id);
                           setShowConfirmModal(false);
                         }}
-                        className="px-3 py-1 bg-red-100 border border-red-300 rounded-lg text-red-700 font-semibold text-sm hover:bg-red-200 transition"
+                        className="px-2 md:px-3 py-1 bg-red-100 border border-red-300 rounded-lg text-red-700 font-semibold text-xs md:text-sm hover:bg-red-200 transition"
                       >
                         Câu {qIndex}
                       </button>
@@ -882,15 +916,15 @@ export default function TakeExam() {
                 </div>
               </div>
 
-              <p className="text-sm text-slate-700 mb-4">
+              <p className="text-xs md:text-sm text-slate-700 mb-3 md:mb-4">
                 Bạn có muốn tiếp tục nộp bài không? Các câu bỏ trống sẽ không
                 được tính điểm.
               </p>
 
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-2 md:gap-3">
                 <button
                   onClick={() => setShowConfirmModal(false)}
-                  className="flex-1 px-4 py-3 rounded-xl border-2 border-slate-300 text-slate-700 font-bold hover:bg-slate-50 transition"
+                  className="flex-1 px-3 md:px-4 py-2 md:py-3 rounded-lg md:rounded-xl border-2 border-slate-300 text-slate-700 text-sm md:text-base font-bold hover:bg-slate-50 transition"
                 >
                   Quay lại làm tiếp
                 </button>
@@ -900,7 +934,7 @@ export default function TakeExam() {
                     handleSubmit(false);
                   }}
                   disabled={submitting}
-                  className="flex-1 px-4 py-3 rounded-xl text-white font-bold shadow-lg disabled:opacity-60 transition"
+                  className="flex-1 px-3 md:px-4 py-2 md:py-3 rounded-lg md:rounded-xl text-white text-sm md:text-base font-bold shadow-lg disabled:opacity-60 transition"
                   style={{
                     background: "linear-gradient(180deg,#ff6b6b,#ee5a52)",
                   }}
@@ -911,15 +945,15 @@ export default function TakeExam() {
             </>
           ) : (
             <>
-              <div className="flex items-start gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                  <span className="text-2xl">✋</span>
+              <div className="flex items-start gap-2 md:gap-3 mb-3 md:mb-4">
+                <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                  <span className="text-xl md:text-2xl">✋</span>
                 </div>
-                <div>
-                  <h2 className="text-lg font-bold text-slate-800">
+                <div className="min-w-0">
+                  <h2 className="text-base md:text-lg font-bold text-slate-800">
                     Xác nhận nộp bài
                   </h2>
-                  <p className="text-sm text-slate-600 mt-1">
+                  <p className="text-xs md:text-sm text-slate-600 mt-1">
                     Bạn đã hoàn thành{" "}
                     <strong className="text-green-600">
                       {counts.answered}/{counts.total} câu hỏi
@@ -929,24 +963,24 @@ export default function TakeExam() {
                 </div>
               </div>
 
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-                <p className="text-sm text-slate-700">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 md:p-3 mb-3 md:mb-4">
+                <p className="text-xs md:text-sm text-slate-700">
                   ⏰ Thời gian còn lại:{" "}
                   <strong className="text-blue-600 font-mono">{fmt}</strong>
                 </p>
-                <p className="text-sm text-slate-600 mt-2">
+                <p className="text-xs md:text-sm text-slate-600 mt-2">
                   Sau khi nộp bài, bạn sẽ không thể chỉnh sửa câu trả lời.
                 </p>
               </div>
 
-              <p className="text-base text-slate-800 font-semibold mb-4">
+              <p className="text-sm md:text-base text-slate-800 font-semibold mb-3 md:mb-4">
                 Bạn có chắc chắn muốn nộp bài không?
               </p>
 
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-2 md:gap-3">
                 <button
                   onClick={() => setShowConfirmModal(false)}
-                  className="flex-1 px-4 py-3 rounded-xl border-2 border-slate-300 text-slate-700 font-bold hover:bg-slate-50 transition"
+                  className="flex-1 px-3 md:px-4 py-2 md:py-3 rounded-lg md:rounded-xl border-2 border-slate-300 text-slate-700 text-sm md:text-base font-bold hover:bg-slate-50 transition"
                 >
                   Quay lại làm tiếp
                 </button>
@@ -956,7 +990,7 @@ export default function TakeExam() {
                     handleSubmit(false);
                   }}
                   disabled={submitting}
-                  className="flex-1 px-4 py-3 rounded-xl text-white font-bold shadow-lg disabled:opacity-60 transition"
+                  className="flex-1 px-3 md:px-4 py-2 md:py-3 rounded-lg md:rounded-xl text-white text-sm md:text-base font-bold shadow-lg disabled:opacity-60 transition"
                   style={{
                     background: "linear-gradient(180deg,#00cf7f,#17a55c)",
                   }}
