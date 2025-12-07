@@ -19,7 +19,7 @@ const verifyToken = (req, res, next) => {
       role: decoded.role,
     };
 
-    console.log("✅ Decoded JWT:", req.user); // kiểm tra kết quả thật
+    //console.log("✅ Decoded JWT:", req.user); // kiểm tra kết quả thật
     next();
   } catch (err) {
     console.error("❌ Token verify error:", err);

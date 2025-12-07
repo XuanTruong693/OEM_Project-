@@ -2,6 +2,7 @@ const jwt = require("jsonwebtoken");
 const sequelize = require("../config/db");
 const fs = require("fs");
 const path = require("path");
+const { gradeSubmission } = require("../services/AIService");
 
 // Helper: sign a short-lived room token
 function signRoomToken(payload, ttlSeconds = 15 * 60) {
@@ -31,7 +32,7 @@ async function verifyRoom(req, res) {
   try {
     const { room_code } = req.body || {};
     console.log('🔍 [verifyRoom] Received room_code:', room_code, 'Length:', room_code?.length);
-    
+
     if (!room_code)
       return res.status(400).json({ message: "room_code is required" });
 
@@ -56,7 +57,7 @@ async function verifyRoom(req, res) {
         { replacements: [trimmedCode] }
       );
       console.log('🔎 [verifyRoom] Check all statuses:', allRows);
-      
+
       return res
         .status(404)
         .json({ message: "Mã không đúng hoặc phòng chưa mở" });
@@ -67,7 +68,7 @@ async function verifyRoom(req, res) {
     // Kiểm tra số lần thi (nếu user đã đăng nhập)
     if (req.user && req.user.id) {
       const userId = req.user.id;
-      
+
       // Lấy max_attempts từ exam
       const [examSettings] = await sequelize.query(
         `SELECT max_attempts FROM exams WHERE id = ? LIMIT 1`,
@@ -255,7 +256,7 @@ async function joinExam(req, res) {
          VALUES (?, ?, NOW())`,
         { replacements: [userId, room_code] }
       );
-    } catch (e) {}
+    } catch (e) { }
 
     const [maxAttempt] = await sequelize.query(
       `SELECT COALESCE(MAX(attempt_no), 0) AS max_attempt 
@@ -369,9 +370,8 @@ async function uploadImages(req, res) {
             }
           );
           response.face_uploaded = true;
-          response.face_preview = `data:${
-            faceFile.mimetype
-          };base64,${faceFile.buffer.toString("base64")}`;
+          response.face_preview = `data:${faceFile.mimetype
+            };base64,${faceFile.buffer.toString("base64")}`;
         }
       }
 
@@ -390,9 +390,8 @@ async function uploadImages(req, res) {
             }
           );
           response.card_uploaded = true;
-          response.card_preview = `data:${
-            cardFile.mimetype
-          };base64,${cardFile.buffer.toString("base64")}`;
+          response.card_preview = `data:${cardFile.mimetype
+            };base64,${cardFile.buffer.toString("base64")}`;
         }
       }
     } catch (persistErr) {
@@ -465,9 +464,8 @@ async function verifyStudentCardImage(req, res) {
       return res.status(400).json({
         ok: false,
         valid: false,
-        message: `❌ Thẻ sinh viên không hợp lệ!\n\nCác trường đã tìm thấy: ${
-          fieldsMatched.join(", ") || "không có"
-        }\nMSSV tìm thấy: ${mssv}\n\nLý do:\n${reasons}\n\n⚠️ Vui lòng upload lại ảnh thẻ SV rõ nét hơn!`,
+        message: `❌ Thẻ sinh viên không hợp lệ!\n\nCác trường đã tìm thấy: ${fieldsMatched.join(", ") || "không có"
+          }\nMSSV tìm thấy: ${mssv}\n\nLý do:\n${reasons}\n\n⚠️ Vui lòng upload lại ảnh thẻ SV rõ nét hơn!`,
         details: result.details,
       });
     }
@@ -1164,9 +1162,8 @@ async function startExam(req, res) {
     if (["submitted", "graded"].includes(sub.status)) {
       console.warn(`❌ [startExam] Cannot restart - status is ${sub.status}`);
       return res.status(400).json({
-        message: `Bài thi này đã ${
-          sub.status === "graded" ? "có kết quả" : "được nộp"
-        }. Vui lòng tạo lần thi mới.`,
+        message: `Bài thi này đã ${sub.status === "graded" ? "có kết quả" : "được nộp"
+          }. Vui lòng tạo lần thi mới.`,
         status: sub.status,
         shouldCreateNewAttempt: true,
       });
@@ -1178,13 +1175,13 @@ async function startExam(req, res) {
       hasOrderIndex = false;
     try {
       hasStartedAt = await hasColumn("submissions", "started_at");
-    } catch (e) {}
+    } catch (e) { }
     try {
       hasDurMin = await hasColumn("exams", "duration_minutes");
-    } catch (e) {}
+    } catch (e) { }
     try {
       hasOrderIndex = await hasColumn("exam_questions", "order_index");
-    } catch (e) {}
+    } catch (e) { }
 
     // nếu chưa có started_at, set ngay bây giờ (nếu cột tồn tại).
     const canInProgress = await (async () => {
@@ -1474,11 +1471,17 @@ async function submitExam(req, res) {
       }
     });
 
-    // Cập nhật điểm submission hiện tại
     await sequelize.query(
       `UPDATE submissions SET total_score = ?, suggested_total_score = total_score + COALESCE(ai_score,0), status='graded', submitted_at = NOW() WHERE id = ?`,
       { replacements: [totalScore, submissionId] }
     );
+
+    // ✅ Trigger AI Grading for Essays (Fire & Forget)
+    try {
+      gradeSubmission(submissionId);
+    } catch (e) {
+      console.warn("⚠️ [submitExam] Failed to queue AI grading:", e.message);
+    }
 
     // Try stored procedure if exists
     try {

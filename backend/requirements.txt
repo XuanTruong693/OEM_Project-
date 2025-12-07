@@ -16,7 +16,7 @@
 
 # BƯỚC 2: Cài đặt TẤT CẢ (1 lệnh duy nhất)
 #   pip install --upgrade pip
-#   pip install uniface==1.1.2 opencv-python==4.10.0.84 numpy==1.26.4 scikit-image==0.24.0 pytesseract==0.3.13 Pillow==10.4.0
+#   pip install uniface==1.1.2 opencv-python>=4.10.0.84 numpy>=1.26.4 scikit-image>=0.24.0 pytesseract==0.3.13 Pillow>=10.4.0
 
 # HOẶC cài từ file này:
 #   pip install -r requirements.txt
@@ -32,12 +32,12 @@
 uniface==1.1.2
 
 # Image Processing
-opencv-python==4.10.0.84
-numpy==1.26.4
-scikit-image==0.24.0
+opencv-python>=4.10.0.84
+numpy>=1.26.4
+scikit-image>=0.24.0
 
 # OCR - Tesseract
 pytesseract==0.3.13
 
 # Image handling
-Pillow==10.4.0
+Pillow>=10.4.0

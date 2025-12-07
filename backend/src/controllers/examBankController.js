@@ -13,7 +13,7 @@ const checkExcelSheets = async (req, res) => {
 
     // Đọc file Excel
     const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
-    
+
     if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
       return res.status(400).json({
         message: "File Excel không có sheet nào",
@@ -25,27 +25,27 @@ const checkExcelSheets = async (req, res) => {
 
     // ✅ KIỂM TRA TẤT CẢ SHEETS - Tìm sheets có dữ liệu
     const sheetsWithData = [];
-    
+
     for (const shName of workbook.SheetNames) {
       const ws = workbook.Sheets[shName];
       const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-      
+
       // Kiểm tra sheet có dữ liệu thực sự không (ít nhất 2 dòng có nội dung)
-      const nonEmptyRows = jsonData.filter(row => 
+      const nonEmptyRows = jsonData.filter(row =>
         row && row.some(cell => cell !== "" && cell !== null && cell !== undefined)
       );
-      
+
       if (nonEmptyRows.length > 0) {
         sheetsWithData.push({
           name: shName,
           rowCount: nonEmptyRows.length,
-          preview: nonEmptyRows.slice(0, 3).map(row => 
+          preview: nonEmptyRows.slice(0, 3).map(row =>
             row.filter(cell => cell !== "" && cell !== null && cell !== undefined).slice(0, 5)
           )
         });
       }
     }
-    
+
     console.log("📄 Sheets có dữ liệu:", sheetsWithData.length, sheetsWithData.map(s => s.name));
 
     // Nếu không có sheet nào có dữ liệu
@@ -104,18 +104,24 @@ const importExamQuestions = async (req, res) => {
         .status(400)
         .json({ message: "Không có câu hỏi để import", status: "error" });
     }
-    
+
     // ✅ 1. Kiểm tra câu hỏi trùng lặp
     const duplicateErrors = [];
     const seenQuestions = new Map();
-    
+
     preview.forEach((q, idx) => {
       if (!q.question_text) return;
-      
+
+      // ✅ Auto-detect Essay based on markers/content (User Request)
+      // If "model_answer" is present and no options, treat as Essay
+      if ((!q.type || q.type === 'MCQ') && q.model_answer && (!q.options || q.options.length < 2)) {
+        q.type = 'Essay';
+      }
+
       // Loại bỏ đánh số câu tự động và normalize
       const cleanedText = q.question_text.replace(/^Câu\s+\d+:\s*/i, "").trim();
       const normalizedText = cleanedText.toLowerCase().replace(/\s+/g, " ").trim();
-      
+
       if (seenQuestions.has(normalizedText)) {
         const previousRows = seenQuestions.get(normalizedText);
         duplicateErrors.push(
@@ -126,7 +132,7 @@ const importExamQuestions = async (req, res) => {
         seenQuestions.set(normalizedText, [q.row || idx + 1]);
       }
     });
-    
+
     if (duplicateErrors.length > 0) {
       await transaction.rollback();
       return res.status(400).json({
@@ -135,11 +141,11 @@ const importExamQuestions = async (req, res) => {
         duplicates: duplicateErrors
       });
     }
-    
+
     // ✅ 2. Kiểm tra xem có câu hỏi nào chứa dữ liệu không phải text thuần túy
     for (let i = 0; i < preview.length; i++) {
       const q = preview[i];
-      
+
       // Kiểm tra question_text
       if (q.question_text && typeof q.question_text === 'object') {
         await transaction.rollback();
@@ -148,7 +154,7 @@ const importExamQuestions = async (req, res) => {
           status: "error"
         });
       }
-      
+
       // Kiểm tra model_answer cho Essay
       if (q.model_answer && typeof q.model_answer === 'object') {
         await transaction.rollback();
@@ -157,7 +163,7 @@ const importExamQuestions = async (req, res) => {
           status: "error"
         });
       }
-      
+
       // Kiểm tra options cho MCQ
       if (q.options && Array.isArray(q.options)) {
         for (let opt of q.options) {
@@ -203,9 +209,8 @@ const importExamQuestions = async (req, res) => {
       if (!match) {
         await transaction.rollback();
         return res.status(400).json({
-          message: `Không xác định được điểm số cho câu hỏi ở dòng ${
-            q.row || i + 1
-          }. Vui lòng thêm điểm số theo định dạng "(0.5đ)" hoặc "(0,5đ)" trong nội dung câu hỏi.`,
+          message: `Không xác định được điểm số cho câu hỏi ở dòng ${q.row || i + 1
+            }. Vui lòng thêm điểm số theo định dạng "(0.5đ)" hoặc "(0,5đ)" trong nội dung câu hỏi.`,
           status: "error",
         });
       }

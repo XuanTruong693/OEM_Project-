@@ -7,7 +7,7 @@
     "doc": "docs"
   },
   "scripts": {
-    "start": "concurrently -n \"Frontend,Backend\" -c \"blue,green\" \"cd frontend && npm start\" \"cd backend && npm start\""
+    "start": "node start.js"
   },
   "keywords": [],
   "author": "",
@@ -21,6 +21,7 @@
     "@react-oauth/google": "^0.12.2",
     "jwt-decode": "^4.0.0",
     "nodemailer": "^7.0.10",
-    "react-icons": "^5.5.0"
+    "react-icons": "^5.5.0",
+    "socket.io-client": "^4.8.1"
   }
 }
