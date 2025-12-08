@@ -84,17 +84,18 @@ const performGrading = async (submissionId) => {
             // Call Python AI Service
             const aiResult = await callAIService(ans.answer_text, ans.model_answer, ans.max_points);
 
-            if (aiResult) {
+            if (aiResult && !aiResult.error) {
+                // Success case - AI returned valid result
                 const { score, explanation, confidence } = aiResult;
 
                 // Update student_answer
                 await conn.query(`
           UPDATE student_answers 
-          SET score = ?, status = 'graded', graded_at = NOW()
+          SET score = ?, status = 'graded'
           WHERE id = ?
         `, [score, ans.id]);
 
-                // Insert into ai_logs
+                // Insert into ai_logs (success)
                 await conn.query(`
           INSERT INTO ai_logs (question_id, student_id, student_answer, model_answer, similarity_score, ai_suggested_score, request_payload, response_payload)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -110,6 +111,24 @@ const performGrading = async (submissionId) => {
                 ]);
 
                 totalAIScore += score;
+                console.log(`[AIService] ✅ Graded Q ${ans.question_id}: Score=${score}, Confidence=${confidence}`);
+            } else {
+                // Error case - log error to ai_logs
+                const errorText = aiResult?.errorMessage || 'Unknown AI service error';
+
+                await conn.query(`
+          INSERT INTO ai_logs (question_id, student_id, student_answer, model_answer, similarity_score, ai_suggested_score, request_payload, response_payload, error_text)
+          VALUES (?, ?, ?, ?, NULL, NULL, ?, NULL, ?)
+        `, [
+                    ans.question_id,
+                    ans.student_id,
+                    ans.answer_text,
+                    ans.model_answer,
+                    JSON.stringify({ student: ans.answer_text, model: ans.model_answer }),
+                    errorText
+                ]);
+
+                console.log(`[AIService] ⚠️ Logged error for Q ${ans.question_id}: ${errorText}`);
             }
         }
 
@@ -148,16 +167,23 @@ const callAIService = async (studentAnswer, modelAnswer, maxPoints) => {
         const response = await axios.post(`${AI_SERVICE_URL}/grade`, payload);
         return response.data;
     } catch (err) {
+        let errorMessage;
         if (err.code === 'ECONNREFUSED') {
+            errorMessage = `AI Service không chạy tại ${AI_SERVICE_URL}. Hãy khởi động AI Service.`;
             console.error(`[AIService] 🔌 Connection Refused to ${AI_SERVICE_URL}. Ensure AI Service is running.`);
         } else {
+            errorMessage = err.response?.data?.detail || err.message || 'Unknown AI service error';
             console.error(`[AIService] 🔌 API Call Failed:`, err.message);
             if (err.response) {
                 console.error("Response data:", err.response.data);
                 console.error("Response status:", err.response.status);
             }
         }
-        return null; // Return null to skip update or handle error
+        // Return error object instead of null for proper logging
+        return {
+            error: true,
+            errorMessage: errorMessage
+        };
     }
 };
 

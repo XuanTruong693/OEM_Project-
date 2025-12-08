@@ -110,6 +110,7 @@ export default function ExamPreview() {
       // fetch summary to know if there are existing submissions
       const res = await axiosClient.get(`/instructor/exams/${examId}/summary`);
       const s = res.data || {};
+      console.log(`📊 [ExamPreview] Summary for exam ${examId}:`, s);
       setSummary(s);
       // if there are existing submissions OR the exam was published before, warn
       const hasData =
@@ -217,9 +218,8 @@ export default function ExamPreview() {
                   {(q.options || []).map((o, i) => (
                     <li
                       key={o.option_id}
-                      className={`flex items-center gap-2 ${
-                        o.is_correct ? "text-emerald-600 font-medium" : ""
-                      }`}
+                      className={`flex items-center gap-2 ${o.is_correct ? "text-emerald-600 font-medium" : ""
+                        }`}
                     >
                       <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-200 text-slate-700">
                         {String.fromCharCode(65 + i)}
@@ -273,42 +273,117 @@ export default function ExamPreview() {
         )}
       </div>
 
-      {/* Warning modal */}
+      {/* Warning modal - Modern Tech Style */}
       {showWarn && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40">
-          <div className="w-full max-w-lg bg-white rounded-2xl p-6 shadow-lg">
-            <h3 className="text-lg font-semibold mb-3">
-              Cảnh báo: Đề thi đã có dữ liệu
-            </h3>
-            <p className="text-sm text-slate-700 mb-3">
-              Bài thi này đã có dữ liệu sinh viên (số bài:{" "}
-              <strong>{summary?.total_submissions || 0}</strong>). Nếu bạn sử
-              dụng chính đề này để mở phòng thi mới, tất cả dữ liệu sinh viên
-              hiện có trong đề sẽ bị xóa và không thể khôi phục.
-            </p>
-            {modalErr && (
-              <div className="text-red-600 text-sm mb-2">{modalErr}</div>
-            )}
-            <div className="flex items-center justify-end gap-3">
+        <div className="fixed inset-0 z-50 grid place-items-center bg-gradient-to-br from-slate-900/70 via-slate-800/60 to-slate-900/70 backdrop-blur-sm">
+          <div
+            className="w-full max-w-xl bg-gradient-to-br from-white via-slate-50 to-slate-100 rounded-3xl shadow-2xl border border-white/50 overflow-hidden animate-[fadeIn_0.3s_ease-out]"
+            style={{
+              animation: 'fadeIn 0.3s ease-out, slideUp 0.3s ease-out',
+            }}
+          >
+            {/* Header with gradient */}
+            <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 px-6 py-4 flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur grid place-items-center shadow-lg">
+                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-white tracking-tight">
+                  ⚠️ Cảnh báo dữ liệu
+                </h3>
+                <p className="text-white/80 text-sm">
+                  Đề thi đã có {summary?.total_submissions || 0} bài nộp
+                </p>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="px-6 py-5">
+              <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/50 rounded-2xl p-4 mb-5">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 grid place-items-center flex-shrink-0 shadow-md">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-slate-700 leading-relaxed">
+                      Nếu bạn sử dụng <span className="font-semibold text-amber-700">chính đề này</span> để mở phòng thi mới,
+                      <span className="text-red-600 font-semibold"> tất cả dữ liệu sinh viên hiện có sẽ bị xóa vĩnh viễn</span> và không thể khôi phục.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Stats card */}
+              <div className="grid grid-cols-2 gap-3 mb-5">
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-4 border border-blue-100">
+                  <div className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                    {summary?.total_submissions || 0}
+                  </div>
+                  <div className="text-sm text-slate-600">Bài nộp hiện có</div>
+                </div>
+                <div className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-2xl p-4 border border-violet-100">
+                  <div className="text-3xl font-bold bg-gradient-to-r from-violet-600 to-purple-600 bg-clip-text text-transparent">
+                    #{examId}
+                  </div>
+                  <div className="text-sm text-slate-600">Mã đề thi</div>
+                </div>
+              </div>
+
+              {modalErr && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 flex items-center gap-2 text-red-700">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="text-sm">{modalErr}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Action buttons */}
+            <div className="px-6 pb-6 flex flex-col gap-3">
+              {/* Primary actions */}
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={handlePurgeAndOpen}
+                  disabled={modalBusy}
+                  className="group relative px-4 py-3.5 rounded-2xl bg-gradient-to-r from-rose-500 to-red-600 text-white font-semibold shadow-lg shadow-rose-500/30 hover:shadow-xl hover:shadow-rose-500/40 hover:scale-[1.02] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                  <div className="flex items-center justify-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    <span>Xóa & Mở phòng</span>
+                  </div>
+                  <div className="text-xs opacity-80 mt-1">⚡ Xóa toàn bộ dữ liệu cũ</div>
+                </button>
+
+                <button
+                  onClick={handleCloneAndEdit}
+                  disabled={modalBusy}
+                  className="group relative px-4 py-3.5 rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 hover:scale-[1.02] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                  <div className="flex items-center justify-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    <span>Tạo bản sao</span>
+                  </div>
+                  <div className="text-xs opacity-80 mt-1">✨ Giữ nguyên dữ liệu cũ</div>
+                </button>
+              </div>
+
+              {/* Cancel button */}
               <button
                 onClick={() => setShowWarn(false)}
-                className="px-3 py-2 rounded-lg border"
+                className="w-full px-4 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium border border-slate-200 transition-all duration-200 hover:scale-[1.01]"
               >
-                Hủy
-              </button>
-              <button
-                onClick={handlePurgeAndOpen}
-                disabled={modalBusy}
-                className="px-3 py-2 rounded-lg bg-rose-500 text-white"
-              >
-                Tiếp tục (Xóa dữ liệu và mở phòng)
-              </button>
-              <button
-                onClick={handleCloneAndEdit}
-                disabled={modalBusy}
-                className="px-3 py-2 rounded-lg bg-blue-600 text-white"
-              >
-                Tạo đề khác (bản sao) và chỉnh sửa
+                ← Quay lại
               </button>
             </div>
           </div>

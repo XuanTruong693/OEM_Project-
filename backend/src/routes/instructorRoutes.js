@@ -357,6 +357,8 @@ router.get(
   async (req, res) => {
     try {
       const examId = parseInt(req.params.examId, 10);
+      // console.log(`📊 [Summary] Fetching summary for exam ${examId}`);
+
       if (!Number.isFinite(examId))
         return res.status(400).json({ message: "examId invalid" });
       const ok = await ensureExamOwnership(examId, req.user.id);
@@ -368,22 +370,7 @@ router.get(
         }
       }
 
-      // Try view v_instructor_exam_bank / v_exam_overview
-      try {
-        const [rows] = await sequelize.query(
-          `SELECT * FROM v_instructor_exam_bank WHERE exam_id = ? LIMIT 1`,
-          { replacements: [examId] }
-        );
-        if (Array.isArray(rows) && rows.length) return res.json(rows[0]);
-      } catch {}
-      try {
-        const [rows] = await sequelize.query(
-          `SELECT * FROM v_exam_overview WHERE exam_id = ? LIMIT 1`,
-          { replacements: [examId] }
-        );
-        if (Array.isArray(rows) && rows.length) return res.json(rows[0]);
-      } catch {}
-      // Fallback quick summary
+      // Direct query for accurate count (skip views which may have issues)
       const [[q1]] = await sequelize.query(
         `SELECT COUNT(*) AS total_submissions, MAX(submitted_at) AS last_submission_time
          FROM submissions WHERE exam_id = ?`,
@@ -393,12 +380,17 @@ router.get(
         `SELECT COUNT(DISTINCT user_id) AS total_students FROM submissions WHERE exam_id = ?`,
         { replacements: [examId] }
       );
-      return res.json({
+
+      const result = {
         exam_id: examId,
-        total_submissions: q1?.total_submissions || 0,
-        total_students: q2?.total_students || 0,
+        total_submissions: Number(q1?.total_submissions) || 0,
+        total_students: Number(q2?.total_students) || 0,
         last_submission_time: q1?.last_submission_time || null,
-      });
+      };
+
+      // console.log(`📊 [Summary] Exam ${examId}: ${result.total_submissions} submissions, ${result.total_students} students`);
+
+      return res.json(result);
     } catch (err) {
       console.error("exams/:examId/summary error:", err);
       return res.status(500).json({ message: "Server error" });
@@ -419,7 +411,7 @@ router.get(
           { replacements: [req.user.id] }
         );
         if (Array.isArray(rows)) return res.json(rows);
-      } catch {}
+      } catch { }
       // Fallback quick stats
       const [[a]] = await sequelize.query(
         `SELECT COUNT(*) AS total_exams FROM exams WHERE instructor_id = ?`,
@@ -609,7 +601,7 @@ router.put(
              WHERE r.exam_id = ? AND r.student_id = ?`,
             { replacements: [examId, studentId, examId, studentId] }
           );
-        } catch {}
+        } catch { }
       }
       // return updated row
       try {
@@ -654,7 +646,7 @@ router.post(
             `CALL sp_update_student_exam_record(?, ?, ?, ?, ?);`,
             { replacements: [examId, sid, it.student_name || null, mcq, ai] }
           );
-        } catch {}
+        } catch { }
       }
       return res.json({ ok: true });
     } catch (err) {
@@ -779,7 +771,7 @@ router.post(
           if (!Array.isArray(r) || r.length === 0) break;
           room = genCode();
         }
-      } catch {}
+      } catch { }
 
       // build update set, mirror duration into duration_minutes when missing
       const dur = Number(duration || duration_minutes || 0) || null;

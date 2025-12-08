@@ -68,11 +68,14 @@ const frontendProc = startProcess(
     colors.blue
 );
 
-// Start AI Service with venv Python
-const pythonPath = path.join(ROOT_DIR, '.venv', 'Scripts', 'python.exe');
+// Start AI Service with venv Python (inside ai_services folder)
+const pythonPath = path.join(ROOT_DIR, 'ai_services', '.venv', 'Scripts', 'python.exe');
+console.log(`${colors.magenta}[AI] 🚀 Starting AI Service...${colors.reset}`);
+console.log(`${colors.magenta}[AI] ⏳ Loading AI Model (this may take 20-30 seconds)...${colors.reset}`);
+
 const aiProc = startProcess(
     'AI',
-    pythonPath,
+    `"${pythonPath}"`,  // Wrap in quotes to handle spaces in path
     ['-m', 'uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', '8000'],
     path.join(ROOT_DIR, 'ai_services'),
     colors.magenta
@@ -87,7 +90,12 @@ process.on('SIGINT', () => {
     process.exit();
 });
 
-console.log('All services starting...');
+console.log('\n========================================');
+console.log('🎯 All services starting...');
+console.log('========================================');
 console.log('  Backend:  http://localhost:5000');
 console.log('  Frontend: http://localhost:4000');
 console.log('  AI:       http://localhost:8000');
+console.log('========================================');
+console.log('💡 Tip: Wait for "AI Model Loaded" message before testing AI grading');
+console.log('========================================\n');
