@@ -40,6 +40,12 @@ Thumbs.db
 # Python / AI Services
 # =========================
 
+# Virtual environment (DO NOT COMMIT)
+.venv/
+venv/
+env/
+ai_services/.venv/
+
 # Python cache
 __pycache__/
 *.py[cod]
