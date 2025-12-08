@@ -35,3 +35,24 @@ Thumbs.db
 
 # Logs
 *.log
+
+# =========================
+# Python / AI Services
+# =========================
+
+# Virtual environment
+.venv/
+venv/
+env/
+ai_services/.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# Python eggs
+*.egg
+*.egg-info/
