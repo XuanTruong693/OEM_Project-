@@ -29,7 +29,7 @@ router.post("/role", (req, res) => {
 
 // JWT generator
 const generateToken = (user) =>
-  jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {
+  jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, {
     expiresIn: "1h",
   });
 
@@ -198,7 +198,6 @@ router.post("/verify-otp", async (req, res) => {
 // --- Google login / create ---
 router.post("/google", async (req, res) => {
   console.log("🟢 [BACKEND] Google login/register API hit!");
-  // console.log("📩 Payload từ FE:", req.body);
 
   try {
     const { idToken, role, roomId } = req.body;
@@ -585,9 +584,8 @@ router.post("/login", async (req, res) => {
         message =
           "Tài khoản đã bị khóa do nhập sai mật khẩu quá 5 lần. Vui lòng sử dụng chức năng 'Quên mật khẩu' để khôi phục.";
       } else {
-        message = `Mật khẩu không chính xác. Bạn còn ${
-          5 - newAttempts
-        } lần thử.`;
+        message = `Mật khẩu không chính xác. Bạn còn ${5 - newAttempts
+          } lần thử.`;
       }
 
       await user.update(updateData);

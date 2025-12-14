@@ -40,15 +40,6 @@ app.use(express.json());
 // Serve uploaded verification images if *_url columns are used
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// ✅ Log debug chỉ khi chạy dev
-if (process.env.NODE_ENV === "development") {
-  // console.log("📦 authRoutes:", typeof authRoutes);
-  // console.log("📦 examRoomRoutes:", typeof examRoomRoutes);
-  // console.log("📦 authRoutes value:", authRoutes);
-  // console.log("📦 examRoomRoutes value:", examRoomRoutes);
-  // console.log("📦 profileRoutes mounted at /api/profile")
-}
-
 // ✅ Mount routes
 app.use("/api/auth", authRoutes);
 app.use("/api/exam_rooms", examRoomRoutes);
@@ -91,9 +82,26 @@ sequelize
       const httpServer = http.createServer(app);
       initializeSocket(httpServer);
 
-      httpServer.listen(PORT, () => {
+      httpServer.listen(PORT, async () => {
         console.log(`🚀 Server running at http://localhost:${PORT}`);
         console.log(`🔌 WebSocket server initialized`);
+
+        // ✅ Sync admin database models (tự động tạo tables nếu chưa có)
+        try {
+          const { adminSequelize } = require('./config/db');
+          await adminSequelize.sync({ alter: false }); // Không alter để tránh mất data
+          console.log('✅ Admin database models synced');
+        } catch (err) {
+          console.warn('⚠️ Could not sync admin models:', err.message);
+        }
+
+        // ✅ Khởi tạo backup scheduler
+        try {
+          const { initBackupScheduler } = require('./services/backupScheduler');
+          await initBackupScheduler();
+        } catch (err) {
+          console.warn('⚠️ Could not initialize backup scheduler:', err.message);
+        }
       });
     }
   })

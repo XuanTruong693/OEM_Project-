@@ -7,7 +7,7 @@ const requireRoomVerification = async (req, res, next) => {
     }
 
     const userId = req.user.id;
-    
+
     // Lấy exam_id từ params hoặc body
     let examId = null;
     if (req.params.id) {
@@ -28,9 +28,9 @@ const requireRoomVerification = async (req, res, next) => {
     }
 
     if (!examId) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: "Không xác định được exam",
-        needVerifyRoom: true 
+        needVerifyRoom: true
       });
     }
 
@@ -39,7 +39,7 @@ const requireRoomVerification = async (req, res, next) => {
       `SELECT exam_room_code FROM exams WHERE id = ? LIMIT 1`,
       { replacements: [examId] }
     );
-    
+
     if (!Array.isArray(examRows) || examRows.length === 0) {
       return res.status(404).json({ message: "Exam not found" });
     }
@@ -57,14 +57,13 @@ const requireRoomVerification = async (req, res, next) => {
     if (!Array.isArray(verifiedRows) || verifiedRows.length === 0) {
       // Chưa verify room
       console.warn("❌ [verifyRoomMiddleware] Student chưa verify room, trả 403");
-      return res.status(403).json({ 
+      return res.status(403).json({
         message: "Bạn cần nhập mã phòng thi trước khi truy cập",
         needVerifyRoom: true,
-        roomCode: roomCode 
+        roomCode: roomCode
       });
     }
 
-    // console.log("✅ [verifyRoomMiddleware] Student đã verify room, cho phép tiếp tục");
     next();
   } catch (err) {
     console.error("requireRoomVerification error:", err);

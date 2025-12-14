@@ -1550,7 +1550,6 @@ async function submitExam(req, res) {
 async function myResults(req, res) {
   try {
     const userId = req.user.id;
-    // console.log(`📊 [myResults] Fetching results for student ${userId}`);
 
     // Try view first
     try {
@@ -1558,10 +1557,8 @@ async function myResults(req, res) {
         `SELECT * FROM v_student_results WHERE student_id = ? ORDER BY submitted_at DESC`,
         { replacements: [userId] }
       );
-      // console.log(`✅ [myResults] Found ${rows.length} results for student ${userId}`);
       return res.json(rows);
     } catch (e) {
-      // console.warn(`⚠️ [myResults] View failed, using fallback:`, e.message);
       // fallback
       const [rows] = await sequelize.query(
         `SELECT s.id AS submission_id, s.exam_id, e.title AS exam_title,
@@ -1571,7 +1568,6 @@ async function myResults(req, res) {
          WHERE s.user_id = ? ORDER BY s.submitted_at DESC`,
         { replacements: [userId] }
       );
-      // console.log(`✅ [myResults] Fallback: Found ${rows.length} results for student ${userId}`);
       return res.json(rows);
     }
   } catch (err) {

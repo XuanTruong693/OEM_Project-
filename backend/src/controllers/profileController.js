@@ -11,7 +11,7 @@ const getProfile = async (req, res) => {
 				"id",
 				"full_name",
 				"email",
-				"phone",
+				"phone_number",
 				"address",
 				"avatar",
 				"gender",
@@ -35,30 +35,30 @@ const updateProfile = async (req, res) => {
 		const userId = req.user && req.user.id;
 		if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-			// Allow these fields to be updated from the frontend. Ignore email if present.
-			const { full_name, phone, address, avatar, gender } = req.body;
+		// Allow these fields to be updated from the frontend. Ignore email if present.
+		const { full_name, phone_number, address, avatar, gender } = req.body;
 
-			// Server-side validation: phone must be 10 digits if provided
-				if (typeof phone !== 'undefined' && phone !== null && phone !== '') {
-					if (!/^\d{10}$/.test(String(phone))) {
-						return res.status(400).json({ success: false, message: 'Nhập sai định dạng số điện thoại' });
-					}
-				}
-
-			// Validate gender value if provided
-			const allowedGenders = ['male', 'female', 'other', null];
-			if (typeof gender !== 'undefined' && gender !== null && gender !== '') {
-				if (!allowedGenders.includes(gender)) {
-					return res.status(400).json({ success: false, message: 'Giới tính không hợp lệ' });
-				}
+		// Server-side validation: phone must be 10 digits if provided
+		if (typeof phone_number !== 'undefined' && phone_number !== null && phone_number !== '') {
+			if (!/^\d{10}$/.test(String(phone_number))) {
+				return res.status(400).json({ success: false, message: 'Nhập sai định dạng số điện thoại' });
 			}
+		}
+
+		// Validate gender value if provided
+		const allowedGenders = ['male', 'female', 'other', null];
+		if (typeof gender !== 'undefined' && gender !== null && gender !== '') {
+			if (!allowedGenders.includes(gender)) {
+				return res.status(400).json({ success: false, message: 'Giới tính không hợp lệ' });
+			}
+		}
 
 		const user = await User.findByPk(userId);
 		if (!user) return res.status(404).json({ message: "User not found" });
 
 		// Update only provided fields
 		if (typeof full_name !== "undefined") user.full_name = full_name;
-		if (typeof phone !== "undefined") user.phone = phone;
+		if (typeof phone_number !== "undefined") user.phone_number = phone_number;
 		if (typeof address !== "undefined") user.address = address;
 		if (typeof avatar !== "undefined") user.avatar = avatar;
 		if (typeof gender !== "undefined") user.gender = gender;
@@ -103,9 +103,9 @@ const uploadAvatar = async (req, res) => {
 		// Save binary data into DB (avatar_blob) and mimetype, and set avatar URL to a GET endpoint
 		user.avatar_blob = req.file.buffer;
 		user.avatar_mimetype = req.file.mimetype || 'application/octet-stream';
-	// set avatar to an absolute endpoint the frontend can call to fetch the image
-	user.avatar = `${req.protocol}://${req.get('host')}/api/profile/avatar/${userId}`;
-		
+		// set avatar to an absolute endpoint the frontend can call to fetch the image
+		user.avatar = `${req.protocol}://${req.get('host')}/api/profile/avatar/${userId}`;
+
 		console.log('[uploadAvatar] saving user avatar to DB...');
 		await user.save();
 

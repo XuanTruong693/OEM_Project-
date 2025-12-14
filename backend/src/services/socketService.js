@@ -13,6 +13,71 @@ const examInstructors = new Map();
 // submissionId -> { studentId, examId, studentName, socketId }
 const activeSubmissions = new Map();
 
+// ===== SERVER LOGS STREAMING =====
+// Buffer để lưu logs gần đây (giữ 100 logs)
+const serverLogsBuffer = [];
+const MAX_LOGS_BUFFER = 100;
+
+// Set để tracking admin subscribers
+const adminLogSubscribers = new Set();
+
+// Store original console methods
+const originalConsoleLog = console.log;
+const originalConsoleWarn = console.warn;
+const originalConsoleError = console.error;
+
+// Function để broadcast log tới tất cả admins
+function broadcastServerLog(type, args) {
+  const timestamp = new Date().toISOString();
+  const message = args.map(arg =>
+    typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+  ).join(' ');
+
+  // Filter sensitive data
+  const filteredMessage = message
+    .replace(/password['":\s]*['"]?[^'"\s,}]+['"]?/gi, 'password: [REDACTED]')
+    .replace(/token['":\s]*['"]?[A-Za-z0-9._-]+['"]?/gi, 'token: [REDACTED]');
+
+  const logEntry = {
+    id: Date.now() + Math.random(),
+    timestamp,
+    type,
+    message: filteredMessage
+  };
+
+  // Add to buffer
+  serverLogsBuffer.push(logEntry);
+  if (serverLogsBuffer.length > MAX_LOGS_BUFFER) {
+    serverLogsBuffer.shift();
+  }
+
+  // Broadcast to all admin subscribers
+  if (io && adminLogSubscribers.size > 0) {
+    for (const socketId of adminLogSubscribers) {
+      const socket = io.sockets.sockets.get(socketId);
+      if (socket) {
+        socket.emit('server:log', logEntry);
+      }
+    }
+  }
+}
+
+// Override console methods to capture logs
+console.log = function (...args) {
+  originalConsoleLog.apply(console, args);
+  broadcastServerLog('info', args);
+};
+
+console.warn = function (...args) {
+  originalConsoleWarn.apply(console, args);
+  broadcastServerLog('warn', args);
+};
+
+console.error = function (...args) {
+  originalConsoleError.apply(console, args);
+  broadcastServerLog('error', args);
+};
+
 /**
  * Khởi tạo Socket.IO server
  */
@@ -82,9 +147,32 @@ function initializeSocket(httpServer) {
       }
     );
 
+    // ===== ADMIN JOINS SERVER LOGS =====
+    // Admin subscribe để nhận server logs real-time
+    socket.on("admin:join-logs", () => {
+      console.log(`🔍 [Socket] Admin ${socket.id} joined server logs`);
+      adminLogSubscribers.add(socket.id);
+      socket.isAdminLogSubscriber = true;
+
+      // Gửi buffer logs hiện tại
+      socket.emit('server:logs-history', serverLogsBuffer);
+    });
+
+    // Admin leaves server logs
+    socket.on("admin:leave-logs", () => {
+      console.log(`👋 [Socket] Admin ${socket.id} left server logs`);
+      adminLogSubscribers.delete(socket.id);
+      socket.isAdminLogSubscriber = false;
+    });
+
     // ===== HANDLE DISCONNECT =====
     socket.on("disconnect", () => {
       console.log(`❌ [Socket] Disconnected: ${socket.id}`);
+
+      // Xóa khỏi admin log subscribers
+      if (socket.isAdminLogSubscriber) {
+        adminLogSubscribers.delete(socket.id);
+      }
 
       // Xóa khỏi exam instructors
       if (socket.examId) {

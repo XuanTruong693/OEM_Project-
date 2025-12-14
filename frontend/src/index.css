@@ -31,9 +31,95 @@ select {
   -moz-appearance: none;
   appearance: none;
   padding-right: 40px;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='%23000' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='%239CA3AF' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")
     no-repeat right 10px center;
   background-size: 20px 20px;
+}
+
+/* Fix dropdown options on dark theme */
+select option {
+  background-color: #1f2937 !important;
+  color: #fff !important;
+  padding: 8px 12px;
+}
+
+select option:hover,
+select option:checked {
+  background-color: #374151 !important;
+}
+
+/* Light/Dark Theme CSS Variables */
+:root {
+  --bg-primary: #111827;
+  --bg-secondary: #1f2937;
+  --bg-tertiary: #374151;
+  --text-primary: #ffffff;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --border-color: #374151;
+  --accent-blue: #3b82f6;
+}
+
+body.light-theme {
+  --bg-primary: #f3f4f6;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #e5e7eb;
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-muted: #6b7280;
+  --border-color: #d1d5db;
+  --accent-blue: #2563eb;
+}
+
+/* Apply theme to admin pages */
+body.light-theme .bg-gray-900 {
+  background-color: var(--bg-primary) !important;
+}
+
+body.light-theme .bg-gray-800 {
+  background-color: var(--bg-secondary) !important;
+}
+
+body.light-theme .bg-gray-700 {
+  background-color: var(--bg-tertiary) !important;
+}
+
+body.light-theme .bg-gray-700\/50 {
+  background-color: rgba(229, 231, 235, 0.5) !important;
+}
+
+body.light-theme .bg-gray-700\/30 {
+  background-color: rgba(229, 231, 235, 0.3) !important;
+}
+
+body.light-theme .text-white {
+  color: var(--text-primary) !important;
+}
+
+body.light-theme .text-gray-300 {
+  color: var(--text-secondary) !important;
+}
+
+body.light-theme .text-gray-400 {
+  color: var(--text-muted) !important;
+}
+
+body.light-theme .border-gray-700 {
+  border-color: var(--border-color) !important;
+}
+
+body.light-theme .border-gray-600 {
+  border-color: var(--border-color) !important;
+}
+
+body.light-theme select option {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+}
+
+body.light-theme select option:hover,
+body.light-theme select option:checked {
+  background-color: #e5e7eb !important;
 }
 
 /* Animations for VerifyRoom and other pages */

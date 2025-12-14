@@ -36,11 +36,10 @@ const User = sequelize.define(
       allowNull: true,
     },
     address: { type: DataTypes.STRING(255), allowNull: true },
-    // DB column is phone_number in migrations; expose as `phone` on the model for controller compatibility
-    phone: {
+    // DB column is phone_number, attribute name matches for consistency
+    phone_number: {
       type: DataTypes.STRING(20),
       allowNull: true,
-      field: "phone_number",
     },
     failed_login_attempts: {
       type: DataTypes.INTEGER,
