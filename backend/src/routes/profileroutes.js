@@ -8,12 +8,8 @@ const fs = require('fs');
 
 // Use the uploads directory created by app.js
 const UPLOADS_DIR = path.resolve(__dirname, '..', '..', 'uploads');
-
-// multer storage - save files to backend/uploads
-// Use memory storage so we can optionally save image bytes directly into DB
 const storage = multer.memoryStorage();
 
-// Accept only common image types and limit file size to 5MB
 const upload = multer({
 	storage,
 	limits: { fileSize: 5 * 1024 * 1024 },
@@ -47,22 +43,19 @@ router.get('/avatar/:id', getAvatar);
 
 // Error handling for multer
 router.use((err, req, res, next) => {
-    if (err instanceof multer.MulterError) {
-        console.error('[MulterError]', err);
-        return res.status(400).json({ success: false, message: `Lỗi upload: ${err.message}` });
-    } else if (err) {
-        console.error('[UploadError]', err);
-        return res.status(400).json({ success: false, message: err.message });
-    }
-    next();
+	if (err instanceof multer.MulterError) {
+		console.error('[MulterError]', err);
+		return res.status(400).json({ success: false, message: `Lỗi upload: ${err.message}` });
+	} else if (err) {
+		console.error('[UploadError]', err);
+		return res.status(400).json({ success: false, message: err.message });
+	}
+	next();
 });
 
-// --- Debug-only route: upload test without auth to verify multer/storage works ---
-// Use this to isolate upload problems (call with form field 'avatar').
 router.post('/avatar-test', upload.single('avatar'), (req, res) => {
 	try {
 		if (!req.file || !req.file.buffer) return res.status(400).json({ success: false, message: 'No file received' });
-		// return a data URL so frontend can verify server received the file (no disk write)
 		const dataUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
 		console.log('[avatar-test] received file', req.file.originalname, 'size=', req.file.size);
 		return res.json({ success: true, message: 'Test upload ok', data: { originalname: req.file.originalname, size: req.file.size, dataUrl } });

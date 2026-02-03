@@ -79,7 +79,7 @@ def verify_face_liveness(face_image_b64):
 
 
 def compare_two_faces(face_image_b64, card_image_b64, tolerance=0.35):
-    """So sánh 2 khuôn mặt: selfie vs thẻ SV - PHIÊN BẢN UNIFACE (NHANH & NHẸ)"""
+    """So sánh 2 khuôn mặt: selfie vs thẻ SV UNIFACE"""
     try:
         print(f"[Compare] Bắt đầu so sánh khuôn mặt với Uniface...", file=sys.stderr, flush=True)
         result = face_verification.compare_faces_uniface(card_image_b64, face_image_b64, tolerance)

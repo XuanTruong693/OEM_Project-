@@ -1,19 +1,5 @@
-"""
-tokenizer.py
-Single Responsibility: Text tokenization and normalization for Vietnamese NLP
-
-Extracted from nlp.py for SOLID compliance.
-"""
-
 import re
 from typing import Dict, Set, List
-
-
-# =====================================================
-# VIETNAMESE STOPWORDS - University Level
-# Used by grader to ignore filler words during comparison.
-# Categories: Connectors, Pronouns, Modals, Fillers, Academic
-# =====================================================
 VIETNAMESE_STOPWORDS: Set[str] = {
     # === Liên từ / Connectors ===
     "và", "với", "cùng", "cùng với", "hoặc", "hay", "hay là", "nhưng", "tuy", "tuy nhiên",
@@ -81,11 +67,8 @@ VIETNAMESE_STOPWORDS: Set[str] = {
     "theo em", "em nghĩ", "em cho rằng", "em thấy", "dạ", "thưa",
 }
 
-
-# =====================================================
 # TỪ ĐIỂN VIẾT TẮT (Abbreviation Expansion)
 # Dùng để chuẩn hóa viết tắt trước khi Fact Check
-# =====================================================
 ABBREVIATIONS: Dict[str, str] = {
     # Địa danh
     "tphcm": "hồ chí minh", "tp.hcm": "hồ chí minh", "tp hcm": "hồ chí minh",
@@ -115,15 +98,11 @@ ABBREVIATIONS: Dict[str, str] = {
     "gt": "giới thiệu", "kn": "khái niệm", "đn": "định nghĩa",
 }
 
-# =====================================================
 # TỪ ĐỒNG NGHĨA (Synonym Pairs)
 # Dùng để chuẩn hóa văn bản trước khi so sánh
 # Giúp AI nhận diện "mặt trời" == "thái dương"
-# =====================================================
 SYNONYM_PAIRS: Dict[str, str] = {
-    # ==========================
-    # 1. HÁN VIỆT & TỪ CỔ -> THUẦN VIỆT (Common Hán-Việt)
-    # ==========================
+    # 1. HÁN VIỆT & TỪ CỔ -> THUẦN VIỆT
     "thái dương": "mặt trời", "nhật": "mặt trời", "dương": "mặt trời",
     "nguyệt": "trăng", "thái âm": "trăng",
     "địa cầu": "trái đất", "địa": "đất", "thổ": "đất",
@@ -160,15 +139,12 @@ SYNONYM_PAIRS: Dict[str, str] = {
     "mục": "mắt", "nhãn": "mắt",
     "nhĩ": "tai", "khẩu": "miệng",
     "túc": "chân", "cước": "chân",
-    "thủ": "tay", # Ambiguous, usually 'thủ' is head, but 'thủ túc' is limbs. Safer to ignore or specific map?
-                  # 'Thủ' alone is Head. 'Thủ' in 'Cầu thủ' is Hand/Player.
+    "thủ": "tay", 
     "tâm": "tim", "huyết": "máu",
     "cốt": "xương", "bì": "da",
     "phế": "phổi", "can": "gan", "thận": "cật",
     
-    # ==========================
     # 2. IT, CÔNG NGHỆ & KHOA HỌC (Tech Terms)
-    # ==========================
     # Hardware
     "vi tính": "máy tính", "computer": "máy tính", "pc": "máy tính", "laptop": "máy tính xách tay",
     "mouse": "chuột", "keyboard": "bàn phím", "screen": "màn hình", "monitor": "màn hình",
@@ -228,9 +204,7 @@ SYNONYM_PAIRS: Dict[str, str] = {
     "matrix": "ma trận", "vector": "vectơ",
     "point": "điểm", "line": "đường", "circle": "tròn", "square": "vuông",
     
-    # ==========================
     # 3. GIÁO DỤC, TRƯỜNG HỌC & MÔN HỌC
-    # ==========================
     "học đường": "trường học", "trường": "trường học", "school": "trường",
     "lớp học": "lớp", "phòng học": "lớp", "class": "lớp",
     "học viên": "học sinh", "sinh viên": "học sinh", "học trò": "học sinh",
@@ -255,9 +229,7 @@ SYNONYM_PAIRS: Dict[str, str] = {
     "tin": "tin học", "informatics": "tin", "cs": "tin",
     "thể dục": "giáo dục thể chất", "pe": "thể dục",
     
-    # ==========================
     # 4. ĐỜI SỐNG & XÃ HỘI (Human, Family, Animal, Color)
-    # ==========================
     # Family (Regional: North/South)
     "bố": "cha", "tía": "cha", "ba": "cha", "father": "cha", "dad": "cha",
     "mẹ": "mạ", "u": "mẹ", "má": "mẹ", "bầm": "mẹ", "mother": "mẹ", "mom": "mẹ",
@@ -350,9 +322,7 @@ SYNONYM_PAIRS: Dict[str, str] = {
     "tháng": "nguyệt", "month": "tháng",
     "năm": "niên", "year": "năm",
     
-    # ==========================
-    # 5. TÍNH TỪ & TRẠNG TỪ (Common Adjectives)
-    # ==========================
+    # 5. TÍNH TỪ & TRẠNG TỪ
     "to": "lớn", "big": "lớn", "large": "lớn", "huge": "khổng lồ", "giant": "khổng lồ",
     "nhỏ": "bé", "small": "bé", "tiny": "tí hon", "little": "nhỏ",
     "đẹp": "xinh", "beautiful": "đẹp", "pretty": "xinh", "nice": "đẹp",
@@ -383,15 +353,13 @@ SYNONYM_PAIRS: Dict[str, str] = {
     "khô": "dry", "ướt": "wet",
     "sạch": "clean", "bẩn": "dirty",
     
-    # ==========================
-    # 6. SLANG & VIẾT TẮT (Chat/SMS style)
-    # ==========================
+    # 6. SLANG & VIẾT TẮT
     "ko": "không", "k": "không", "khg": "không", "hông": "không", "hong": "không", "hok": "không",
     "dc": "được", "đc": "được", "dk": "được",
     "bit": "biết", "bik": "biết", "bít": "biết",
     "thich": "thích", "thik": "thích",
     "iu": "yêu", "yeu": "yêu",
-    "ok": "đồng ý", "okie": "đồng ý", "okay": "đồng ý",
+    "ok": "đồng ý", "oki": "đồng ý", "okay": "đồng ý",
     "thanks": "cảm ơn", "tks": "cảm ơn", "thank": "cảm ơn", "cmon": "cảm ơn", "ty": "cảm ơn",
     "sr": "xin lỗi", "sry": "xin lỗi", "sorry": "xin lỗi",
     "j": "gì", "gi": "gì",
@@ -407,9 +375,7 @@ SYNONYM_PAIRS: Dict[str, str] = {
     "lm": "làm",
     "ht": "học tập",
     
-    # ==========================
-    # 7. TIẾNG ANH PHỔ BIẾN (English -> Vietnamese) - Additional
-    # ==========================
+    # 7. TIẾNG ANH PHỔ BIẾN (English -> Vietnamese)
     "hello": "xin chào", "hi": "chào",
     "goodbye": "tạm biệt", "bye": "tạm biệt",
     "please": "làm ơn",
@@ -448,10 +414,7 @@ SYNONYM_PAIRS: Dict[str, str] = {
     "stop": "dừng", "finish": "kết thúc", "end": "kết thúc",
 }
 
-# =====================================================
 # TỪ TRÁI NGHĨA (Antonym Pairs) - Centralized
-# Dùng cho Antonym Check trong Logic Guardrails
-# =====================================================
 ANTONYM_PAIRS: Dict[str, List[str]] = {
     # Thắng/Thua
     "giành": ["mất", "thất bại", "thua"], "mất": ["giành", "được", "thắng"],
@@ -504,11 +467,9 @@ ANTONYM_PAIRS: Dict[str, List[str]] = {
     "đơn bào": ["đa bào"], "đa bào": ["đơn bào"],
 }
 
-# =====================================================
 # ĐỘNG TỪ ĐỊNH HƯỚNG (Directional Verbs)
 # Động từ mà thứ tự Chủ ngữ - Tân ngữ quan trọng
 # "A tác động B" ≠ "B tác động A"
-# =====================================================
 DIRECTIONAL_VERBS: Set[str] = {
     # Quan hệ nhân quả
     "quyết định", "tác động", "ảnh hưởng", "sinh ra", "tạo ra", "gây ra",
@@ -527,17 +488,12 @@ DIRECTIONAL_VERBS: Set[str] = {
     "chiếu sáng", "hấp dẫn", "thu hút", "đẩy", "kéo",
 }
 
-# =====================================================
 # TỪ KHÓA BỊ ĐỘNG (Passive Markers)
-# Nếu có từ này thì cho phép đảo ngữ
 # "A tác động B" = "B bị/được A tác động"
-# =====================================================
 PASSIVE_MARKERS: Set[str] = {"bị", "được", "do", "bởi", "nhờ", "qua"}
 
-# =====================================================
 # ĐỊA DANH QUAN TRỌNG (Hard Locations)
 # Dùng cho Fact Check - sai địa danh = sai nghiêm trọng
-# =====================================================
 HARD_LOCATIONS: Set[str] = {
     # Việt Nam - Thành phố lớn
     "hà nội", "hồ chí minh", "sài gòn", "đà nẵng", "hải phòng", "cần thơ",
@@ -553,24 +509,20 @@ HARD_LOCATIONS: Set[str] = {
     # Địa danh lịch sử
     "điện biên phủ", "ba đình", "bạch đằng", "chi lăng", "đống đa", "rạch gầm",
     "biển đông", "fansipan", "pác bó", "tân trào",
-    # Quốc tế (Removed ambiguous: anh, đức, nga, pháp, ý)
+    # Quốc tế
     "việt nam", "trung quốc", "mỹ", "hoa kỳ", "nhật bản", "liên xô",
     "lào", "campuchia", "thái lan", "hàn quốc", "triều tiên", "ấn độ", "singapore",
     "úc", "canada", "brazil", "cuba", "ukraine", "tây ban nha",
 }
 
-
-# =====================================================
 # HELPER FUNCTIONS FOR SMART BYPASS
-# =====================================================
-
 def get_vietnamese_stopwords() -> Set[str]:
-    """Return the comprehensive set of Vietnamese stopwords."""
+    # Return the comprehensive set of Vietnamese stopwords.
     return VIETNAMESE_STOPWORDS.copy()
 
 
 def remove_stopwords(text: str) -> str:
-    """Remove Vietnamese stopwords from text."""
+    # Remove Vietnamese stopwords from text.
     if not text:
         return ""
     words = text.lower().split()
@@ -579,15 +531,11 @@ def remove_stopwords(text: str) -> str:
 
 
 def is_stopword(word: str) -> bool:
-    """Check if a word is a Vietnamese stopword."""
+    # Check if a word is a Vietnamese stopword.
     return word.lower() in VIETNAMESE_STOPWORDS
 
 
 def expand_abbreviations(text: str) -> str:
-    """
-    Expand abbreviations in text for better Fact Check accuracy.
-    Example: 'TPHCM' -> 'hồ chí minh', 'VN' -> 'việt nam'
-    """
     if not text:
         return ""
     text_lower = text.lower()
@@ -597,10 +545,6 @@ def expand_abbreviations(text: str) -> str:
 
 
 def check_passive_voice(text: str) -> bool:
-    """
-    Check if text contains passive voice markers.
-    If True, directional logic check should be bypassed.
-    """
     if not text:
         return False
     text_lower = text.lower()
@@ -608,12 +552,12 @@ def check_passive_voice(text: str) -> bool:
 
 
 def get_antonyms(word: str) -> List[str]:
-    """Get list of antonyms for a word."""
+    # Get list of antonyms for a word.
     return ANTONYM_PAIRS.get(word.lower(), [])
 
 
 def is_antonym_pair(word1: str, word2: str) -> bool:
-    """Check if two words are antonyms."""
+    # Check if two words are antonyms.
     w1_lower = word1.lower()
     w2_lower = word2.lower()
     
@@ -626,7 +570,7 @@ def is_antonym_pair(word1: str, word2: str) -> bool:
 
 
 def vn_tokenize(text: str) -> str:
-    """Tokenize Vietnamese text using underthesea."""
+    # Tokenize Vietnamese text using underthesea.
     if not text:
         return ""
         
@@ -643,7 +587,7 @@ def vn_tokenize(text: str) -> str:
 
 
 def normalize_text(text: str) -> str:
-    """Normalize text for comparison: lowercase, remove extra spaces, strip punctuation."""
+    # Normalize text for comparison: lowercase, remove extra spaces, strip punctuation.
     if not text:
         return ""
     # Remove punctuation except Vietnamese diacritics
@@ -654,10 +598,8 @@ def normalize_text(text: str) -> str:
 
 
 def remove_vietnamese_diacritics(text: str) -> str:
-    """
-    Remove Vietnamese diacritics from text for fuzzy matching.
-    Converts 'phần mềm' -> 'phan mem', 'tốc độ' -> 'toc do', etc.
-    """
+    # Remove Vietnamese diacritics from text for fuzzy matching.
+    # Converts 'phần mềm' -> 'phan mem', 'tốc độ' -> 'toc do', etc.
     if not text:
         return ""
     
@@ -699,7 +641,7 @@ def remove_vietnamese_diacritics(text: str) -> str:
 
 
 def extract_entities(text: str) -> Dict[str, Set[str]]:
-    """Extract named entities (dates, locations) from text."""
+    # Extract named entities (dates, locations) from text.
     entities = {
         "dates": set(),
         "locations": set()
@@ -751,15 +693,12 @@ def extract_entities(text: str) -> Dict[str, Set[str]]:
 
 
 def normalize_synonyms(text: str) -> str:
-    """
-    Replace synonyms with standard terms to improve AI semantic matching.
-    Example: "thái dương" -> "mặt trời", "phi cơ" -> "máy bay"
-    """
+    # Replace synonyms with standard terms to improve AI semantic matching.
+    # Example: "thái dương" -> "mặt trời", "phi cơ" -> "máy bay"
     if not text:
         return ""
     
     # Sort keys by length (descending) to match longest phrases first
-    # This prevents "thái dương hệ" being broken if we had "dương" as a key
     sorted_synonyms = sorted(SYNONYM_PAIRS.keys(), key=len, reverse=True)
     
     text_lower = text.lower()

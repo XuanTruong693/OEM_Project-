@@ -1,9 +1,3 @@
-/**
- * InstructorDashboardController.js
- * Single Responsibility: Handle instructor dashboard statistics and overview
- * Extracted from instructorRoutes.js for SOLID compliance
- */
-
 const sequelize = require("../../config/db");
 
 /**

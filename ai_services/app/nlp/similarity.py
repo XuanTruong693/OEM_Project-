@@ -1,15 +1,8 @@
-"""
-similarity.py
-Single Responsibility: Text similarity and fuzzy matching algorithms
-
-Extracted from nlp.py for SOLID compliance.
-"""
-
 from .tokenizer import normalize_text, remove_vietnamese_diacritics
 
 
 def levenshtein_distance(s1: str, s2: str) -> int:
-    """Calculate edit distance between two strings for typo tolerance."""
+    # Calculate edit distance between two strings for typo tolerance.
     if len(s1) < len(s2):
         return levenshtein_distance(s2, s1)
     if len(s2) == 0:
@@ -29,11 +22,9 @@ def levenshtein_distance(s1: str, s2: str) -> int:
 
 
 def fuzzy_match(word1: str, word2: str, threshold: float = 0.7) -> bool:
-    """
-    Check if two words are similar enough (tolerates typos).
-    threshold: 0.7 = allow 30% character errors
-    Also handles Vietnamese diacritics (e.g., 'phần' matches 'phan')
-    """
+
+    # Check if two words are similar enough (tolerates typos).
+    # Threshold: 0.7 = allow 30% character errors
     if not word1 or not word2:
         return False
     
@@ -76,7 +67,6 @@ def fuzzy_match(word1: str, word2: str, threshold: float = 0.7) -> bool:
 
 
 def fuzzy_contains(text: str, keyword: str, threshold: float = 0.7) -> bool:
-    """Check if text contains keyword with fuzzy matching."""
     if not text or not keyword:
         return False
     
@@ -111,7 +101,6 @@ def fuzzy_contains(text: str, keyword: str, threshold: float = 0.7) -> bool:
 
 
 def string_similarity(s1: str, s2: str) -> float:
-    """Calculate string similarity using Levenshtein and Jaccard."""
     if not s1 or not s2:
         return 0.0
     
@@ -138,10 +127,6 @@ def string_similarity(s1: str, s2: str) -> float:
 
 
 def calculate_keyword_match(student_text: str, model_text: str) -> float:
-    """
-    Calculate how well student keywords match the model answer.
-    Returns score from 0.0 to 1.0
-    """
     if not student_text or not model_text:
         return 0.0
     

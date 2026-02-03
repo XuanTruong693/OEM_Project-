@@ -1,13 +1,5 @@
-/**
- * Activity Logger Middleware
- * Ghi log tất cả hoạt động của Admin vào database oem_admin
- */
-
 const { AdminActivityLog, SuspiciousActivity } = require('../models/adminModels');
 
-/**
- * Lấy IP address từ request
- */
 const getClientIP = (req) => {
     return req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
         req.headers['x-real-ip'] ||

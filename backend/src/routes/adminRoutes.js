@@ -27,10 +27,6 @@ router.use(activityLoggerMiddleware);
 // DASHBOARD APIs
 // ============================================================================
 
-/**
- * GET /api/admin/dashboard
- * Lấy thống kê tổng quan cho Dashboard
- */
 router.get('/dashboard', verifyToken, verifyRole('admin'), async (req, res) => {
   try {
     console.log('🔍 [Admin Dashboard] Fetching statistics...');
@@ -296,7 +292,7 @@ router.put('/users/:id', verifyToken, verifyRole('admin'), async (req, res) => {
 
     const oldValue = sanitizeForLog(user.toJSON());
 
-    // Cập nhật user - chỉ update fields được gửi (cho phép update từng field riêng lẻ)
+    // Cập nhật user - chỉ update fields được gửi
     const updateData = {};
     if (full_name !== undefined) updateData.full_name = full_name;
     if (email !== undefined) updateData.email = email;
@@ -328,10 +324,6 @@ router.put('/users/:id', verifyToken, verifyRole('admin'), async (req, res) => {
   }
 });
 
-/**
- * DELETE /api/admin/users/:id
- * Xóa user (soft delete hoặc hard delete)
- */
 router.delete('/users/:id', verifyToken, verifyRole('admin'), async (req, res) => {
   try {
     const user = await User.findByPk(req.params.id);
@@ -664,7 +656,7 @@ router.put('/results/:submissionId', verifyToken, verifyRole('admin'), async (re
       suggested_total_score: submission.suggested_total_score
     };
 
-    // Determine new values (use provided values or keep existing)
+    // Determine new values
     const newMcqScore = mcq_score !== undefined ? parseFloat(mcq_score) : submission.total_score;
     const newEssayScore = essay_score !== undefined ? parseFloat(essay_score) : submission.ai_score;
     const newTotalScore = total_score !== undefined ? parseFloat(total_score) : (newMcqScore + (newEssayScore || 0));

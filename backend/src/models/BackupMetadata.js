@@ -1,8 +1,3 @@
-/**
- * Backup Metadata Model
- * Lưu thông tin metadata của các bản backup trong database oem_admin
- */
-
 const { DataTypes } = require('sequelize');
 const { adminSequelize } = require('../config/db');
 

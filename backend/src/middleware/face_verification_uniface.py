@@ -347,7 +347,6 @@ def compare_faces_uniface(card_image_b64, selfie_image_b64, tolerance=0.35):
 
         try:
             # get_normalized_embedding cần landmarks (5 điểm) từ detector
-            # ⚠️ KHÔNG dùng 'or' với numpy array → ValueError
             landmarks_card = face_card.get("landmarks")
             if landmarks_card is None:
                 landmarks_card = face_card.get("keypoints")

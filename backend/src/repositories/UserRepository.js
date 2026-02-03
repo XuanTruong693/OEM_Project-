@@ -1,8 +1,3 @@
-/**
- * UserRepository.js
- * Repository for user-related database operations
- */
-
 const BaseRepository = require("./BaseRepository");
 
 class UserRepository extends BaseRepository {

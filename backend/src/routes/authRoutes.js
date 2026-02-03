@@ -230,10 +230,6 @@ router.post("/google", async (req, res) => {
       return res
         .status(400)
         .json({ message: "Học viên cần mã phòng thi", status: "error" });
-
-    // NOTE: Removed appRole check - it incorrectly blocked different users on different devices
-    // The appRole was designed for single-device kiosk mode which is not the common use case
-
     const ticket = await client.verifyIdToken({
       idToken,
       audience: process.env.GOOGLE_CLIENT_ID,
@@ -255,7 +251,7 @@ router.post("/google", async (req, res) => {
 
     let user = await User.findOne({ where: { email } });
 
-    // NOTE: Removed appRole check for existing users - different users can have different roles
+    // Removed appRole check for existing users - different users can have different roles
     if (!user) {
       user = await User.create({
         full_name,
@@ -333,7 +329,7 @@ router.post("/google", async (req, res) => {
 
     console.log(`[Google Login] ✅ Đăng nhập thành công cho ${email}`);
 
-    // NOTE: Removed appRole enforcement - users should be able to log in with their actual role
+    // Removed appRole enforcement - users should be able to log in with their actual role
 
     const tokens = generateTokens(user, req);
     res.json({
@@ -597,7 +593,7 @@ router.post("/login", async (req, res) => {
     if (user.failed_login_attempts > 0) {
       await user.update({ failed_login_attempts: 0 });
     }
-    // NOTE: Removed appRole check - different users on different devices can use different roles
+    // Removed appRole check - different users on different devices can use different roles
 
     if (role === "student") {
       if (!roomId) {

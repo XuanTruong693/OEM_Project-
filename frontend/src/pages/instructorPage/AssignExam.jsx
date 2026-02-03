@@ -881,7 +881,7 @@ const AssignExam = () => {
 
             {/* Word/PDF Format */}
             <div className="bg-green-50 p-2 rounded border border-green-300">
-              <p className="font-semibold text-green-800">� Format Word/PDF (MCQ):</p>
+              <p className="font-semibold text-green-800">📝 Format Word/PDF (MCQ):</p>
               <p className="text-green-700">• Dòng 1: Marker <strong>"Trắc nghiệm (MCQ)"</strong></p>
               <p className="text-green-700">• Dòng 2: Câu hỏi với điểm, VD: <strong>"Câu 1: Hà Nội là thủ đô nước nào? (2đ)"</strong></p>
               <p className="text-green-700">• Dòng 3-6: 4 đáp án, đánh dấu <strong>*</strong> ở cuối đáp án đúng</p>

@@ -1,19 +1,8 @@
-/**
- * StudentResultController.js
- * Single Responsibility: Handle student exam results and status queries
- * Extracted from studentExamController.js for SOLID compliance
- */
 
 const sequelize = require("../../config/db");
 
-// ============================================
 // Controller Methods
-// ============================================
 
-/**
- * GET /api/results/my
- * Get current user's exam results
- */
 async function myResults(req, res) {
     try {
         const userId = req.user.id;
@@ -43,10 +32,6 @@ async function myResults(req, res) {
     }
 }
 
-/**
- * GET /api/exams/:id/public-info
- * Get public information about an exam
- */
 async function getExamPublicInfo(req, res) {
     try {
         const examId = parseInt(req.params.id, 10);
@@ -72,10 +57,6 @@ async function getExamPublicInfo(req, res) {
     }
 }
 
-/**
- * GET /api/submissions/:id/status
- * Get verification status of a submission
- */
 async function getSubmissionStatus(req, res) {
     try {
         const submissionId = req.params.id;

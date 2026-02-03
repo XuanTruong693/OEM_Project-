@@ -1,8 +1,3 @@
-/**
- * Room Services Index
- * Exports all room-related services
- */
-
 const { TokenService, tokenService, signRoomToken, verifyRoomToken } = require("./TokenService");
 const { RoomVerificationService, roomVerificationService } = require("./RoomVerificationService");
 

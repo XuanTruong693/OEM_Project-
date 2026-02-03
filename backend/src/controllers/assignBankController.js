@@ -87,7 +87,7 @@ const getExamDetails = async (req, res) => {
       });
     }
 
-    // LẤY CÂU HỎI TỪ BẢNG exam_questions (không dùng question_bank)
+    // LẤY CÂU HỎI TỪ BẢNG exam_questions
     const questions = await sequelize.query(
       `
       SELECT 

@@ -1,8 +1,3 @@
-/**
- * Suspicious Activity Model
- * Lưu thông tin hoạt động đáng ngờ trong database oem_admin
- */
-
 const { DataTypes } = require('sequelize');
 const { adminSequelize } = require('../config/db');
 

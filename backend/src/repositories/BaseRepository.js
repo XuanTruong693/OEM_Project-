@@ -1,9 +1,3 @@
-/**
- * BaseRepository.js
- * Base class for all repositories providing common database operations
- * Follows Repository Pattern for data access abstraction
- */
-
 const sequelize = require("../config/db");
 
 class BaseRepository {

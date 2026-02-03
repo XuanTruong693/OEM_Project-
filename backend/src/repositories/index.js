@@ -1,8 +1,3 @@
-/**
- * Repositories Index
- * Exports all repositories for easy import
- */
-
 const BaseRepository = require("./BaseRepository");
 const ExamRepository = require("./ExamRepository");
 const SubmissionRepository = require("./SubmissionRepository");

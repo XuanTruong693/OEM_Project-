@@ -1,16 +1,6 @@
-/**
- * instructorRoutes.js
- * 
- * ✅ REFACTORED: Routes now delegate to controllers
- * All controller logic has been moved to:
- *   - controllers/instructor/InstructorDashboardController.js
- *   - controllers/instructor/ExamManagementController.js
- *   - controllers/instructor/GradingController.js
- */
-
 const express = require("express");
 const router = express.Router();
-const sequelize = require("../config/db"); // CRITICAL: Must be at top for inline handlers
+const sequelize = require("../config/db");
 const { verifyToken, authorizeRole } = require("../middleware/authMiddleware");
 
 // Import controllers
@@ -189,19 +179,6 @@ router.put(
 );
 
 router.put("/submissions/:submissionId/answers/:answerId/score", ...auth, updateStudentAnswerScore);
-
-// ==============================
-// Legacy routes (keep for backward compatibility)
-// These routes have inline handlers that we keep temporarily
-// ==============================
-
-// sequelize already imported at top of file
-
-// ==============================
-// 🔄 Missing Routes (restored from original)
-// ==============================
-
-// Check if exam was modified by admin (for real-time notifications)
 router.get("/exams/:examId/admin-modified", ...auth, async (req, res) => {
   try {
     const examId = parseInt(req.params.examId, 10);
@@ -333,9 +310,6 @@ router.get("/exams/:examId/submissions/poll", ...auth, async (req, res) => {
 });
 
 // Get exam results with details
-// Deleted duplicate inline routes for /results and /detail to allow controller methods to take precedence
-
-
 // Batch grade multiple answers
 router.post("/submissions/:submissionId/batch-grade", ...auth, async (req, res) => {
   try {
@@ -423,23 +397,20 @@ router.get("/exams/:examId/export", ...auth, async (req, res) => {
   }
 });
 
-// ==============================
-// 🔄 Returns functionality from Original Code (Fixes missing details & cheating logs)
-// ==============================
 
-// Get exam results list (fixes missing started_at/duration/cheating_count in table)
+// Get exam results list
 router.get("/exams/:examId/results", ...auth, submissionController.getExamResults);
 
-// Get submission detail (fixes consistent sorting and data)
+// Get submission detail
 router.get("/submissions/:submissionId/detail", ...auth, submissionController.getStudentExamDetail);
 
-// Get cheating details (fixes missing logs in drawer)
+// Get cheating details
 router.get("/submissions/:submissionId/cheating-details", ...auth, submissionController.getStudentCheatingDetails);
 
-// Get submission questions (fixes "chaotic" display by using corrected ORDER BY in controller)
+// Get submission questions
 router.get("/submissions/:submissionId/questions", ...auth, submissionController.getSubmissionQuestions);
 
-// Get Face Image (fixes missing image in drawer)
+// Get Face Image
 router.get("/submissions/:submissionId/face-image", ...auth, async (req, res) => {
   try {
     const submissionId = parseInt(req.params.submissionId, 10);
@@ -458,7 +429,7 @@ router.get("/submissions/:submissionId/face-image", ...auth, async (req, res) =>
   }
 });
 
-// Get Student Card Image (fixes missing card in drawer)
+// Get Student Card Image
 router.get("/submissions/:submissionId/student-card", ...auth, async (req, res) => {
   try {
     const submissionId = parseInt(req.params.submissionId, 10);

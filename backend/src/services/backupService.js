@@ -180,7 +180,7 @@ const createBackup = async (options) => {
 };
 
 /**
- * Tạo SQL dump từ database (thay thế mysqldump)
+ * Tạo SQL dump từ database
  */
 const generateSQLDump = async (dbName) => {
     let dump = `-- OEM Mini Database Backup\n`;
@@ -408,9 +408,6 @@ const getBackupList = async (options = {}) => {
     };
 };
 
-/**
- * Xóa backup cũ theo retention policy
- */
 const cleanupOldBackups = async (retentionDays = 30) => {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - retentionDays);

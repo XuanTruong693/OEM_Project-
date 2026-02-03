@@ -1,9 +1,3 @@
-/**
- * ExamManagementController.js
- * Single Responsibility: Handle exam CRUD operations for instructor
- * Extracted from instructorRoutes.js for SOLID compliance
- */
-
 const sequelize = require("../../config/db");
 const crypto = require("crypto");
 

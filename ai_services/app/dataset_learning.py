@@ -1,7 +1,4 @@
-"""
-Dataset Learning Module for AI Grading (Rubric-based)
-Supports new format with rubrics, matched/missing concepts, and detailed feedback.
-"""
+# Dataset Learning Module for AI Grading (Rubric-based)
 import json
 import os
 from typing import Dict, List, Optional, Tuple
@@ -14,10 +11,10 @@ _data = None
 _synonyms = None
 _contradictions = None
 _questions = None
-_model_index: Dict[str, Dict] = {} # Map normalized model answer -> question object
+_model_index: Dict[str, Dict] = {}
 
 def _normalize_key(text: str) -> str:
-    """Normalize text for indexing (remove punctuation, lower, compact spaces)."""
+    # Normalize text for indexing (remove punctuation, lower, compact spaces).
     if not text:
         return ""
     import re
@@ -30,7 +27,7 @@ def _normalize_key(text: str) -> str:
     return text
 
 def load_data() -> dict:
-    """Load unified training data from JSON file."""
+    # Load unified training data from JSON file.
     global _data, _synonyms, _contradictions, _questions, _model_index
     
     if _data is not None:
@@ -71,7 +68,7 @@ def load_data() -> dict:
 
 
 def get_synonyms(word: str) -> List[str]:
-    """Get synonyms for a word."""
+    # Get synonyms for a word.
     if _synonyms is None:
         load_data()
     
@@ -90,7 +87,7 @@ def get_synonyms(word: str) -> List[str]:
 
 
 def get_contradictions(word: str) -> List[str]:
-    """Get contradicting terms for a word."""
+    # Get contradicting terms for a word.
     if _contradictions is None:
         load_data()
     
@@ -107,10 +104,9 @@ def find_similar_grading(
     model_answer: str,
     max_points: float
 ) -> Optional[Dict]:
-    """
-    Find a similar grading sample from the training data.
-    Uses rubric-based matching for better accuracy.
-    """
+
+    # Find a similar grading sample from the training data.
+    # Uses rubric-based matching for better accuracy.
     if _questions is None:
         load_data()
     
@@ -124,22 +120,16 @@ def find_similar_grading(
     best_match = None
     best_similarity = 0.0
     
-    # Optimizer: Use O(1) lookup
+    # Use O(1) lookup
     target_questions = []
     if model_key in _model_index:
         target_questions = [_model_index[model_key]]
-        # print(f"[Dataset] O(1) Hit for model answer: {model_key[:20]}...")
     else:
-        # Fallback to linear scan (slow but safe if model answer text varies slightly)
-        # print(f"[Dataset] O(1) Miss for model answer: {model_key[:20]}... Scanning {_questions} questions")
         target_questions = _questions
 
     # Search through target questions (1 if hit, all if miss)
     for question in target_questions:
         question_model = question.get('model_answer', '').lower()
-        
-        # Only check similarity if we are in fallback mode (linear scan)
-        # If we hit O(1), we know it matches
         if len(target_questions) > 1:
             model_sim = _text_similarity(model_answer.lower(), question_model)
             if model_sim <= 0.5:
@@ -168,7 +158,6 @@ def find_similar_grading(
                 }
     
     return best_match
-
 
 def get_rubric_for_answer(model_answer: str) -> Optional[List[Dict]]:
     # Get rubric for a model answer if available.

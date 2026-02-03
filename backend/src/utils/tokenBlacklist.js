@@ -1,8 +1,3 @@
-/**
- * Token Blacklist - In-memory store for revoked tokens
- * Used to invalidate tokens on logout before they expire
- */
-
 // Set of blacklisted token JTI (JWT ID) or full tokens
 const blacklistedTokens = new Set();
 
@@ -48,10 +43,6 @@ function removeFromBlacklist(token) {
     tokenExpiry.delete(token);
 }
 
-/**
- * Clean up expired tokens from the blacklist
- * Called periodically to prevent memory leaks
- */
 function cleanupExpiredTokens() {
     const now = Date.now();
     let cleaned = 0;

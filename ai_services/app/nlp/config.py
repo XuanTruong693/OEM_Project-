@@ -7,7 +7,7 @@ class GradingConfig:
     These thresholds are tuned to meet the 6-Type Target Matrix.
     """
     # NLI Thresholds
-    # If Entailment score > 0.50, we consider it a valid paraphrase or logic match.
+    # If Entailment score > 0.50, consider it a valid paraphrase or logic match.
     entailment_threshold: float = 0.50
     
     # If Contradiction score > 0.75, it's a hard contradiction (max score 10%).

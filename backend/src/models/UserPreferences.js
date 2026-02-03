@@ -1,8 +1,3 @@
-/**
- * User Preferences Model
- * Lưu tùy chọn người dùng (theme, language...) trong database oem_admin
- */
-
 const { DataTypes } = require('sequelize');
 const { adminSequelize } = require('../config/db');
 

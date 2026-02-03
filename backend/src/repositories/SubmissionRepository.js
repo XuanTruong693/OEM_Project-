@@ -1,8 +1,3 @@
-/**
- * SubmissionRepository.js
- * Repository for submission-related database operations
- */
-
 const BaseRepository = require("./BaseRepository");
 
 class SubmissionRepository extends BaseRepository {

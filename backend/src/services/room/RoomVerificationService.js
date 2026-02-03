@@ -1,9 +1,3 @@
-/**
- * RoomVerificationService.js
- * Single Responsibility: Business logic for room verification
- * Extracted from controllers to follow SRP and allow easier testing.
- */
-
 const sequelize = require("../../config/db");
 const { signRoomToken } = require("./TokenService");
 

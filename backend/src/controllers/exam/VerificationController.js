@@ -1,9 +1,3 @@
-/**
- * VerificationController.js
- * Single Responsibility: Handle image uploads and verification (face, student card)
- * Extracted from studentExamController.js for SOLID compliance
- */
-
 const sequelize = require("../../config/db");
 const fs = require("fs");
 const path = require("path");
@@ -11,13 +5,7 @@ const path = require("path");
 // Import hasColumn helper from RoomController
 const { hasColumn } = require("./RoomController");
 
-// ============================================
 // Local Helper Functions
-// ============================================
-
-/**
- * Check if a column exists in a table (local version for nested functions)
- */
 async function hasCol(table, col) {
     const [rows] = await sequelize.query(
         `SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1`,
@@ -26,9 +14,6 @@ async function hasCol(table, col) {
     return Array.isArray(rows) && rows.length > 0;
 }
 
-/**
- * Ensure a blob is a Buffer
- */
 function ensureBuffer(blob) {
     if (Buffer.isBuffer(blob)) return blob;
     if (typeof blob === "string") return Buffer.from(blob, "binary");
@@ -36,14 +21,8 @@ function ensureBuffer(blob) {
     return null;
 }
 
-// ============================================
 // Controller Methods
-// ============================================
 
-/**
- * POST /api/submissions/:id/upload-images (auth, multipart)
- * Upload images without verification
- */
 async function uploadImages(req, res) {
     try {
         const submissionId = req.params.id;

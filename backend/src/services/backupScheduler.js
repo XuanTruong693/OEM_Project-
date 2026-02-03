@@ -1,17 +1,8 @@
-/**
- * Backup Scheduler Service
- * Tự động backup database theo lịch đã cấu hình
- */
-
 const cron = require('node-cron');
 const backupService = require('./backupService');
 const { adminPool } = require('../config/db');
 
 let scheduledJob = null;
-
-/**
- * Khởi tạo backup scheduler từ settings trong database
- */
 async function initBackupScheduler() {
     try {
         const [rows] = await adminPool.query(
@@ -111,9 +102,6 @@ function updateSchedule(config) {
     }
 }
 
-/**
- * Dừng scheduler
- */
 function stopScheduler() {
     if (scheduledJob) {
         scheduledJob.stop();
@@ -122,9 +110,6 @@ function stopScheduler() {
     }
 }
 
-/**
- * Lấy trạng thái scheduler
- */
 function getSchedulerStatus() {
     return {
         active: scheduledJob !== null,

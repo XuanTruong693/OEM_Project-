@@ -1,5 +1,5 @@
 -- ============================================================================
--- 🧩 OEM Mini Database Schema (v5 - Instructor Final Version)
+-- 🧩 OEM Mini Database Schema (v5.1 - Final Fixed Version)
 -- Engine: MySQL 8.0.x
 -- Charset: utf8mb4 / utf8mb4_unicode_ci
 -- Author: OEM Mini Team (Capstone Project 2025 - CMU-SE)
@@ -11,7 +11,9 @@ CREATE DATABASE oem_mini CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 USE oem_mini;
 
-/* 2) Tables */
+/* =========================================
+   2) Tables
+   ========================================= */
 
 -- 2.1 users
 CREATE TABLE users (
@@ -114,18 +116,16 @@ CREATE TABLE submissions (
         'confirmed',
         'cancelled'
     ) NOT NULL DEFAULT 'pending',
-    -- AI Grading Status for guaranteed delivery
     ai_grading_status ENUM(
-        'not_required',  -- No essay questions in exam
-        'pending',       -- Waiting to be graded by AI
-        'in_progress',   -- Currently being processed
-        'completed',     -- Successfully graded
-        'failed'         -- Failed, needs retry
+        'not_required',
+        'pending',
+        'in_progress',
+        'completed',
+        'failed'
     ) DEFAULT 'not_required',
     ai_grading_retry_count INT DEFAULT 0,
     ai_grading_error TEXT NULL,
     ai_grading_started_at DATETIME NULL,
-    -- Verification images
     face_image_blob LONGBLOB NULL,
     face_image_mimetype VARCHAR(100) NULL,
     face_image_url VARCHAR(500) NULL,
@@ -133,9 +133,9 @@ CREATE TABLE submissions (
     student_card_mimetype VARCHAR(100) NULL,
     student_card_url VARCHAR(500) NULL,
     proctor_flags JSON NULL,
+    cheating_count INT DEFAULT 0 COMMENT 'Total number of cheating incidents',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    cheating_count INT NOT NULL DEFAULT 0,
     UNIQUE KEY uq_submissions_exam_user_attempt (exam_id, user_id, attempt_no),
     INDEX idx_submissions_exam (exam_id),
     INDEX idx_submissions_user (user_id),
@@ -221,9 +221,9 @@ CREATE TABLE user_verified_rooms (
 -- 2.10 cheating_logs
 CREATE TABLE cheating_logs (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    submission_id INT NOT NULL,
-    student_id INT NOT NULL,
-    exam_id INT NOT NULL,
+    submission_id INT UNSIGNED NOT NULL,
+    student_id INT UNSIGNED NOT NULL,
+    exam_id INT UNSIGNED NOT NULL,
     event_type VARCHAR(100) NOT NULL COMMENT 'tab_switch, window_blur, multiple_faces, etc.',
     event_details JSON NULL COMMENT 'Additional event details',
     detected_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -237,7 +237,10 @@ CREATE TABLE cheating_logs (
     CONSTRAINT fk_cheating_logs_exam FOREIGN KEY (exam_id) REFERENCES exams (id) ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
-/* 3) Triggers */
+
+/* =========================================
+   3) Triggers
+   ========================================= */
 DELIMITER $$
 
 CREATE TRIGGER trg_confirmed_results_update
@@ -245,11 +248,17 @@ AFTER UPDATE ON submissions
 FOR EACH ROW
 BEGIN
   IF NEW.instructor_confirmed = TRUE AND NEW.status = 'graded' THEN
-    UPDATE results
-       SET total_score = COALESCE(NEW.suggested_total_score, NEW.total_score),
-           status = 'confirmed'
-     WHERE results.exam_id = NEW.exam_id
-       AND results.student_id = NEW.user_id;
+    -- Update existing result or insert if not exists (safety)
+    IF EXISTS (SELECT 1 FROM results WHERE exam_id = NEW.exam_id AND student_id = NEW.user_id) THEN
+        UPDATE results
+           SET total_score = COALESCE(NEW.suggested_total_score, NEW.total_score),
+               status = 'confirmed'
+         WHERE results.exam_id = NEW.exam_id
+           AND results.student_id = NEW.user_id;
+    ELSE
+        INSERT INTO results (exam_id, student_id, total_score, status)
+        VALUES (NEW.exam_id, NEW.user_id, COALESCE(NEW.suggested_total_score, NEW.total_score), 'confirmed');
+    END IF;
   END IF;
 END$$
 
@@ -276,6 +285,8 @@ BEGIN
     FROM student_answers
    WHERE submission_id = NEW.submission_id
      AND graded_at IS NULL;
+  
+  -- If all answers are graded, mark submission as graded
   IF ungraded = 0 THEN
     UPDATE submissions SET status = 'graded' WHERE id = NEW.submission_id;
   END IF;
@@ -292,9 +303,12 @@ BEGIN
   WHERE id = NEW.submission_id;
 END$$
 
-DELIMITER;
+DELIMITER ;
 
-/* 4) Stored Procedures */
+
+/* =========================================
+   4) Stored Procedures
+   ========================================= */
 DELIMITER $$
 
 CREATE PROCEDURE finalize_submission(IN p_submission_id INT)
@@ -325,29 +339,6 @@ BEGIN
          status = 'graded'
    WHERE exam_id = p_exam_id
      AND user_id = p_student_id;
-END$$
-
-CREATE PROCEDURE sp_get_exam_results(IN p_exam_id INT, IN p_role VARCHAR(20), IN p_instructor_id INT)
-BEGIN
-  SELECT u.full_name AS student_name,
-         s.user_id    AS student_id,
-         s.status,
-         COALESCE(SUM(CASE WHEN q.type='MCQ' THEN COALESCE(sa.score,0) ELSE 0 END),0) AS mcq_score,
-         s.ai_score,
-         COALESCE(s.suggested_total_score,
-                  COALESCE(SUM(CASE WHEN q.type='MCQ' THEN COALESCE(sa.score,0) ELSE 0 END),0) + COALESCE(s.ai_score,0)) AS suggested_total_score,
-         s.total_score,
-         s.started_at,
-         s.submitted_at,
-         TIMESTAMPDIFF(MINUTE, s.started_at, s.submitted_at) AS duration_minutes,
-         s.proctor_flags, s.face_image_url, s.student_card_url
-  FROM submissions s
-  JOIN users u ON u.id = s.user_id
-  LEFT JOIN student_answers sa ON sa.submission_id = s.id
-  LEFT JOIN exam_questions q ON q.id = sa.question_id
-  WHERE s.exam_id = p_exam_id
-  GROUP BY s.id
-  ORDER BY u.full_name;
 END$$
 
 CREATE PROCEDURE sp_update_student_exam_record(
@@ -393,6 +384,7 @@ BEGIN
   DECLARE exit HANDLER FOR SQLEXCEPTION
   BEGIN
     ROLLBACK;
+    RESIGNAL;
   END;
 
   START TRANSACTION;
@@ -413,71 +405,57 @@ BEGIN
    WHERE student_id = p_student_id
      AND exam_id    = p_exam_id;
 
-  UPDATE users
-     SET full_name = CONCAT('(Đã xóa khỏi bài thi #', p_exam_id, ')')
-   WHERE id = p_student_id AND role = 'student';
-
   COMMIT;
 END$$
 
 CREATE PROCEDURE sp_get_exam_results(
-  IN p_exam_id INT, 
-  IN p_role VARCHAR(20), 
+  IN p_exam_id INT,
+  IN p_role VARCHAR(20),
   IN p_instructor_id INT
 )
 BEGIN
-  SELECT 
+  -- Validate ownership if instructor
+  IF p_role = 'instructor' THEN
+    IF NOT EXISTS (
+      SELECT 1 
+      FROM exams 
+      WHERE id = p_exam_id 
+        AND instructor_id = p_instructor_id
+    ) THEN
+      SIGNAL SQLSTATE '45000' 
+      SET MESSAGE_TEXT = 'Not authorized to view this exam';
+    END IF;
+  END IF;
+
+  -- Return ONE BEST submission per student with all required columns
+  SELECT
     u.full_name AS student_name,
     s.user_id AS student_id,
     s.id AS submission_id,
     s.status,
-    COALESCE(SUM(CASE WHEN q.type='MCQ' THEN COALESCE(sa.score,0) ELSE 0 END), 0) AS mcq_score,
-    s.ai_score,
-    COALESCE(s.suggested_total_score,
-             COALESCE(SUM(CASE WHEN q.type='MCQ' THEN COALESCE(sa.score,0) ELSE 0 END), 0) + COALESCE(s.ai_score, 0)) AS suggested_total_score,
     s.total_score,
+    s.ai_score,
+    s.suggested_total_score,
     s.started_at,
     s.submitted_at,
-    -- Calculate duration in seconds for better precision
-    CASE 
-      WHEN s.started_at IS NULL OR s.submitted_at IS NULL THEN NULL
-      ELSE TIMESTAMPDIFF(SECOND, s.started_at, s.submitted_at)
-    END AS duration_seconds,
-    -- Keep minutes for backward compatibility
-    CASE 
-      WHEN s.started_at IS NULL OR s.submitted_at IS NULL THEN NULL
-      ELSE TIMESTAMPDIFF(MINUTE, s.started_at, s.submitted_at)
-    END AS duration_minutes,
-    COALESCE(s.cheating_count, 0) AS cheating_count,
-    s.proctor_flags, 
-    s.face_image_url, 
-    s.student_card_url,
     s.instructor_confirmed,
-    CASE 
-      WHEN s.face_image_url IS NOT NULL OR s.face_image_blob IS NOT NULL THEN TRUE 
-      ELSE FALSE 
-    END AS has_face_image,
-    CASE 
-      WHEN s.student_card_url IS NOT NULL OR s.student_card_blob IS NOT NULL THEN TRUE 
-      ELSE FALSE 
-    END AS has_student_card,
-    CASE 
-      WHEN COALESCE(s.cheating_count, 0) > 0 THEN TRUE 
-      ELSE FALSE 
-    END AS has_cheating_flag
+    TIMESTAMPDIFF(SECOND, s.started_at, s.submitted_at) AS duration_seconds,
+    TIMESTAMPDIFF(MINUTE, s.started_at, s.submitted_at) AS duration_minutes,
+    s.cheating_count,
+    CASE WHEN s.cheating_count > 0 THEN TRUE ELSE FALSE END AS has_cheating_flag,
+    CASE WHEN s.face_image_url IS NOT NULL OR s.face_image_blob IS NOT NULL THEN TRUE ELSE FALSE END AS has_face_image,
+    CASE WHEN s.student_card_url IS NOT NULL OR s.student_card_blob IS NOT NULL THEN TRUE ELSE FALSE END AS has_student_card
   FROM submissions s
   JOIN users u ON u.id = s.user_id
-  LEFT JOIN student_answers sa ON sa.submission_id = s.id
-  LEFT JOIN exam_questions q ON q.id = sa.question_id
   WHERE s.exam_id = p_exam_id
-  GROUP BY s.id, u.full_name, s.user_id, s.status, s.ai_score, s.suggested_total_score,
-           s.total_score, s.started_at, s.submitted_at, s.cheating_count,
-           s.proctor_flags, s.face_image_url, s.student_card_url, s.instructor_confirmed,
-           s.face_image_blob, s.student_card_blob
-  ORDER BY u.full_name;
+    AND s.id = (
+      SELECT s2.id FROM submissions s2
+      WHERE s2.exam_id = s.exam_id AND s2.user_id = s.user_id
+      ORDER BY COALESCE(s2.total_score, s2.suggested_total_score, 0) DESC, s2.id DESC
+      LIMIT 1
+    )
+  ORDER BY u.full_name ASC;
 END$$
-
-DROP PROCEDURE IF EXISTS sp_get_exam_results_with_cheating$$
 
 CREATE PROCEDURE sp_get_exam_results_with_cheating(
   IN p_exam_id INT,
@@ -551,62 +529,14 @@ BEGIN
   ORDER BY u.full_name;
 END$$
 
-CREATE PROCEDURE sp_get_exam_results(
-  IN p_exam_id INT,
-  IN p_role VARCHAR(20),
-  IN p_instructor_id INT
-)
-BEGIN
-  -- Validate ownership if instructor
-  IF p_role = 'instructor' THEN
-    IF NOT EXISTS (
-      SELECT 1 
-      FROM exams 
-      WHERE id = p_exam_id 
-        AND instructor_id = p_instructor_id
-    ) THEN
-      SIGNAL SQLSTATE '45000' 
-      SET MESSAGE_TEXT = 'Not authorized to view this exam';
-    END IF;
-  END IF;
+DELIMITER ;
 
-  -- Return ONE BEST submission per student with all required columns
-  SELECT
-    u.full_name AS student_name,
-    s.user_id AS student_id,
-    s.id AS submission_id,
-    s.status,
-    s.total_score,
-    s.ai_score,
-    s.suggested_total_score,
-    s.started_at,
-    s.submitted_at,
-    s.instructor_confirmed,
-    TIMESTAMPDIFF(SECOND, s.started_at, s.submitted_at) AS duration_seconds,
-    TIMESTAMPDIFF(MINUTE, s.started_at, s.submitted_at) AS duration_minutes,
-    -- Cheating: lấy số lần gian lận cao nhất trong các lần thi
-    (SELECT MAX(cheating_count) FROM submissions s2 WHERE s2.exam_id = s.exam_id AND s2.user_id = s.user_id) AS cheating_count,
-    CASE WHEN (SELECT MAX(cheating_count) FROM submissions s2 WHERE s2.exam_id = s.exam_id AND s2.user_id = s.user_id) > 0 THEN TRUE ELSE FALSE END AS has_cheating_flag,
-    CASE WHEN s.face_image_url IS NOT NULL OR s.face_image_blob IS NOT NULL THEN TRUE ELSE FALSE END AS has_face_image,
-    CASE WHEN s.student_card_url IS NOT NULL OR s.student_card_blob IS NOT NULL THEN TRUE ELSE FALSE END AS has_student_card
-  FROM submissions s
-  JOIN users u ON u.id = s.user_id
-  WHERE s.exam_id = p_exam_id
-    AND s.id = (
-      SELECT s2.id FROM submissions s2
-      WHERE s2.exam_id = s.exam_id AND s2.user_id = s.user_id
-      ORDER BY COALESCE(s2.total_score, s2.suggested_total_score, 0) DESC, s2.id DESC
-      LIMIT 1
-    )
-  ORDER BY u.full_name ASC;
 
-END$$
+/* =========================================
+   5) Views
+   ========================================= */
 
-DELIMITER;
-
-/* 5) Views */
-
--- 5.1 Tổng quan exam
+-- 5.1 v_exam_overview
 CREATE OR REPLACE VIEW v_exam_overview AS
 SELECT
     e.id AS exam_id,
@@ -622,15 +552,9 @@ FROM
     exams e
     LEFT JOIN users u ON u.id = e.instructor_id
     LEFT JOIN submissions s ON s.exam_id = e.id
-GROUP BY
-    e.id,
-    e.title,
-    e.status,
-    e.exam_room_code,
-    e.instructor_id,
-    u.full_name;
+GROUP BY e.id, e.title, e.status, e.exam_room_code, e.instructor_id, u.full_name;
 
--- 5.2 Ngân hàng đề
+-- 5.2 v_instructor_exam_bank
 CREATE OR REPLACE VIEW v_instructor_exam_bank AS
 SELECT
     e.id AS exam_id,
@@ -644,16 +568,10 @@ FROM
     exams e
     JOIN users u ON u.id = e.instructor_id
     LEFT JOIN exam_questions eq ON eq.exam_id = e.id
-GROUP BY
-    e.id,
-    e.title,
-    e.status,
-    e.created_at,
-    e.updated_at,
-    u.full_name
+GROUP BY e.id, e.title, e.status, e.created_at, e.updated_at, u.full_name
 ORDER BY e.updated_at DESC;
 
--- 5.3 Danh sách bài nộp cho instructor
+-- 5.3 v_instructor_assigned_exams
 CREATE OR REPLACE VIEW v_instructor_assigned_exams AS
 SELECT
     e.id AS exam_id,
@@ -671,18 +589,14 @@ FROM
     JOIN exams e ON s.exam_id = e.id
     JOIN users u ON e.instructor_id = u.id
     JOIN users stu ON stu.id = s.user_id
-    LEFT JOIN results r ON r.exam_id = e.id
-    AND r.student_id = stu.id
+    LEFT JOIN results r ON r.exam_id = e.id AND r.student_id = stu.id
 ORDER BY e.id, s.submitted_at DESC;
 
--- 5.4 Dashboard sinh viên
+-- 5.4 v_student_results
 CREATE OR REPLACE VIEW v_student_results AS
 SELECT
     e.title AS exam_title,
-    COALESCE(
-        r.total_score,
-        s.suggested_total_score
-    ) AS display_score,
+    COALESCE(r.total_score, s.suggested_total_score) AS display_score,
     CASE
         WHEN r.status = 'confirmed' THEN 'Final Score (Confirmed)'
         WHEN s.status = 'graded' THEN 'Suggested Score (Awaiting Instructor Approval)'
@@ -693,17 +607,10 @@ SELECT
 FROM
     submissions s
     JOIN exams e ON e.id = s.exam_id
-    LEFT JOIN results r ON r.exam_id = e.id
-    AND r.student_id = s.user_id
-WHERE
-    s.user_id IN (
-        SELECT id
-        FROM users
-        WHERE
-            role = 'student'
-    );
+    LEFT JOIN results r ON r.exam_id = e.id AND r.student_id = s.user_id
+WHERE s.user_id IN (SELECT id FROM users WHERE role = 'student');
 
--- 5.5 Admin overview
+-- 5.5 v_admin_overview
 CREATE OR REPLACE VIEW v_admin_overview AS
 SELECT
     e.instructor_id,
@@ -711,23 +618,14 @@ SELECT
     e.title AS exam_title,
     COUNT(s.id) AS total_submissions,
     AVG(s.suggested_total_score) AS avg_score,
-    SUM(
-        CASE
-            WHEN s.status = 'confirmed' THEN 1
-            ELSE 0
-        END
-    ) AS confirmed_count
+    SUM(CASE WHEN s.status = 'confirmed' THEN 1 ELSE 0 END) AS confirmed_count
 FROM
     exams e
     JOIN users u ON u.id = e.instructor_id
     LEFT JOIN submissions s ON s.exam_id = e.id
-GROUP BY
-    e.id,
-    e.instructor_id,
-    u.full_name,
-    e.title;
+GROUP BY e.id, e.instructor_id, u.full_name, e.title;
 
--- 5.6 Chi tiết câu hỏi
+-- 5.6 v_exam_questions_detail
 CREATE OR REPLACE VIEW v_exam_questions_detail AS
 SELECT
     q.id AS question_id,
@@ -741,7 +639,7 @@ SELECT
 FROM exam_questions q
     JOIN exams e ON q.exam_id = e.id;
 
--- 5.7 View tiện ích
+-- 5.7 v_student_result_overview
 CREATE OR REPLACE VIEW v_student_result_overview AS
 SELECT
     u.id AS student_id,
@@ -756,6 +654,7 @@ FROM
     JOIN users u ON s.user_id = u.id
     JOIN exams e ON s.exam_id = e.id;
 
+-- 5.8 v_ai_logs_trace
 CREATE OR REPLACE VIEW v_ai_logs_trace AS
 SELECT
     id AS log_id,
@@ -766,6 +665,7 @@ SELECT
 FROM ai_logs
 ORDER BY created_at DESC;
 
+-- 5.9 v_instructor_stats
 CREATE OR REPLACE VIEW v_instructor_stats AS
 SELECT
     e.instructor_id,
@@ -774,9 +674,9 @@ SELECT
     COUNT(DISTINCT s.user_id) AS total_students
 FROM exams e
     LEFT JOIN submissions s ON s.exam_id = e.id
-GROUP BY
-    e.instructor_id;
+GROUP BY e.instructor_id;
 
+-- 5.10 v_exam_cheating_summary
 CREATE OR REPLACE VIEW v_exam_cheating_summary AS
 SELECT
     e.id AS exam_id,
@@ -786,111 +686,106 @@ SELECT
     u.full_name AS student_name,
     s.cheating_count,
     COUNT(cl.id) AS total_incidents,
-    GROUP_CONCAT(
-        DISTINCT cl.event_type
-        ORDER BY cl.detected_at SEPARATOR ', '
-    ) AS incident_types,
+    GROUP_CONCAT(DISTINCT cl.event_type ORDER BY cl.detected_at SEPARATOR ', ') AS incident_types,
     MIN(cl.detected_at) AS first_incident,
     MAX(cl.detected_at) AS last_incident,
-    SUM(
-        CASE
-            WHEN cl.severity = 'high' THEN 1
-            ELSE 0
-        END
-    ) AS high_severity_count,
-    SUM(
-        CASE
-            WHEN cl.severity = 'medium' THEN 1
-            ELSE 0
-        END
-    ) AS medium_severity_count,
-    SUM(
-        CASE
-            WHEN cl.severity = 'low' THEN 1
-            ELSE 0
-        END
-    ) AS low_severity_count
+    SUM(CASE WHEN cl.severity = 'high' THEN 1 ELSE 0 END) AS high_severity_count,
+    SUM(CASE WHEN cl.severity = 'medium' THEN 1 ELSE 0 END) AS medium_severity_count,
+    SUM(CASE WHEN cl.severity = 'low' THEN 1 ELSE 0 END) AS low_severity_count
 FROM
     submissions s
     JOIN exams e ON e.id = s.exam_id
     JOIN users u ON u.id = s.user_id
     LEFT JOIN cheating_logs cl ON cl.submission_id = s.id
-GROUP BY
+GROUP BY e.id, e.title, s.id, u.id, u.full_name, s.cheating_count
+HAVING s.cheating_count > 0 OR COUNT(cl.id) > 0
+ORDER BY total_incidents DESC, s.submitted_at DESC;
+
+-- 5.11 v_admin_dashboard_stats (NEW)
+CREATE OR REPLACE VIEW v_admin_dashboard_stats AS
+SELECT
+    (SELECT COUNT(*) FROM users WHERE role='student') AS total_students,
+    (SELECT COUNT(*) FROM users WHERE role='instructor') AS total_instructors,
+    (SELECT COUNT(*) FROM exams) AS total_exams,
+    (SELECT COUNT(*) FROM submissions) AS total_submissions,
+    (SELECT COUNT(*) FROM cheating_logs) AS total_cheating_incidents;
+
+-- 5.12 v_all_exams_admin (NEW)
+CREATE OR REPLACE VIEW v_all_exams_admin AS
+SELECT 
     e.id,
     e.title,
-    s.id,
-    u.id,
-    u.full_name,
-    s.cheating_count
-HAVING
-    s.cheating_count > 0
-    OR COUNT(cl.id) > 0
-ORDER BY total_incidents DESC, s.submitted_at DESC;
-/* 6) Finish */
-SELECT '✅ Schema created/updated successfully (MySQL 8.0, no syntax errors)' AS message;
+    e.status,
+    e.created_at,
+    u.full_name as instructor_name,
+    u.email as instructor_email,
+    e.duration_minutes
+FROM exams e
+JOIN users u ON e.instructor_id = u.id;
 
--- collating cheating_count column addition and related objects
-SET @col_exists = 0;
+-- 5.13 v_all_results_admin (NEW)
+CREATE OR REPLACE VIEW v_all_results_admin AS
+SELECT 
+    r.id as result_id,
+    u.full_name as student_name,
+    u.email as student_email,
+    e.title as exam_title,
+    r.total_score,
+    r.status,
+    r.exam_id,
+    r.student_id
+FROM results r
+JOIN exams e ON r.exam_id = e.id
+JOIN users u ON r.student_id = u.id;
 
-SELECT COUNT(*) INTO @col_exists
-FROM information_schema.COLUMNS
-WHERE
-    TABLE_SCHEMA = 'oem_mini'
-    AND TABLE_NAME = 'submissions'
-    AND COLUMN_NAME = 'cheating_count';
+-- 5.14 v_all_users_admin (NEW)
+CREATE OR REPLACE VIEW v_all_users_admin AS
+SELECT 
+    id, 
+    full_name, 
+    email, 
+    role, 
+    created_at, 
+    is_locked,
+    failed_login_attempts
+FROM users;
 
-SET
-    @sql = IF(
-        @col_exists = 0,
-        'ALTER TABLE submissions ADD COLUMN cheating_count INT DEFAULT 0 COMMENT "Total number of cheating incidents"',
-        'SELECT "Column cheating_count already exists" AS message'
-    );
+-- 5.15 v_monthly_user_growth (NEW)
+CREATE OR REPLACE VIEW v_monthly_user_growth AS
+SELECT
+    DATE_FORMAT(created_at, '%Y-%m') as month,
+    role,
+    COUNT(*) as count
+FROM users
+GROUP BY month, role
+ORDER BY month DESC;
 
-PREPARE stmt FROM @sql;
+-- 5.16 v_upcoming_exams_admin (NEW)
+CREATE OR REPLACE VIEW v_upcoming_exams_admin AS
+SELECT 
+    e.id, 
+    e.title, 
+    e.time_open, 
+    e.time_close, 
+    u.full_name as instructor_name,
+    e.exam_room_code
+FROM exams e
+JOIN users u ON e.instructor_id = u.id
+WHERE e.time_open > NOW()
+ORDER BY e.time_open ASC;
 
-EXECUTE stmt;
 
-DEALLOCATE PREPARE stmt;
--- End of oem_migration_v5.sql
+/* =========================================
+   6) Validation & Report
+   ========================================= */
+SELECT '✅ Database Schema Created Successfully!' AS status;
 
-
-/* ----------------------------------------------------------------
-   Updated: sp_delete_student_exam_record (Safe Delete - No User Rename)
-   ---------------------------------------------------------------- */
-DELIMITER $$
-
-DROP PROCEDURE IF EXISTS sp_delete_student_exam_record$$
-
-CREATE PROCEDURE sp_delete_student_exam_record(
-  IN p_exam_id INT,
-  IN p_student_id INT
-)
-BEGIN
-  DECLARE exit HANDLER FOR SQLEXCEPTION
-  BEGIN
-    ROLLBACK;
-    RESIGNAL;
-  END;
-
-  START TRANSACTION;
-
-  DELETE FROM ai_logs
-   WHERE student_id = p_student_id
-     AND question_id IN (SELECT id FROM exam_questions WHERE exam_id = p_exam_id);
-
-  DELETE FROM student_answers
-   WHERE student_id = p_student_id
-     AND question_id IN (SELECT id FROM exam_questions WHERE exam_id = p_exam_id);
-
-  DELETE FROM submissions
-   WHERE user_id = p_student_id
-     AND exam_id  = p_exam_id;
-
-  DELETE FROM results
-   WHERE student_id = p_student_id
-     AND exam_id    = p_exam_id;
-
-  COMMIT;
-END$$
-
-DELIMITER ;
+SELECT 'Tables' AS object_type, COUNT(*) AS count FROM information_schema.tables WHERE table_schema = 'oem_mini'
+UNION ALL
+SELECT 'Views', COUNT(*) FROM information_schema.views WHERE table_schema = 'oem_mini'
+UNION ALL
+SELECT 'Stored Procedures', COUNT(*) FROM information_schema.routines WHERE routine_schema = 'oem_mini' AND routine_type = 'PROCEDURE'
+UNION ALL
+SELECT 'Functions', COUNT(*) FROM information_schema.routines WHERE routine_schema = 'oem_mini' AND routine_type = 'FUNCTION'
+UNION ALL
+SELECT 'Triggers', COUNT(*) FROM information_schema.triggers WHERE trigger_schema = 'oem_mini';

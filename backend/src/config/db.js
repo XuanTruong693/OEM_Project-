@@ -1,10 +1,7 @@
 const { Sequelize } = require("sequelize");
 const mysql = require('mysql2/promise');
 require("dotenv").config();
-
-// ============================================================================
 // Primary Database Connection (oem_mini) - Business Data
-// ============================================================================
 const sequelize = new Sequelize(
   process.env.DB_NAME,
   process.env.DB_USER,
@@ -18,7 +15,7 @@ const sequelize = new Sequelize(
   }
 );
 
-// MySQL2 Connection Pool for raw SQL queries (used in submissionController)
+// MySQL2 Connection Pool for raw SQL queries
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
@@ -51,11 +48,7 @@ const initializePool = async () => {
 
 // Run init
 initializePool();
-
-
-// ============================================================================
 // Admin Database Connection (oem_admin) - Admin Metadata
-// ============================================================================
 const ADMIN_DB_NAME = process.env.ADMIN_DB_NAME || 'oem_admin';
 
 const adminSequelize = new Sequelize(
@@ -84,9 +77,7 @@ const adminPool = mysql.createPool({
   timezone: process.env.APP_TZ || '+07:00'
 });
 
-// ============================================================================
 // Test connections on startup
-// ============================================================================
 const testConnections = async () => {
   try {
     await sequelize.authenticate();
@@ -103,12 +94,10 @@ const testConnections = async () => {
   }
 };
 
-// Run connection test (non-blocking)
+// Run connection test
 testConnections();
 
-// ============================================================================
 // Exports
-// ============================================================================
 module.exports = sequelize;
 module.exports.pool = pool;
 module.exports.adminSequelize = adminSequelize;

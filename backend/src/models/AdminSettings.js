@@ -1,8 +1,3 @@
-/**
- * Admin Settings Model
- * Lưu cài đặt hệ thống cho Admin trong database oem_admin
- */
-
 const { DataTypes } = require('sequelize');
 const { adminSequelize } = require('../config/db');
 

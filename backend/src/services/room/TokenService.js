@@ -1,9 +1,3 @@
-/**
- * TokenService.js
- * Single Responsibility: JWT token generation and verification for room access
- * This service centralizes token logic previously duplicated in controllers.
- */
-
 const jwt = require("jsonwebtoken");
 
 class TokenService {

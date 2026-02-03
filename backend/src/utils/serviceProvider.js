@@ -1,10 +1,3 @@
-/**
- * serviceProvider.js - Service Registration
- * 
- * Registers all services and repositories with the DI container.
- * This is called at application startup.
- */
-
 const container = require('./container');
 
 /**

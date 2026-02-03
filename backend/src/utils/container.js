@@ -1,10 +1,3 @@
-/**
- * container.js - Simple Dependency Injection Container
- * 
- * Provides a lightweight DI container for registering and resolving dependencies.
- * Supports lazy loading and singleton instances.
- */
-
 class Container {
     constructor() {
         this._factories = new Map();

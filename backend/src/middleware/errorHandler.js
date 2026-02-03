@@ -1,13 +1,3 @@
-/**
- * errorHandler.js - Global Error Handler Middleware
- * 
- * Provides centralized error handling for the Express application.
- * Catches all errors and returns consistent error responses.
- */
-
-/**
- * Custom Application Error class
- */
 class AppError extends Error {
     constructor(message, statusCode = 500, code = 'INTERNAL_ERROR') {
         super(message);

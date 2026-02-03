@@ -260,10 +260,6 @@ const callAIService = async (studentAnswer, modelAnswer, maxPoints, retryCount =
         return null;
     }
 };
-
-/**
- * Recovery: Find and re-process pending/failed submissions
- */
 const recoverPendingSubmissions = async () => {
     if (isRecovering) return;
     isRecovering = true;
@@ -271,11 +267,6 @@ const recoverPendingSubmissions = async () => {
     let conn;
     try {
         conn = await pool.getConnection();
-
-        // Find submissions needing grading:
-        // 1. Status = 'pending' (never started)
-        // 2. Status = 'failed' with retry_count < MAX_RETRIES
-        // 3. Status = 'in_progress' but started > 5 min ago (stale/crashed)
         const [pending] = await conn.query(`
             SELECT id, ai_grading_status, ai_grading_retry_count
             FROM submissions
@@ -316,9 +307,6 @@ const recoverPendingSubmissions = async () => {
     }
 };
 
-/**
- * Get queue status for monitoring
- */
 const getQueueStatus = async () => {
     let conn;
     try {

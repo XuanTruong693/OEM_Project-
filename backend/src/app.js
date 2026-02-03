@@ -42,7 +42,7 @@ console.error = (...args) => {
 const authRoutes = require("./routes/authRoutes");
 const examRoomRoutes = require("./routes/examRoomRoutes");
 const instructorRoutes = require("./routes/instructorRoutes");
-const profileRoutes = require("./routes/profileroutes");
+const profileRoutes = require("./routes/profileRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const examBankRoutes = require("./routes/examBankRoutes");
 const assignBankRoutes = require("./routes/assignBankRoutes");

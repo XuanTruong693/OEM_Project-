@@ -7,10 +7,6 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 class AIModel:
-    """
-    Singleton class to manage Bi-Encoder and Cross-Encoder models.
-    Ensures models are loaded only once to save memory and time.
-    """
     _instance = None
     _bi_encoder: Optional[SentenceTransformer] = None
     _cross_encoder: Optional[CrossEncoder] = None
@@ -22,14 +18,8 @@ class AIModel:
         return cls._instance
 
     def _initialize_models(self):
-        """
-        Load the SentenceTransformer and CrossEncoder models.
-        Selects CUDA if available, otherwise uses optimized CPU with multi-threading.
-        """
         try:
             import os
-            
-            # ✅ Detect best available device
             if torch.cuda.is_available():
                 device = 'cuda'
                 gpu_name = torch.cuda.get_device_name(0)
@@ -37,7 +27,6 @@ class AIModel:
                 logger.info(f"🚀 GPU detected: {gpu_name} ({gpu_memory:.1f} GB)")
             else:
                 device = 'cpu'
-                # ✅ Optimize CPU with multi-threading
                 num_threads = os.cpu_count() or 4
                 torch.set_num_threads(num_threads)
                 logger.info(f"⚙️ No GPU detected, using CPU with {num_threads} threads")
@@ -45,7 +34,6 @@ class AIModel:
             logger.info(f"Loading models on {device}...")
 
             # 1. Bi-Encoder: For Semantic Similarity (Fast)
-            # Model: sentence-transformers/paraphrase-multilingual-mpnet-base-v2 (Strong Multilingual)
             self._bi_encoder = SentenceTransformer(
                 'sentence-transformers/paraphrase-multilingual-mpnet-base-v2', 
                 device=device
@@ -53,15 +41,12 @@ class AIModel:
             logger.info("✅ Bi-Encoder loaded successfully.")
 
             # 2. Cross-Encoder: For NLI/Logic Analysis (Accurate)
-            # Model: symanto/xlm-roberta-base-snli-mnli-anli-xnli (Multilingual)
-            # Maps pairs to [Entailment, Neutral, Contradiction]
             self._cross_encoder = CrossEncoder(
                 'symanto/xlm-roberta-base-snli-mnli-anli-xnli', 
                 device=device
             )
             logger.info("✅ Cross-Encoder loaded successfully.")
-            
-            # ✅ Memory optimization
+
             if device == 'cuda':
                 torch.cuda.empty_cache()
                 logger.info(f"📊 GPU Memory used: {torch.cuda.memory_allocated(0) / 1024**2:.1f} MB")

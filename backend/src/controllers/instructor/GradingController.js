@@ -1,9 +1,3 @@
-/**
- * GradingController.js
- * Single Responsibility: Handle grading and feedback operations for instructor
- * Extracted from instructorRoutes.js for SOLID compliance
- */
-
 const sequelize = require("../../config/db");
 const fs = require("fs");
 const path = require("path");
@@ -284,11 +278,6 @@ async function finalizeSubmission(req, res) {
  */
 async function retryFailedGrading(req, res) {
     try {
-        // Optional: specific to an exam? For now, retry all failed.
-        // ownership check is not strictly needed if it's a global maintenance op, 
-        // but ideally should be restricted or scoped. 
-        // Since we don't have examId here easily without param, let's keep it global for instructor.
-
         const count = await retryAllFailed();
         return res.json({
             message: "Retry process initiated",
@@ -464,11 +453,6 @@ async function updateStudentAnswerScore(req, res) {
         const newAiSum = Number(aiResult[0]?.ai_sum || 0);
 
         const newSuggestedTotal = newMcqScore + newAiSum;
-
-        // Update submission: 
-        // total_score = MCQ Score
-        // ai_score = Essay Score
-        // suggested_total_score = MCQ + Essay (Grand Total)
         await sequelize.query(
             `UPDATE submissions 
        SET total_score = ?, ai_score = ?, suggested_total_score = ?,
@@ -495,11 +479,6 @@ async function updateStudentAnswerScore(req, res) {
  * PUT /api/instructor/exams/:examId/students/:studentId/score
  * Update total score for a student in an exam
  */
-/**
- * PUT /api/instructor/exams/:examId/students/:studentId/score
- * Update total score for a student in an exam (Save & Confirm)
- * Restored logic from submissionController.approveStudentScores
- */
 async function updateStudentExamScore(req, res) {
     let transaction;
     try {
@@ -518,7 +497,7 @@ async function updateStudentExamScore(req, res) {
 
         // 1. Call Stored Procedure to update submission record
         // SP signature: sp_update_student_exam_record(exam_id, user_id, submission_id, mcq_score, ai_score)
-        // submissionController passed null for submission_id, so we do the same.
+        // submissionController passed null for submission_id
         await sequelize.query(
             "CALL sp_update_student_exam_record(:examId, :studentId, NULL, :mcqScore, :aiScore)",
             {
@@ -554,7 +533,6 @@ async function updateStudentExamScore(req, res) {
         }
 
         // 3. Ensure submission status is 'graded' and 'confirmed'
-        // The SP likely updates scores, but we enforce status here to be sure
         await sequelize.query(
             `UPDATE submissions 
            SET instructor_confirmed = 1, status = 'graded', total_score = :totalScore
@@ -581,8 +559,6 @@ async function updateStudentExamScore(req, res) {
 
 /**
  * Helper: Save corrected score to AI Training Data
- * 1. Saves to learned_data.json (File-based, immediate)
- * 2. Calls AI /learn/from-correction endpoint (Real-time hot-reload)
  */
 async function saveToAiTrainingData(sample) {
     try {

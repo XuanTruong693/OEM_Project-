@@ -1,7 +1,5 @@
-"""
-Security middleware for AI service
-Handles IP filtering, request logging, and threat detection
-"""
+#Security middleware for AI service
+#Handles IP filtering, request logging, and threat detection
 import logging
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
@@ -38,7 +36,7 @@ SUSPICIOUS_PATTERNS = [
 ]
 
 request_counts = defaultdict(list)
-RATE_LIMIT = 1000  # Max requests per minute (high capacity for 200+ students)
+RATE_LIMIT = 3000  # Max requests per minute
 RATE_WINDOW = 60  # seconds
 
 class SecurityMiddleware(BaseHTTPMiddleware):

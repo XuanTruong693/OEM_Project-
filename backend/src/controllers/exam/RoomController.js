@@ -1,17 +1,9 @@
-/**
- * RoomController.js
- * Single Responsibility: Handle exam room verification and joining
- * Extracted from studentExamController.js for SOLID compliance
- */
-
 const jwt = require("jsonwebtoken");
 const sequelize = require("../../config/db");
 const ExamRepository = require("../../repositories/ExamRepository");
 const SubmissionRepository = require("../../repositories/SubmissionRepository");
 
-// ============================================
 // Helper Functions
-// ============================================
 
 /**
  * Sign a short-lived room token
@@ -51,14 +43,7 @@ async function hasColumn(table, column) {
     return Array.isArray(rows) && rows.length > 0;
 }
 
-// ============================================
 // Controller Methods
-// ============================================
-
-/**
- * POST /api/exams/verify-room
- * Verify if a room code is valid and the exam is available
- */
 async function verifyRoom(req, res) {
     try {
         const { room_code } = req.body || {};
@@ -219,10 +204,6 @@ async function verifyRoom(req, res) {
     }
 }
 
-/**
- * POST /api/exams/join (auth)
- * Join an exam room after verification
- */
 async function joinExam(req, res) {
     try {
         const { room_token } = req.body || {};

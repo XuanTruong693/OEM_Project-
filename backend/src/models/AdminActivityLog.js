@@ -1,8 +1,3 @@
-/**
- * Admin Activity Log Model
- * Lưu log hoạt động của Admin trong database oem_admin
- */
-
 const { DataTypes } = require('sequelize');
 const { adminSequelize } = require('../config/db');
 

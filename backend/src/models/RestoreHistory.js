@@ -1,8 +1,3 @@
-/**
- * Restore History Model
- * Lưu lịch sử restore database trong database oem_admin
- */
-
 const { DataTypes } = require('sequelize');
 const { adminSequelize } = require('../config/db');
 

@@ -5,11 +5,6 @@ GENERAL_PATTERNS = [
     r"\d+\s*năm",
     r"thế\s*kỷ\s*\d+",
 ]
-
-# =====================================================
-# UNIVERSITY GENERAL EDUCATION PATTERNS (Môn đại cương)
-# =====================================================
-
 # === TRIẾT HỌC MÁC-LÊNIN / MARXIST-LENINIST PHILOSOPHY ===
 PHILOSOPHY_ML_PATTERNS = [
     # Vietnamese
@@ -78,9 +73,7 @@ GENERAL_LAW_PATTERNS = [
     r"crime", r"punishment", r"compensation", r"human\s*rights",
 ]
 
-# =====================================================
-# SQL PATTERNS (Expanded)
-# =====================================================
+# SQL PATTERNS
 SQL_PATTERNS = [
     # DDL
     r"CREATE\s*TABLE", r"ALTER\s*TABLE", r"DROP\s*TABLE", r"TRUNCATE",
@@ -110,9 +103,7 @@ SQL_PATTERNS = [
     r"ràng\s*buộc", r"chỉ\s*mục", r"giao\s*dịch", r"khóa\s*ngoại",
 ]
 
-# =====================================================
-# SOFTWARE ENGINEERING CORE PATTERNS (Expanded)
-# =====================================================
+# SOFTWARE ENGINEERING CORE PATTERNS
 SE_CORE_PATTERNS = [
     # SDLC
     r"SDLC", r"vòng\s*đời\s*phần\s*mềm", r"software\s*development\s*life\s*cycle",
@@ -150,9 +141,7 @@ SE_CORE_PATTERNS = [
     r"jenkins", r"github\s*actions", r"gitlab\s*ci", r"docker", r"kubernetes",
 ]
 
-# =====================================================
-# MATHEMATICS UNIVERSITY PATTERNS (Expanded)
-# =====================================================
+# MATHEMATICS UNIVERSITY PATTERNS
 MATH_UNIVERSITY_PATTERNS = [
     # Calculus
     r"giới\s*hạn", r"liên\s*tục", r"đạo\s*hàm", r"vi\s*phân", r"tích\s*phân",
@@ -1152,7 +1141,7 @@ LINGUISTICS_PATTERNS = [
 
 
 def get_all_patterns():
-    """Return all patterns combined into a single list."""
+    # Return all patterns combined into a single list
     all_patterns = []
     all_patterns.extend(GENERAL_PATTERNS)
     all_patterns.extend(IT_PROGRAMMING_PATTERNS)
@@ -1174,7 +1163,7 @@ def get_all_patterns():
 
 
 def get_patterns_by_category(category: str):
-    """Return patterns for a specific category."""
+    # Return patterns for a specific category
     categories = {
         "general": GENERAL_PATTERNS,
         "it_programming": IT_PROGRAMMING_PATTERNS,
@@ -1196,10 +1185,7 @@ def get_patterns_by_category(category: str):
     return categories.get(category.lower(), [])
 
 
-# ============================================================================
-# EXTENDED PATTERNS (Additional ~500 patterns)
-# ============================================================================
-
+# EXTENDED PATTERNS
 EXTENDED_IT_PATTERNS = [
     # Software Engineering
     r"waterfall", r"spiral", r"kanban", r"lean",
@@ -1301,11 +1287,7 @@ EXTENDED_HUMANITIES_PATTERNS = [
     r"nông\s*thôn", r"toàn\s*cầu\s*hóa",
 ]
 
-
-# ============================================================================
-# CONTRADICTION PAIRS (~1500 pairs organized by subject)
-# ============================================================================
-
+# CONTRADICTION PAIRS
 # === IT CONTRADICTIONS ===
 IT_CONTRADICTIONS = [
     # Programming paradigms
@@ -2032,9 +2014,7 @@ GENERAL_CONTRADICTIONS = [
     ("never", "always"),
 ]
 
-# ============================================================================
-# ADDITIONAL PATTERNS (~200 more Vietnamese-English pairs)
-# ============================================================================
+# ADDITIONAL PATTERNS
 
 # === LITERATURE/LANGUAGE PATTERNS ===
 LITERATURE_PATTERNS = [
@@ -2429,11 +2409,6 @@ MUSIC_ART_PATTERNS = [
     r"baroque",
     r"renaissance",
 ]
-
-# ============================================================================
-# ADDITIONAL CONTRADICTION PAIRS (~100 more Vietnamese-English pairs)
-# ============================================================================
-
 # === LITERATURE CONTRADICTIONS ===
 LITERATURE_CONTRADICTIONS = [
     ("bi kịch", "hài kịch"),
@@ -3108,7 +3083,7 @@ def get_all_contradiction_pairs():
 
 
 def get_contradiction_dict():
-    """Return contradictions as a dictionary for fast lookup."""
+    # Return contradictions as a dictionary for fast lookup
     contradiction_dict = {}
     for word1, word2 in get_all_contradiction_pairs():
         if word1 not in contradiction_dict:
@@ -3118,7 +3093,7 @@ def get_contradiction_dict():
 
 
 def get_contradictions_by_category(category: str):
-    """Return contradiction pairs for a specific category."""
+    # Return contradiction pairs for a specific category
     categories = {
         "it": IT_CONTRADICTIONS,
         "education": EDUCATION_CONTRADICTIONS,

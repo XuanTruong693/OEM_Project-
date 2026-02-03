@@ -1,8 +1,3 @@
-/**
- * Admin Models Index
- * Export tất cả các models cho Admin Database (oem_admin)
- */
-
 const AdminActivityLog = require('./AdminActivityLog');
 const BackupMetadata = require('./BackupMetadata');
 const RestoreHistory = require('./RestoreHistory');

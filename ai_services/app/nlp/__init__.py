@@ -1,9 +1,5 @@
-"""
-NLP Module - Vietnamese NLP for Essay Grading
-Refactored to Model-based Architecture (Bi-Encoder + Cross-Encoder).
-"""
-
-# Import new components
+# NLP Module - Vietnamese NLP for Essay Grading
+# Bi-Encoder + Cross-Encoder.
 from .model import get_ai_model, AIModel
 from .grader import UniversityGrader, calculate_score
 
@@ -26,12 +22,11 @@ try:
 except ImportError:
     pass
 
-# New concepts/contradiction modules (class-based or functional)
+# New concepts/contradiction modules
 from .concepts import extract_propositions
 from .contradiction import LogicAnalyzer
 
 # Backward Compatibility
-# get_model should return the Bi-Encoder for vector operations
 def get_model():
     return get_ai_model().bi_encoder
 

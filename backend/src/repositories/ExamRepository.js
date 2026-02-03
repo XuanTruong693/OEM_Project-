@@ -1,9 +1,3 @@
-/**
- * ExamRepository.js
- * Repository for exam-related database operations
- * Follows Repository Pattern for data access abstraction
- */
-
 const BaseRepository = require("./BaseRepository");
 
 class ExamRepository extends BaseRepository {

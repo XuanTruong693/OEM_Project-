@@ -1,8 +1,3 @@
-/**
- * Exam Controllers Index
- * Re-exports all exam-related controller functions for backward compatibility
- */
-
 const RoomController = require("./RoomController");
 const VerificationController = require("./VerificationController");
 const ExamSessionController = require("./ExamSessionController");

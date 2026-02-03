@@ -381,14 +381,11 @@ class LearningEngine:
         return ''.join(result)
     
     def _tokenize(self, text: str) -> List[str]:
-
+        
         # Vietnamese word tokenization using underthesea.
-        # Properly segments compound words like 'quyết_định', 'dứt_khoát'.
-
         normalized = self._normalize(text)
         try:
             # Use underthesea (Stable version 6.8.4 verified on Windows)
-            # format="text" joins compound words with underscores (e.g. "Đại_học")
             tokens = vn_word_tokenize(normalized, format="text")
             return tokens.split()
         except:

@@ -40,7 +40,7 @@ cd frontend && npm install && cd ..
 ## 🤖 Cài đặt AI Services (Python)
 
 > [!IMPORTANT]
-> **Lưu ý cho người dùng Windows:**
+> **Lưu ý:**
 > Phải sử dụng **Python 3.11**. Tuyệt đối **không** dùng Python 3.12 hoặc 3.13 vì thư viện `underthesea` (bản mới) và `pytorch` chưa hỗ trợ tốt, sẽ gây Crash ứng dụng.
 > File `requirements.txt` đã được cấu hình để tự động cài phiên bản ổn định (`underthesea<7`).
 

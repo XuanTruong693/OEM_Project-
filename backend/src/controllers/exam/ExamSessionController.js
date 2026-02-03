@@ -1,23 +1,10 @@
-/**
- * ExamSessionController.js
- * Single Responsibility: Handle exam session lifecycle (start, save, submit)
- * Extracted from studentExamController.js for SOLID compliance
- */
-
 const sequelize = require("../../config/db");
 const { gradeSubmission } = require("../../services/AIService");
 
 // Import hasColumn helper from RoomController
 const { hasColumn } = require("./RoomController");
 
-// ============================================
 // Controller Methods
-// ============================================
-
-/**
- * POST /api/submissions/:id/start
- * Start an exam session after verification
- */
 async function startExam(req, res) {
     try {
         const submissionId = req.params.id;
@@ -178,8 +165,6 @@ async function startExam(req, res) {
         const enriched = questions.map((q) =>
             q.type === "MCQ" ? { ...q, options: optionsByQ[q.question_id] || [] } : q
         );
-
-        // get exam title + instructor + server now + started_at + intent_shuffle
         let exSel = "SELECT e.title AS exam_title, u.full_name AS instructor_name, e.intent_shuffle,";
         exSel += hasDurMin
             ? " e.duration_minutes AS duration_minutes"
@@ -192,7 +177,6 @@ async function startExam(req, res) {
         const ex = Array.isArray(exRows) ? exRows[0] : exRows || {};
         const [tRows] = await sequelize.query(`SELECT NOW() AS server_now`);
         const nowRow = Array.isArray(tRows) ? tRows[0] : tRows;
-
         // fetch started_at after update
         let started = nowRow.server_now;
         try {
@@ -225,10 +209,6 @@ async function startExam(req, res) {
     }
 }
 
-/**
- * POST /api/submissions/:id/answer
- * Save an answer during exam
- */
 async function saveAnswer(req, res) {
     try {
         const submissionId = parseInt(req.params.id, 10);
@@ -336,10 +316,6 @@ async function saveAnswer(req, res) {
     }
 }
 
-/**
- * POST /api/submissions/:id/proctor-event
- * Handle proctoring events during exam
- */
 async function proctorEvent(req, res) {
     try {
         const submissionId = parseInt(req.params.id, 10);
@@ -368,10 +344,6 @@ async function proctorEvent(req, res) {
     }
 }
 
-/**
- * POST /api/submissions/:id/submit
- * Submit exam and trigger grading
- */
 async function submitExam(req, res) {
     try {
         const submissionId = parseInt(req.params.id, 10);
