@@ -4,7 +4,41 @@ const cors = require("cors");
 const sequelize = require("./config/db");
 const path = require("path");
 const http = require("http");
-const { initializeSocket } = require("./services/socketService");
+const { initializeSocket, addServerLog } = require("./services/socketService");
+
+// ===== Override console để capture logs cho admin panel =====
+const originalConsoleLog = console.log;
+const originalConsoleWarn = console.warn;
+const originalConsoleError = console.error;
+
+console.log = (...args) => {
+  originalConsoleLog.apply(console, args);
+  const message = args.map(arg =>
+    typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+  ).join(' ');
+  addServerLog('info', message);
+};
+
+console.warn = (...args) => {
+  originalConsoleWarn.apply(console, args);
+  const message = args.map(arg =>
+    typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+  ).join(' ');
+  addServerLog('warn', message);
+};
+
+console.error = (...args) => {
+  // Skip harmless connection abort errors
+  const firstArg = String(args[0] || '');
+  if (firstArg.includes('aborted') || firstArg.includes('ECONNRESET')) {
+    return; // Silently ignore
+  }
+  originalConsoleError.apply(console, args);
+  const message = args.map(arg =>
+    typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+  ).join(' ');
+  addServerLog('error', message);
+};
 const authRoutes = require("./routes/authRoutes");
 const examRoomRoutes = require("./routes/examRoomRoutes");
 const instructorRoutes = require("./routes/instructorRoutes");
@@ -19,7 +53,17 @@ const { getAppRole, setAppRole } = require("./utils/appRole");
 const app = express();
 // const profileRouter = require("./routes/profile");
 
-const allowedOrigins = ["http://localhost:4000", "http://127.0.0.1:4000"];
+const allowedOrigins = [
+  "http://localhost:4000",
+  "http://127.0.0.1:4000",
+  "http://oem.io.vn",
+  "http://www.oem.io.vn",
+  "https://oem.io.vn",
+  "https://www.oem.io.vn"
+];
+
+// Trust Cloudflare proxy for correct client IP and secure cookies
+app.set("trust proxy", 1);
 
 app.use(
   cors({
@@ -40,6 +84,15 @@ app.use(express.json());
 // Serve uploaded verification images if *_url columns are used
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
+// ✅ Log debug chỉ khi chạy dev
+if (process.env.NODE_ENV === "development") {
+  // console.log("📦 authRoutes:", typeof authRoutes);
+  // console.log("📦 examRoomRoutes:", typeof examRoomRoutes);
+  // console.log("📦 authRoutes value:", authRoutes);
+  // console.log("📦 examRoomRoutes value:", examRoomRoutes);
+  // console.log("📦 profileRoutes mounted at /api/profile")
+}
+
 // ✅ Mount routes
 app.use("/api/auth", authRoutes);
 app.use("/api/exam_rooms", examRoomRoutes);
@@ -54,7 +107,7 @@ app.use("/api", studentExamRoutes); // Includes proctor event handler
 // Submission routes for instructor (results, violations, etc.)
 app.use("/api/instructor", submissionRoutes);
 
-// Root-level role endpoints to support http://localhost:4000/role via Vite proxy
+// Root-level role endpoints to support production via IIS proxy
 app.get("/role", (req, res) => {
   res.json({ role: getAppRole() });
 });
@@ -63,6 +116,18 @@ app.post("/role", (req, res) => {
   if (!role) return res.status(400).json({ message: "Role is required" });
   setAppRole(role);
   res.json({ role: getAppRole() });
+});
+
+// ✅ Error handler for aborted requests (client disconnected)
+app.use((err, req, res, next) => {
+  // Ignore aborted connection errors (user refreshed/navigated away)
+  if (err.message === 'aborted' || err.code === 'ECONNRESET') {
+    return; // Silently ignore
+  }
+  console.error('Unhandled error:', err.message);
+  if (!res.headersSent) {
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 // ✅ Route test
@@ -82,26 +147,20 @@ sequelize
       const httpServer = http.createServer(app);
       initializeSocket(httpServer);
 
-      httpServer.listen(PORT, async () => {
+      // ✅ Silently handle client connection errors (refresh/navigate away)
+      httpServer.on('clientError', (err, socket) => {
+        if (err.code === 'ECONNRESET' || err.message === 'aborted') {
+          // Client disconnected - harmless, ignore
+          socket.destroy();
+          return;
+        }
+        // For other errors, send 400 and destroy
+        socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
+      });
+
+      httpServer.listen(PORT, () => {
         console.log(`🚀 Server running at http://localhost:${PORT}`);
         console.log(`🔌 WebSocket server initialized`);
-
-        // ✅ Sync admin database models (tự động tạo tables nếu chưa có)
-        try {
-          const { adminSequelize } = require('./config/db');
-          await adminSequelize.sync({ alter: false }); // Không alter để tránh mất data
-          console.log('✅ Admin database models synced');
-        } catch (err) {
-          console.warn('⚠️ Could not sync admin models:', err.message);
-        }
-
-        // ✅ Khởi tạo backup scheduler
-        try {
-          const { initBackupScheduler } = require('./services/backupScheduler');
-          await initBackupScheduler();
-        } catch (err) {
-          console.warn('⚠️ Could not initialize backup scheduler:', err.message);
-        }
       });
     }
   })

@@ -117,7 +117,7 @@ const AdminDashboard = () => {
     switch (state) {
       case 'active': return 'bg-green-600/20 text-green-400';
       case 'upcoming': return 'bg-blue-600/20 text-blue-400';
-      default: return 'bg-gray-600/20 text-gray-400';
+      default: return 'bg-gray-600/20 text-gray-300';
     }
   };
 
@@ -139,7 +139,7 @@ const AdminDashboard = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Total Students */}
               <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-                <h3 className="text-sm text-gray-400 mb-3">{t('totalStudents')}</h3>
+                <h3 className="text-sm text-gray-300 mb-3">{t('totalStudents')}</h3>
                 <div className="text-4xl font-bold text-white mb-2">
                   {loading ? '...' : stats.totalStudents.toLocaleString()}
                 </div>
@@ -151,7 +151,7 @@ const AdminDashboard = () => {
 
               {/* Total Instructors */}
               <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-                <h3 className="text-sm text-gray-400 mb-3">{t('totalInstructors')}</h3>
+                <h3 className="text-sm text-gray-300 mb-3">{t('totalInstructors')}</h3>
                 <div className="text-4xl font-bold text-white mb-2">
                   {loading ? '...' : stats.totalInstructors.toLocaleString()}
                 </div>
@@ -163,7 +163,7 @@ const AdminDashboard = () => {
 
               {/* Total Exams */}
               <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-                <h3 className="text-sm text-gray-400 mb-3">{t('totalExams')}</h3>
+                <h3 className="text-sm text-gray-300 mb-3">{t('totalExams')}</h3>
                 <div className="text-4xl font-bold text-white mb-2">
                   {loading ? '...' : stats.totalExamsUploaded.toLocaleString()}
                 </div>
@@ -264,7 +264,7 @@ const AdminDashboard = () => {
               <h2 className="text-lg font-semibold text-white mb-6">{t('dashboard')}</h2>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <h3 className="text-sm text-gray-400 mb-3 leading-tight">
+                  <h3 className="text-sm text-gray-300 mb-3 leading-tight">
                     {t('totalRooms')}
                   </h3>
                   <div className="text-5xl font-bold text-white">
@@ -272,7 +272,7 @@ const AdminDashboard = () => {
                   </div>
                 </div>
                 <div>
-                  <h3 className="text-sm text-gray-400 mb-3 leading-tight">
+                  <h3 className="text-sm text-gray-300 mb-3 leading-tight">
                     {t('publishedRooms')}
                   </h3>
                   <div className="text-5xl font-bold text-white">
@@ -288,7 +288,7 @@ const AdminDashboard = () => {
 
               <div className="space-y-4">
                 {upcomingExams.length === 0 ? (
-                  <p className="text-gray-400 text-center py-4">{t('noData')}</p>
+                  <p className="text-gray-300 text-center py-4">{t('noData')}</p>
                 ) : (
                   upcomingExams.map((exam) => (
                     <div key={exam.id} className="p-3 bg-gray-700/30 rounded-lg">
@@ -298,13 +298,13 @@ const AdminDashboard = () => {
                           {exam.exam_state === 'active' ? t('ongoing') : t('upcoming')}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2 text-xs text-gray-400">
+                      <div className="flex items-center gap-2 text-xs text-gray-300">
                         <Clock size={12} />
                         <span>{formatDateTime(exam.time_open)}</span>
                       </div>
                       <div className="flex justify-between items-center mt-2 text-xs">
-                        <span className="text-gray-400">{exam.total_questions} {t('questions')}</span>
-                        <span className="text-gray-400">{exam.instructor_name}</span>
+                        <span className="text-gray-300">{exam.total_questions} {t('questions')}</span>
+                        <span className="text-gray-300">{exam.instructor_name}</span>
                       </div>
                     </div>
                   ))
@@ -363,7 +363,7 @@ const AdminDashboard = () => {
             {/* Additional Performance Card */}
             <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
               <h2 className="text-lg font-semibold text-white mb-6">Performance</h2>
-              <div className="h-32 flex items-center justify-center text-gray-400">
+              <div className="h-32 flex items-center justify-center text-gray-300">
                 Additional metrics coming soon...
               </div>
             </div>
@@ -375,3 +375,4 @@ const AdminDashboard = () => {
 };
 
 export default AdminDashboard;
+

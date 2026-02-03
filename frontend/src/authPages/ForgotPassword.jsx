@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { API_BASE_URL } from "../api/config";
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState("");
@@ -23,7 +24,7 @@ const ForgotPassword = () => {
 
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/check-email", {
+      const res = await fetch(`${API_BASE_URL}/auth/check-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: trimmed }),
@@ -44,7 +45,7 @@ const ForgotPassword = () => {
       }
 
       if (data.exists) {
-        const otpRes = await fetch("/api/auth/forgot-send-otp", {
+        const otpRes = await fetch(`${API_BASE_URL}/auth/forgot-send-otp`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email: trimmed }),

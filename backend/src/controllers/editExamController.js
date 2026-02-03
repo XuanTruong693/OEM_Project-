@@ -67,7 +67,7 @@ const getExamForEdit = async (req, res) => {
        ORDER BY order_index, id`,
       { replacements: { examId: id }, type: QueryTypes.SELECT, transaction }
     );
-
+    
     const questionsWithOptions = await Promise.all(
       questions.map(async (q) => {
         if (q.type === "MCQ") {

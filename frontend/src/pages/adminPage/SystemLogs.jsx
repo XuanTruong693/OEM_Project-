@@ -15,7 +15,7 @@ const SystemLogs = () => {
                 {/* Header */}
                 <div className="mb-6">
                     <h1 className="text-3xl font-bold text-white">{t('systemLogs')}</h1>
-                    <p className="text-gray-400 mt-1">{t('systemLogs')}</p>
+                    <p className="text-gray-300 mt-1">{t('systemLogs')}</p>
                 </div>
 
                 {/* Activity Logs Label */}
@@ -34,3 +34,5 @@ const SystemLogs = () => {
 };
 
 export default SystemLogs;
+
+

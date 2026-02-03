@@ -25,14 +25,12 @@ const Toggle = ({ checked, onChange }) => (
     role="switch"
     aria-checked={checked}
     onClick={() => onChange(!checked)}
-    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-      checked ? "bg-emerald-500" : "bg-slate-300"
-    }`}
+    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${checked ? "bg-emerald-500" : "bg-slate-300"
+      }`}
   >
     <span
-      className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
-        checked ? "translate-x-5" : "translate-x-1"
-      }`}
+      className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${checked ? "translate-x-5" : "translate-x-1"
+        }`}
     />
   </button>
 );
@@ -64,21 +62,19 @@ const ModeSwitch = ({ combined, setCombined }) => (
     <div className="inline-flex rounded-xl border border-slate-200 bg-slate-100 p-0.5">
       <button
         onClick={() => setCombined(true)}
-        className={`px-3 py-1.5 rounded-lg transition ${
-          combined
-            ? "bg-white text-blue-700 shadow-sm"
-            : "text-slate-600 hover:text-slate-800"
-        }`}
+        className={`px-3 py-1.5 rounded-lg transition ${combined
+          ? "bg-white text-blue-700 shadow-sm"
+          : "text-slate-600 hover:text-slate-800"
+          }`}
       >
         Chung
       </button>
       <button
         onClick={() => setCombined(false)}
-        className={`px-3 py-1.5 rounded-lg transition ${
-          !combined
-            ? "bg-white text-blue-700 shadow-sm"
-            : "text-slate-600 hover:text-slate-800"
-        }`}
+        className={`px-3 py-1.5 rounded-lg transition ${!combined
+          ? "bg-white text-blue-700 shadow-sm"
+          : "text-slate-600 hover:text-slate-800"
+          }`}
       >
         Theo tab
       </button>
@@ -92,11 +88,10 @@ const Tabs = ({ tab, setTab }) => (
       <button
         key={k}
         onClick={() => setTab(k)}
-        className={`px-3 py-2 text-sm rounded-t-lg border-b-2 -mb-px ${
-          tab === k
-            ? "border-blue-600 text-blue-700"
-            : "border-transparent text-slate-500 hover:text-slate-700"
-        }`}
+        className={`px-3 py-2 text-sm rounded-t-lg border-b-2 -mb-px ${tab === k
+          ? "border-blue-600 text-blue-700"
+          : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
       >
         {k === "overview" ? "Tổng quan" : "Chống gian lận"}
       </button>
@@ -182,6 +177,7 @@ export default function ExamSettings() {
     require_face_check: false,
     require_student_card: false,
     monitor_screen: false,
+    intent_shuffle: false,
   });
   const [submitting, setSubmitting] = React.useState(false);
   const [room, setRoom] = React.useState("");
@@ -377,47 +373,69 @@ export default function ExamSettings() {
               subtitle="Thiết lập xác minh danh tính và kiểm soát môi trường làm bài"
             >
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-medium text-slate-800">
+                <div className="flex items-start sm:items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-slate-800 text-sm sm:text-base">
                       Yêu cầu xác minh khuôn mặt
                     </div>
-                    <div className="text-sm text-slate-500">
+                    <div className="text-xs sm:text-sm text-slate-500">
                       Bật xác minh bằng ảnh khuôn mặt trước khi vào thi
                     </div>
                   </div>
-                  <Toggle
-                    checked={form.require_face_check}
-                    onChange={(v) => onChange("require_face_check", v)}
-                  />
+                  <div className="flex-shrink-0">
+                    <Toggle
+                      checked={form.require_face_check}
+                      onChange={(v) => onChange("require_face_check", v)}
+                    />
+                  </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-medium text-slate-800">
+                <div className="flex items-start sm:items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-slate-800 text-sm sm:text-base">
                       Yêu cầu xác minh thẻ SV
                     </div>
-                    <div className="text-sm text-slate-500">
+                    <div className="text-xs sm:text-sm text-slate-500">
                       Tải ảnh thẻ sinh viên để đối chiếu
                     </div>
                   </div>
-                  <Toggle
-                    checked={form.require_student_card}
-                    onChange={(v) => onChange("require_student_card", v)}
-                  />
+                  <div className="flex-shrink-0">
+                    <Toggle
+                      checked={form.require_student_card}
+                      onChange={(v) => onChange("require_student_card", v)}
+                    />
+                  </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-medium text-slate-800">
+                <div className="flex items-start sm:items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-slate-800 text-sm sm:text-base">
                       Theo dõi màn hình
                     </div>
-                    <div className="text-sm text-slate-500">
+                    <div className="text-xs sm:text-sm text-slate-500">
                       Yêu cầu fullscreen, ghi nhận rời tab/thoát toàn màn hình
                     </div>
                   </div>
-                  <Toggle
-                    checked={form.monitor_screen}
-                    onChange={(v) => onChange("monitor_screen", v)}
-                  />
+                  <div className="flex-shrink-0">
+                    <Toggle
+                      checked={form.monitor_screen}
+                      onChange={(v) => onChange("monitor_screen", v)}
+                    />
+                  </div>
+                </div>
+                <div className="flex items-start sm:items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-slate-800 text-sm sm:text-base">
+                      Trộn câu hỏi
+                    </div>
+                    <div className="text-xs sm:text-sm text-slate-500">
+                      Ngẫu nhiên hóa thứ tự câu hỏi cho mỗi sinh viên
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0">
+                    <Toggle
+                      checked={form.intent_shuffle}
+                      onChange={(v) => onChange("intent_shuffle", v)}
+                    />
+                  </div>
                 </div>
               </div>
             </SectionCard>
@@ -444,23 +462,20 @@ export default function ExamSettings() {
 
           {(err || notice) && (
             <section
-              className={`${
-                err ? "bg-rose-50" : "bg-emerald-50"
-              } border border-slate-200 rounded-2xl p-4`}
+              className={`${err ? "bg-rose-50" : "bg-emerald-50"
+                } border border-slate-200 rounded-2xl p-4`}
             >
               <div className="flex items-start gap-3">
                 <div
-                  className={`h-9 w-9 rounded-xl grid place-items-center ${
-                    err ? "bg-white text-rose-600" : "bg-white text-emerald-600"
-                  } shadow-sm`}
+                  className={`h-9 w-9 rounded-xl grid place-items-center ${err ? "bg-white text-rose-600" : "bg-white text-emerald-600"
+                    } shadow-sm`}
                 >
                   {err ? "⚠️" : "✅"}
                 </div>
                 <div>
                   <div
-                    className={`font-medium ${
-                      err ? "text-rose-700" : "text-emerald-700"
-                    }`}
+                    className={`font-medium ${err ? "text-rose-700" : "text-emerald-700"
+                      }`}
                   >
                     {err ? "Có lỗi xảy ra" : "Thành công"}
                   </div>

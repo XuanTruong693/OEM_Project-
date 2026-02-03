@@ -1,9 +1,19 @@
 const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const ExamRoom = require("../models/ExamRoom");
 const { generateAccessToken, generateRefreshToken } = require("../utils/generateToken");
+const { addToBlacklist } = require("../utils/tokenBlacklist");
 
 const SALT_ROUNDS = 10;
+
+// Helper to get client IP
+const getClientIp = (req) => {
+  return req.ip ||
+    req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+    req.connection?.remoteAddress ||
+    'unknown';
+};
 
 // ------------------- Đăng ký -------------------
 async function register(req, res) {
@@ -54,22 +64,21 @@ async function register(req, res) {
         password_hash: hashed,
         role: "student",
       });
-
-      // 🔧 Tùy logic của bạn: nếu cần liên kết học viên vào phòng thi
-      // await room.addStudent(newUser);
     } else {
       return res.status(400).json({ message: "Role không hợp lệ" });
     }
 
-    // ✅ payload đồng bộ với middleware verifyToken
     const payload = {
-      id: newUser.id, // ⚠️ dùng id chứ không phải userId
+      id: newUser.id,
       email: newUser.email,
       role: newUser.role,
     };
 
-    const accessToken = generateAccessToken(payload);
+    const clientIp = getClientIp(req);
+    const accessToken = generateAccessToken(payload, clientIp);
     const refreshToken = generateRefreshToken(payload);
+
+    console.log(`✅ [Auth] User registered: ${newUser.email} from IP: ${clientIp}`);
 
     return res.status(201).json({
       user: {
@@ -106,13 +115,16 @@ async function login(req, res) {
     }
 
     const payload = {
-      id: user.id, // ✅ đồng bộ với verifyToken
+      id: user.id,
       email: user.email,
       role: user.role,
     };
 
-    const accessToken = generateAccessToken(payload);
+    const clientIp = getClientIp(req);
+    const accessToken = generateAccessToken(payload, clientIp);
     const refreshToken = generateRefreshToken(payload);
+
+    console.log(`✅ [Auth] User logged in: ${user.email} from IP: ${clientIp}`);
 
     return res.status(200).json({
       user: {
@@ -130,4 +142,83 @@ async function login(req, res) {
   }
 }
 
-module.exports = { register, login };
+// ------------------- Refresh Token -------------------
+async function refreshTokenHandler(req, res) {
+  try {
+    const { refreshToken: token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ message: "Thiếu refresh token" });
+    }
+
+    // Verify refresh token
+    const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
+
+    // Check if user still exists
+    const user = await User.findByPk(decoded.id);
+    if (!user) {
+      return res.status(401).json({ message: "Người dùng không tồn tại" });
+    }
+
+    // Generate new access token
+    const payload = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    };
+
+    const clientIp = getClientIp(req);
+    const newAccessToken = generateAccessToken(payload, clientIp);
+
+    console.log(`🔄 [Auth] Token refreshed for: ${user.email}`);
+
+    return res.status(200).json({
+      accessToken: newAccessToken,
+      user: {
+        id: user.id,
+        fullName: user.full_name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        message: "Refresh token đã hết hạn. Vui lòng đăng nhập lại.",
+        refreshExpired: true
+      });
+    }
+    console.error("❌ Refresh token error:", error);
+    return res.status(401).json({ message: "Refresh token không hợp lệ" });
+  }
+}
+
+// ------------------- Logout -------------------
+async function logout(req, res) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.split(" ")[1];
+
+      // Decode to get expiry time
+      try {
+        const decoded = jwt.decode(token);
+        const expiresAt = decoded.exp ? decoded.exp * 1000 : Date.now() + 2 * 60 * 60 * 1000;
+
+        // Add to blacklist
+        addToBlacklist(token, expiresAt);
+        console.log(`🔒 [Auth] User logged out, token blacklisted`);
+      } catch (e) {
+        // Token invalid, but still proceed with logout
+      }
+    }
+
+    return res.status(200).json({ message: "Đăng xuất thành công" });
+  } catch (error) {
+    console.error("❌ Logout error:", error);
+    return res.status(500).json({ message: "Lỗi server" });
+  }
+}
+
+module.exports = { register, login, refreshToken: refreshTokenHandler, logout };
+

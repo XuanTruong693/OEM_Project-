@@ -6,13 +6,13 @@
 try {
   if (process.stdin.setEncoding) process.stdin.setEncoding('utf8');
   if (process.stdout.setEncoding) process.stdout.setEncoding('utf8');
-} catch {}
+} catch { }
 
 // ===============================
 // 📦 Import thu vien
 // ===============================
 const readlineSync = require('readline-sync');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const sequelize = require('../src/config/db');
 const { User } = require('../src/models/User');
 const { validateEmailDomain } = require('../src/utils/emailValidator');

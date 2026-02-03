@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
+import { API_BASE_URL } from "../api/config";
 
 const ResetPassword = () => {
   const navigate = useNavigate();
@@ -35,7 +36,7 @@ const ResetPassword = () => {
     try {
       setLoading(true);
       const res = await axios.post(
-        "http://localhost:5000/api/auth/reset-password",
+        `${API_BASE_URL}/auth/reset-password`,
         { email, newPassword: password, otp }
       );
 

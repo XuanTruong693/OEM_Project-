@@ -14,6 +14,7 @@ dotenv.config();
 const router = express.Router();
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const { getAppRole, setAppRole } = require("../utils/appRole");
+const { generateAccessToken, generateRefreshToken } = require("../utils/generateToken");
 
 // Return current app role
 router.get("/role", (req, res) => {
@@ -27,11 +28,31 @@ router.post("/role", (req, res) => {
   return res.json({ role: getAppRole() });
 });
 
-// JWT generator
-const generateToken = (user) =>
-  jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, {
-    expiresIn: "1h",
-  });
+// Helper to get client IP
+const getClientIp = (req) => {
+  return req.ip ||
+    req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+    req.connection?.remoteAddress ||
+    'unknown';
+};
+
+// JWT generator - now uses 2h expiry from utils
+const generateToken = (user, req) => {
+  const payload = { id: user.id, email: user.email, role: user.role };
+  const clientIp = req ? getClientIp(req) : null;
+  return generateAccessToken(payload, clientIp);
+};
+
+// Generate both access and refresh tokens
+const generateTokens = (user, req) => {
+  const payload = { id: user.id, email: user.email, role: user.role };
+  const clientIp = req ? getClientIp(req) : null;
+  return {
+    accessToken: generateAccessToken(payload, clientIp),
+    refreshToken: generateRefreshToken(payload),
+  };
+};
+
 
 // OTP storage (in production, use Redis or database)
 const otpStorage = new Map();
@@ -210,20 +231,8 @@ router.post("/google", async (req, res) => {
         .status(400)
         .json({ message: "Học viên cần mã phòng thi", status: "error" });
 
-    // If appRole is set, block attempts that request a different role immediately
-    const appRole = getAppRole();
-    if (appRole && role !== appRole) {
-      console.log(
-        `[Google Login] ❌ Blocked because requested role ${role} != appRole ${appRole}`
-      );
-      return res.status(403).json({
-        message: "Đăng nhập sai quyền",
-        status: "error",
-        requiredRole: appRole,
-        currentRole: role,
-        redirect: "/",
-      });
-    }
+    // NOTE: Removed appRole check - it incorrectly blocked different users on different devices
+    // The appRole was designed for single-device kiosk mode which is not the common use case
 
     const ticket = await client.verifyIdToken({
       idToken,
@@ -246,19 +255,7 @@ router.post("/google", async (req, res) => {
 
     let user = await User.findOne({ where: { email } });
 
-    // If an existing user has a role that doesn't match appRole, block
-    if (appRole && user && user.role !== appRole) {
-      console.log(
-        `[Google Login] ❌ Blocked because existing user role ${user.role} != appRole ${appRole}`
-      );
-      return res.status(403).json({
-        message: "Đăng nhập sai quyền",
-        status: "error",
-        requiredRole: appRole,
-        currentRole: user.role,
-        redirect: "/",
-      });
-    }
+    // NOTE: Removed appRole check for existing users - different users can have different roles
     if (!user) {
       user = await User.create({
         full_name,
@@ -336,25 +333,14 @@ router.post("/google", async (req, res) => {
 
     console.log(`[Google Login] ✅ Đăng nhập thành công cho ${email}`);
 
-    // Enforce application-wide role (if configured)
-    if (appRole && user.role !== appRole) {
-      console.log(
-        `[Google Login] ❌ Đăng nhập bị chặn do sai quyền. appRole=${appRole} user.role=${user.role}`
-      );
-      return res.status(403).json({
-        message: "Đăng nhập sai quyền",
-        status: "error",
-        requiredRole: appRole,
-        currentRole: user.role,
-        redirect: "/",
-      });
-    }
+    // NOTE: Removed appRole enforcement - users should be able to log in with their actual role
 
-    const token = generateToken(user);
+    const tokens = generateTokens(user, req);
     res.json({
       message: "Đăng nhập Google thành công",
       status: "success",
-      token,
+      token: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
       user: { id: user.id, full_name: user.full_name, role: user.role },
     });
   } catch (err) {
@@ -611,20 +597,7 @@ router.post("/login", async (req, res) => {
     if (user.failed_login_attempts > 0) {
       await user.update({ failed_login_attempts: 0 });
     }
-    const appRole = getAppRole();
-    const requestedRole = role || user.role;
-    if (appRole && requestedRole !== appRole) {
-      console.log(
-        `[Login] ⚠️Đăng nhập bị chặn do sai quyền. appRole=${appRole} requestedRole=${requestedRole} user.role=${user.role}`
-      );
-      return res.status(403).json({
-        message: "⛔Đăng nhập sai quyền",
-        status: "error",
-        requiredRole: appRole,
-        currentRole: requestedRole,
-        redirect: "/",
-      });
-    }
+    // NOTE: Removed appRole check - different users on different devices can use different roles
 
     if (role === "student") {
       if (!roomId) {
@@ -695,13 +668,14 @@ router.post("/login", async (req, res) => {
       }
     }
 
-    const token = generateToken(user);
+    const tokens = generateTokens(user, req);
     console.log(`[Login] ✅ Đăng nhập thành công cho user: ${email}`);
 
     let response = {
       message: "Đăng nhập thành công",
       status: "success",
-      token,
+      token: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
       user: {
         id: user.id,
         full_name: user.full_name,
@@ -876,4 +850,17 @@ router.post("/reset-password", async (req, res) => {
   }
 });
 
+// --- Refresh Token ---
+const { refreshToken, logout } = require("../controllers/authController");
+
+router.post("/refresh", async (req, res) => {
+  return refreshToken(req, res);
+});
+
+// --- Logout (blacklist current token) ---
+router.post("/logout", async (req, res) => {
+  return logout(req, res);
+});
+
 module.exports = router;
+

@@ -411,8 +411,14 @@ router.get('/exams', verifyToken, verifyRole('admin'), async (req, res) => {
       LEFT JOIN users u ON e.instructor_id = u.id
       WHERE ${whereClause}
       ORDER BY 
-        CASE e.status WHEN 'published' THEN 0 WHEN 'draft' THEN 1 ELSE 2 END,
-        e.updated_at DESC
+        CASE 
+          WHEN e.time_open IS NOT NULL AND e.time_close IS NOT NULL 
+               AND NOW() BETWEEN e.time_open AND e.time_close THEN 0
+          WHEN e.time_open IS NOT NULL AND e.time_open > NOW() THEN 1
+          WHEN e.time_close IS NOT NULL AND e.time_close < NOW() THEN 3
+          ELSE 2
+        END,
+        e.time_open ASC
       LIMIT ? OFFSET ?
     `, [...params, parseInt(limit), offset]);
 
@@ -636,11 +642,11 @@ router.get('/results', verifyToken, verifyRole('admin'), async (req, res) => {
 
 /**
  * PUT /api/admin/results/:submissionId
- * Cập nhật điểm của submission
+ * Cập nhật điểm của submission (Admin can edit MCQ, Essay, and Total scores)
  */
 router.put('/results/:submissionId', verifyToken, verifyRole('admin'), async (req, res) => {
   try {
-    const { suggested_total_score } = req.body;
+    const { mcq_score, essay_score, total_score } = req.body;
 
     const [submissions] = await pool.query(
       'SELECT s.*, u.email, e.title FROM submissions s JOIN users u ON s.user_id = u.id JOIN exams e ON s.exam_id = e.id WHERE s.id = ?',
@@ -652,25 +658,62 @@ router.put('/results/:submissionId', verifyToken, verifyRole('admin'), async (re
     }
 
     const submission = submissions[0];
-    const oldValue = { suggested_total_score: submission.suggested_total_score };
+    const oldValue = {
+      total_score: submission.total_score,
+      ai_score: submission.ai_score,
+      suggested_total_score: submission.suggested_total_score
+    };
 
-    // Cập nhật suggested_total_score và đánh dấu đã xác nhận
+    // Determine new values (use provided values or keep existing)
+    const newMcqScore = mcq_score !== undefined ? parseFloat(mcq_score) : submission.total_score;
+    const newEssayScore = essay_score !== undefined ? parseFloat(essay_score) : submission.ai_score;
+    const newTotalScore = total_score !== undefined ? parseFloat(total_score) : (newMcqScore + (newEssayScore || 0));
+
+    // Update submissions table with all score fields
     await pool.query(
-      'UPDATE submissions SET suggested_total_score = ?, instructor_confirmed = 1, status = "confirmed" WHERE id = ?',
-      [suggested_total_score, req.params.submissionId]
+      `UPDATE submissions 
+       SET total_score = ?, 
+           ai_score = ?, 
+           suggested_total_score = ?, 
+           instructor_confirmed = 1, 
+           status = 'confirmed' 
+       WHERE id = ?`,
+      [newMcqScore, newEssayScore, newTotalScore, req.params.submissionId]
     );
 
-    // Log activity
+    // Also update results table to sync
+    await pool.query(
+      `UPDATE results 
+       SET total_score = ?, status = 'confirmed' 
+       WHERE exam_id = ? AND student_id = ?`,
+      [newTotalScore, submission.exam_id, submission.user_id]
+    );
+
+    const newValue = {
+      total_score: newMcqScore,
+      ai_score: newEssayScore,
+      suggested_total_score: newTotalScore
+    };
+
+    // Log activity with detailed description for instructor visibility
     await req.logActivity({
-      actionType: 'update',
+      actionType: 'admin_score_edit',
       targetTable: 'submissions',
       targetId: parseInt(req.params.submissionId),
       oldValue,
-      newValue: { suggested_total_score },
-      description: `Xác nhận điểm tổng: ${submission.email} - ${submission.title} (${oldValue.suggested_total_score ?? 'N/A'} → ${suggested_total_score})`
+      newValue,
+      description: `[ADMIN SỬA ĐIỂM] ${submission.email} - ${submission.title}: MCQ(${oldValue.total_score ?? 'N/A'}→${newMcqScore}), Essay(${oldValue.ai_score ?? 'N/A'}→${newEssayScore}), Tổng(${oldValue.suggested_total_score ?? 'N/A'}→${newTotalScore})`
     });
 
-    res.json({ success: true, message: 'Cập nhật điểm thành công' });
+    res.json({
+      success: true,
+      message: 'Cập nhật điểm thành công',
+      data: {
+        mcq_score: newMcqScore,
+        essay_score: newEssayScore,
+        total_score: newTotalScore
+      }
+    });
   } catch (error) {
     console.error('❌ Error updating result:', error);
     res.status(500).json({ success: false, message: error.message });

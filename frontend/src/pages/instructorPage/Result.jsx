@@ -17,6 +17,8 @@ import {
   HiUserGroup,
   HiStar,
 } from "react-icons/hi";
+import Toast from "../../components/common/Toast";
+import ConfirmModal from "../../components/common/ConfirmModal";
 
 const cls = (...a) => a.filter(Boolean).join(" ");
 
@@ -25,13 +27,13 @@ const Badge = ({ color = "slate", children }) => (
     className={cls(
       "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
       color === "emerald" &&
-        "bg-emerald-500/10 text-emerald-700 ring-1 ring-emerald-500/20",
+      "bg-emerald-500/10 text-emerald-700 ring-1 ring-emerald-500/20",
       color === "amber" &&
-        "bg-amber-500/10 text-amber-700 ring-1 ring-amber-500/20",
+      "bg-amber-500/10 text-amber-700 ring-1 ring-amber-500/20",
       color === "rose" &&
-        "bg-rose-500/10 text-rose-700 ring-1 ring-rose-500/20",
+      "bg-rose-500/10 text-rose-700 ring-1 ring-rose-500/20",
       color === "slate" &&
-        "bg-slate-500/10 text-slate-700 ring-1 ring-slate-500/20"
+      "bg-slate-500/10 text-slate-700 ring-1 ring-slate-500/20"
     )}
   >
     {children}
@@ -74,7 +76,12 @@ const StatusPill = (v) => {
 };
 
 const fmtDate = (s) => (s ? new Date(s).toLocaleString() : "-");
-const toFinal = (r) => r.total_score ?? r.suggested_total_score ?? 0;
+const toFinal = (r) => {
+  // Suggested = AI + MCQ (stored in suggested_total_score or calculated)
+  const score = r.instructor_confirmed ? (r.suggested_total_score ?? r.final_score ?? 0) : (r.suggested_total_score ?? 0);
+  return Number(score) || 0;
+  return Number(score) || 0;
+};
 
 // Format duration: show seconds if < 60s, otherwise show minutes
 const fmtDuration = (seconds, minutes) => {
@@ -111,7 +118,7 @@ export default function Result() {
 
   const [q, setQ] = React.useState("");
   const [status, setStatus] = React.useState("all");
-  const [sort, setSort] = React.useState("score_desc");
+  const [sort, setSort] = React.useState("name_asc");
   const [minScore, setMinScore] = React.useState("");
   const [maxScore, setMaxScore] = React.useState("");
   const [passThreshold, setPassThreshold] = React.useState(50);
@@ -127,6 +134,10 @@ export default function Result() {
     ai_score: 0,
   });
   const [scoreError, setScoreError] = React.useState("");
+  const [essayScores, setEssayScores] = React.useState({}); // { answerId: score }
+  const [savingEssayId, setSavingEssayId] = React.useState(null); // Track which answer is saving
+  const [adminModifiedIds, setAdminModifiedIds] = React.useState([]); // Track submissions modified by admin
+  const [zoomImage, setZoomImage] = React.useState(null); // { src: string, alt: string } for zoom modal
 
   // Toast notifications
   const [toast, setToast] = React.useState({
@@ -139,6 +150,34 @@ export default function Result() {
     message: "",
     onConfirm: null,
   });
+
+  // ✅ Live Score Calculation Hooks - Use drawer.row values (same as table)
+  const liveMcqScore = React.useMemo(() => {
+    if (!drawer.open || !drawer.row) return 0;
+    // Always use drawer.row values to stay consistent with table
+    return Number(drawer.row.total_score ?? drawer.row.mcq_score ?? 0);
+  }, [drawer.open, drawer.row]);
+
+  const liveAiScore = React.useMemo(() => {
+    if (!drawer.open || !drawer.row) return 0;
+    // If user is editing essay scores, calculate live from edits
+    if (Object.keys(essayScores).length > 0 && submissionQuestions) {
+      return submissionQuestions.reduce((acc, q) => {
+        if (q.type?.toUpperCase() !== "MCQ") {
+          const ansId = q.answer?.id;
+          const override = essayScores[ansId];
+          return acc + (override !== undefined ? Number(override) : Number(q.answer?.score || 0));
+        }
+        return acc;
+      }, 0);
+    }
+    // Otherwise use drawer.row value (same as table)
+    return Number(drawer.row.ai_score ?? 0);
+  }, [drawer.open, drawer.row, submissionQuestions, essayScores]);
+
+  const liveTotalScore = React.useMemo(() => {
+    return liveMcqScore + liveAiScore;
+  }, [liveMcqScore, liveAiScore]);
 
   // Toast helper functions
   const showToast = (type, message) => {
@@ -163,15 +202,18 @@ export default function Result() {
     if (!id) return;
     setLoading(true);
     try {
-      const [s, r] = await Promise.all([
+      const [s, r, adminMod] = await Promise.all([
         axiosClient.get(`/instructor/exams/${id}/summary`),
         axiosClient.get(`/instructor/exams/${id}/results`),
+        axiosClient.get(`/instructor/exams/${id}/admin-modified`).catch(() => ({ data: { submission_ids: [] } })),
       ]);
       setSummary(s?.data || null);
       setRows(Array.isArray(r?.data) ? r.data : []);
+      setAdminModifiedIds(adminMod?.data?.submission_ids || []);
     } catch {
       setRows([]);
       setSummary(null);
+      setAdminModifiedIds([]);
     } finally {
       setLoading(false);
     }
@@ -279,6 +321,9 @@ export default function Result() {
 
             currentCount = newCount;
           }
+
+          // Prevent busy loop - Wait 3s before next check
+          await new Promise((resolve) => setTimeout(resolve, 3000));
         } catch (err) {
           console.error("Long polling error:", err);
           await new Promise((resolve) => setTimeout(resolve, 5000));
@@ -311,10 +356,29 @@ export default function Result() {
     if (min != null) arr = arr.filter((r) => toFinal(r) >= min);
     if (max != null) arr = arr.filter((r) => toFinal(r) <= max);
 
-    // always sort on a clone to avoid mutating state
+    // Clone array for sorting
     const sorted = [...arr];
-    if (sort === "score_desc") sorted.sort((a, b) => toFinal(b) - toFinal(a));
-    if (sort === "score_asc") sorted.sort((a, b) => toFinal(a) - toFinal(b));
+
+    // Check if score sorting is active (by button or by filter)
+    const isScoreSorting = sort === "score_desc" || sort === "score_asc";
+    const hasScoreFilter = min != null || max != null;
+
+    if (isScoreSorting || hasScoreFilter) {
+      // Sort by score when filter or sort button is used
+      if (sort === "score_asc") {
+        sorted.sort((a, b) => toFinal(a) - toFinal(b));
+      } else {
+        // Default to desc when filtering by score
+        sorted.sort((a, b) => toFinal(b) - toFinal(a));
+      }
+    } else {
+      // Default: Sort by student name A-Z (Vietnamese collation)
+      sorted.sort((a, b) => {
+        const nameA = String(a.student_name || "").toLowerCase();
+        const nameB = String(b.student_name || "").toLowerCase();
+        return nameA.localeCompare(nameB, 'vi');
+      });
+    }
 
     return sorted;
   }, [rows, q, status, sort, minScore, maxScore]);
@@ -661,7 +725,7 @@ export default function Result() {
 
       showToast(
         "success",
-        "✅ Xuất Excel thành công với logo và ảnh đính kèm!"
+        "Xuất Excel thành công với logo và ảnh đính kèm!"
       );
     } catch (err) {
       console.error("Excel export error:", err);
@@ -800,10 +864,18 @@ export default function Result() {
       return;
     }
 
-    // Validation 1: Không cho điểm > 10
+    // Validation 1: Không cho điểm thành phần > 10
     if (newTotalScore > 10 || newAiScore > 10) {
-      setScoreError("❌ Điểm không được vượt quá 10!");
-      showToast("error", "Điểm không được vượt quá 10!");
+      setScoreError("❌ Điểm thành phần không được vượt quá 10!");
+      showToast("error", "Điểm thành phần không được vượt quá 10!");
+      return;
+    }
+
+    // Validation 1.2: Tổng điểm không được vượt quá 10
+    const finalSum = newTotalScore + newAiScore;
+    if (finalSum > 10) {
+      setScoreError(`❌ Tổng điểm (${finalSum.toFixed(1)}) không được vượt quá 10! Vui lòng điều chỉnh lại.`);
+      showToast("error", `Tổng điểm ${finalSum.toFixed(1)}/10 không hợp lệ!`);
       return;
     }
 
@@ -838,28 +910,68 @@ export default function Result() {
     setScoreError("");
 
     try {
+      // Save all pending essay scores first
+      const submissionId = r.submission_id;
+      if (submissionId && Object.keys(essayScores).length > 0) {
+        const savePromises = [];
+        for (const [answerId, score] of Object.entries(essayScores)) {
+          const numScore = Number(score);
+          if (!isNaN(numScore) && numScore >= 0) {
+            savePromises.push(
+              axiosClient.put(
+                `/instructor/submissions/${submissionId}/answers/${answerId}/score`,
+                { score: numScore }
+              ).catch(err => {
+                console.warn(`Failed to save essay score for answer ${answerId}:`, err);
+                return null; // Continue with other saves
+              })
+            );
+          }
+        }
+
+        if (savePromises.length > 0) {
+          const results = await Promise.all(savePromises);
+          // Recalculate ai_score from the last successful response
+          const lastSuccess = results.filter(r => r?.data?.new_ai_score !== undefined).pop();
+          if (lastSuccess?.data?.new_ai_score !== undefined) {
+            newAiScore = lastSuccess.data.new_ai_score;
+          }
+        }
+      }
+
+      // ✅ Payload: total_score = MCQ, ai_score = Essay
       const payload = {
-        total_score: newTotalScore,
-        ai_score: newAiScore,
+        total_score: newTotalScore, // MCQ Score → saved to submissions.total_score
+        ai_score: newAiScore,       // Essay Score → saved to submissions.ai_score
         student_name: r.student_name,
       };
-      await axiosClient.put(
+
+      // ✅ Use backend response to get accurate values from DB
+      const response = await axiosClient.put(
         `/instructor/exams/${examId}/students/${r.student_id}/score`,
         payload
       );
+
       showToast("success", "✅ Lưu điểm thành công!");
 
-      // Update local state without full reload to preserve all data
+      // Clear pending essay scores
+      setEssayScores({});
+
+      // ✅ Use values from DB response if available, otherwise use submitted values
+      const dbRow = response.data;
+      const updatedMcq = dbRow?.total_score ?? newTotalScore;
+      const updatedAi = dbRow?.ai_score ?? newAiScore;
+      const updatedSuggested = dbRow?.suggested_total_score ?? ((updatedMcq || 0) + (updatedAi || 0));
+
+      // Update local state with DB values
       setRows((prevRows) =>
         prevRows.map((row) => {
           if (row.student_id === r.student_id) {
-            // Only update score fields, keep all other data intact
-            const suggestedScore = (newTotalScore || 0) + (newAiScore || 0);
             return {
               ...row,
-              total_score: newTotalScore,
-              ai_score: newAiScore,
-              suggested_total_score: suggestedScore,
+              total_score: updatedMcq,
+              ai_score: updatedAi,
+              suggested_total_score: updatedSuggested,
               instructor_confirmed: 1,
               status: "confirmed",
             };
@@ -868,14 +980,14 @@ export default function Result() {
         })
       );
 
-      // Update drawer row to reflect new scores
+      // Update drawer row with DB values
       setDrawer((prev) => ({
         ...prev,
         row: {
           ...prev.row,
-          total_score: newTotalScore,
-          ai_score: newAiScore,
-          suggested_total_score: (newTotalScore || 0) + (newAiScore || 0),
+          total_score: updatedMcq,
+          ai_score: updatedAi,
+          suggested_total_score: updatedSuggested,
           instructor_confirmed: 1,
           status: "confirmed",
         },
@@ -948,6 +1060,90 @@ export default function Result() {
     });
   };
 
+  // Save individual essay question score
+  const saveEssayScore = async (answerId, questionId, maxPoints) => {
+    const submissionId = drawer.row?.submission_id;
+    if (!submissionId || !answerId) return;
+
+    const newScore = Number(essayScores[answerId] ?? 0);
+
+    // Validation
+    if (isNaN(newScore) || newScore < 0) {
+      showToast("error", "Điểm không hợp lệ!");
+      return;
+    }
+    if (newScore > maxPoints) {
+      showToast("error", `Điểm không được vượt quá ${maxPoints}!`);
+      return;
+    }
+
+    setSavingEssayId(answerId);
+
+    try {
+      const res = await axiosClient.put(
+        `/instructor/submissions/${submissionId}/answers/${answerId}/score`,
+        { score: newScore }
+      );
+
+      showToast(
+        "success",
+        res.data?.score_increased
+          ? "✅ Điểm đã tăng - AI sẽ học từ câu này!"
+          : "✅ Đã cập nhật điểm!"
+      );
+
+      // Update the drawer row's ai_score with new total
+      if (res.data?.new_ai_score !== undefined) {
+        setDrawer(prev => ({
+          ...prev,
+          row: {
+            ...prev.row,
+            ai_score: res.data.new_ai_score,
+            total_score: res.data.new_mcq_score, // ✅ MCQ Score
+            suggested_total_score: res.data.new_grand_total, // ✅ Grand Total
+            instructor_confirmed: 1,
+            status: "confirmed"
+          }
+        }));
+
+        // Also update the main rows list
+        setRows(prevRows => prevRows.map(row => {
+          if (row.student_id === drawer.row?.student_id) {
+            return {
+              ...row,
+              ai_score: res.data.new_ai_score,
+              total_score: res.data.new_mcq_score, // ✅ MCQ Score
+              suggested_total_score: res.data.new_grand_total, // ✅ Grand Total
+              instructor_confirmed: 1,
+              status: "confirmed"
+            };
+          }
+          return row;
+        }));
+
+        // ✅ Clear essayScores so liveAiScore uses new drawer.row.ai_score
+        setEssayScores({});
+      }
+
+      // Update submissionQuestions to reflect new score
+      setSubmissionQuestions(prev => prev?.map(q => {
+        if (q.answer?.id === answerId) {
+          return {
+            ...q,
+            answer: { ...q.answer, score: newScore }
+          };
+        }
+        return q;
+      }));
+
+    } catch (err) {
+      console.error("Error saving essay score:", err);
+      showToast("error", err?.response?.data?.message || "Lỗi khi lưu điểm!");
+    } finally {
+      setSavingEssayId(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/40">
       {/* Animated background blobs */}
@@ -983,11 +1179,12 @@ export default function Result() {
             <select
               value={examId}
               onChange={onPick}
-              className="rounded-xl bg-white/90 backdrop-blur-xl text-slate-700 px-4 py-2.5 shadow-lg hover:shadow-xl transition-all border border-indigo-300 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="rounded-xl bg-white text-slate-800 px-4 py-3 shadow-lg hover:shadow-xl transition-all border-2 border-indigo-400 font-semibold text-base focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-w-[180px] max-w-[280px] truncate"
+              style={{ backgroundColor: 'white', color: '#1e293b' }}
             >
-              <option value="">Chọn bài thi…</option>
+              <option value="" style={{ backgroundColor: 'white', color: '#1e293b' }}>Chọn bài thi…</option>
               {examList.map((e) => (
-                <option key={e.id} value={e.id}>
+                <option key={e.id} value={e.id} style={{ backgroundColor: 'white', color: '#1e293b', padding: '8px' }}>
                   {e.title || `Exam #${e.id}`} {e.status ? `(${e.status})` : ""}
                 </option>
               ))}
@@ -1172,25 +1369,35 @@ export default function Result() {
                       </td>
                       <td className="p-4 text-slate-700">
                         {r.total_score != null
-                          ? Number(r.total_score).toFixed(1)
+                          ? parseFloat(Number(r.total_score).toFixed(2))
                           : "-"}
                       </td>
                       <td className="p-4 text-slate-700">
                         {r.ai_score != null
-                          ? Number(r.ai_score).toFixed(1)
+                          ? parseFloat(Number(r.ai_score).toFixed(2))
                           : "-"}
                       </td>
                       <td className="p-4 text-slate-700">
                         {r.suggested_total_score != null
-                          ? Number(r.suggested_total_score).toFixed(1)
+                          ? parseFloat(Number(r.suggested_total_score).toFixed(2))
                           : "-"}
                       </td>
                       <td className="p-4">
-                        {r.instructor_confirmed === 1 &&
-                        r.suggested_total_score != null ? (
-                          <span className="inline-flex items-center justify-center px-3 py-1 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 text-white font-bold text-base shadow-lg">
-                            {Number(r.suggested_total_score).toFixed(1)}
-                          </span>
+                        {Number(r.instructor_confirmed) === 1 &&
+                          r.suggested_total_score != null ? (
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center justify-center px-3 py-1 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 text-white font-bold text-base shadow-lg">
+                              {parseFloat(Number(r.suggested_total_score).toFixed(2))}
+                            </span>
+                            {adminModifiedIds.includes(r.submission_id) && (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-600 text-xs font-medium border border-orange-500/30"
+                                title="Admin đã can thiệp sửa điểm"
+                              >
+                                🛡️ Admin
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <span className="inline-flex items-center justify-center px-3 py-1 rounded-lg border-2 border-dashed border-slate-300 text-slate-400 font-medium text-sm">
                             Chưa duyệt
@@ -1286,9 +1493,9 @@ export default function Result() {
                       </div>
                     </div>
                     {r.instructor_confirmed === 1 &&
-                    r.suggested_total_score != null ? (
+                      r.suggested_total_score != null ? (
                       <span className="px-3 py-1 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 text-white font-bold text-lg shadow-lg">
-                        {Number(r.suggested_total_score).toFixed(1)}
+                        {parseFloat(Number(r.suggested_total_score).toFixed(2))}
                       </span>
                     ) : (
                       <span className="px-3 py-1 rounded-lg border-2 border-dashed border-slate-300 text-slate-400 font-medium text-xs">
@@ -1303,7 +1510,7 @@ export default function Result() {
                       <div className="text-xs text-slate-500 mb-1">MCQ</div>
                       <div className="font-semibold text-slate-800">
                         {r.total_score != null
-                          ? Number(r.total_score).toFixed(1)
+                          ? parseFloat(Number(r.total_score).toFixed(2))
                           : "-"}
                       </div>
                     </div>
@@ -1311,7 +1518,7 @@ export default function Result() {
                       <div className="text-xs text-slate-500 mb-1">AI</div>
                       <div className="font-semibold text-slate-800">
                         {r.ai_score != null
-                          ? Number(r.ai_score).toFixed(1)
+                          ? parseFloat(Number(r.ai_score).toFixed(2))
                           : "-"}
                       </div>
                     </div>
@@ -1319,7 +1526,7 @@ export default function Result() {
                       <div className="text-xs text-slate-500 mb-1">Gợi ý</div>
                       <div className="font-semibold text-slate-800">
                         {r.suggested_total_score != null
-                          ? Number(r.suggested_total_score).toFixed(1)
+                          ? parseFloat(Number(r.suggested_total_score).toFixed(2))
                           : "-"}
                       </div>
                     </div>
@@ -1453,8 +1660,8 @@ export default function Result() {
                   {/* Grid with fixed height for equal columns */}
                   <div className="px-6">
                     <div
-                      className="grid grid-cols-2 gap-6"
-                      style={{ height: "calc(95vh - 280px)" }}
+                      className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6"
+                      style={{ maxHeight: "calc(95vh - 280px)" }}
                     >
                       {/* Left Column - Thông tin & Điểm - NO SCROLL */}
                       <div className="pr-2 space-y-4">
@@ -1478,7 +1685,7 @@ export default function Result() {
                         </div>
 
                         {/* Additional Info - Read Only */}
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-2 gap-2 sm:gap-4">
                           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                             <label className="text-xs font-semibold text-blue-700 uppercase">
                               Submission ID
@@ -1498,7 +1705,7 @@ export default function Result() {
                         </div>
 
                         {/* Time Info */}
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-2 gap-2 sm:gap-4">
                           <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                             <label className="text-xs font-semibold text-green-700 uppercase flex items-center gap-1">
                               <HiClock className="text-base" /> Bắt đầu
@@ -1518,7 +1725,7 @@ export default function Result() {
                         </div>
 
                         {/* Duration & Cheating */}
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="grid grid-cols-3 gap-2 sm:gap-3">
                           <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-center">
                             <label className="text-xs font-semibold text-purple-700 uppercase">
                               Thời gian
@@ -1531,19 +1738,18 @@ export default function Result() {
                             </div>
                           </div>
                           <div
-                            className={`border-2 rounded-lg p-3 text-center ${
-                              drawer.row.cheating_count > 0 ||
+                            className={`border-2 rounded-lg p-3 text-center ${drawer.row.cheating_count > 0 ||
                               drawer.row.has_cheating_flag
-                                ? "bg-red-50 border-red-300"
-                                : "bg-emerald-50 border-emerald-200"
-                            }`}
+                              ? "bg-red-50 border-red-300"
+                              : "bg-emerald-50 border-emerald-200"
+                              }`}
                           >
                             <label
                               className="text-xs font-semibold uppercase"
                               style={{
                                 color:
                                   drawer.row.cheating_count > 0 ||
-                                  drawer.row.has_cheating_flag
+                                    drawer.row.has_cheating_flag
                                     ? "#dc2626"
                                     : "#059669",
                               }}
@@ -1555,7 +1761,7 @@ export default function Result() {
                               style={{
                                 color:
                                   drawer.row.cheating_count > 0 ||
-                                  drawer.row.has_cheating_flag
+                                    drawer.row.has_cheating_flag
                                     ? "#dc2626"
                                     : "#059669",
                               }}
@@ -1576,13 +1782,12 @@ export default function Result() {
                         </div>
 
                         {/* Score Input Grid */}
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-2 gap-2 sm:gap-4">
                           <div
-                            className={`bg-white border-2 rounded-lg p-4 ${
-                              Number(drawer.row.total_score ?? 0) > 10
-                                ? "border-red-500"
-                                : "border-slate-300"
-                            }`}
+                            className={`bg-white border-2 rounded-lg p-4 ${Number(drawer.row.total_score ?? 0) > 10
+                              ? "border-red-500"
+                              : "border-slate-300"
+                              }`}
                           >
                             <label className="text-xs font-semibold text-slate-700 uppercase block mb-2">
                               Điểm MCQ
@@ -1593,17 +1798,17 @@ export default function Result() {
                               min="0.1"
                               max="10"
                               className="w-full text-2xl font-bold text-slate-900 bg-transparent border-none focus:outline-none"
-                              value={drawer.row.total_score ?? 0}
+                              value={parseFloat(liveMcqScore.toFixed(2))}
                               onChange={(e) => {
                                 const val = e.target.value;
                                 const num = Number(val);
-                                
+
                                 // Kiểm tra số âm
                                 if (num < 0) {
                                   setScoreError("❌ Điểm MCQ không được là số âm!");
                                   return;
                                 }
-                                
+
                                 // Kiểm tra vượt quá 10
                                 if (num > 10) {
                                   setScoreError(
@@ -1616,7 +1821,7 @@ export default function Result() {
                                 } else {
                                   setScoreError("");
                                 }
-                                
+
                                 setDrawer((d) => ({
                                   ...d,
                                   row: { ...d.row, total_score: val },
@@ -1625,11 +1830,10 @@ export default function Result() {
                             />
                           </div>
                           <div
-                            className={`bg-white border-2 rounded-lg p-4 ${
-                              Number(drawer.row.ai_score ?? 0) > 10
-                                ? "border-red-500"
-                                : "border-slate-300"
-                            }`}
+                            className={`bg-white border-2 rounded-lg p-4 ${Number(drawer.row.ai_score ?? 0) > 10
+                              ? "border-red-500"
+                              : "border-slate-300"
+                              }`}
                           >
                             <label className="text-xs font-semibold text-slate-700 uppercase block mb-2">
                               Điểm essay (AI)
@@ -1640,17 +1844,17 @@ export default function Result() {
                               min="0.1"
                               max="10"
                               className="w-full text-2xl font-bold text-slate-900 bg-transparent border-none focus:outline-none"
-                              value={drawer.row.ai_score ?? 0}
+                              value={parseFloat(liveAiScore.toFixed(2))}
                               onChange={(e) => {
                                 const val = e.target.value;
                                 const num = Number(val);
-                                
+
                                 // Kiểm tra số âm
                                 if (num < 0) {
                                   setScoreError("❌ Điểm AI không được là số âm!");
                                   return;
                                 }
-                                
+
                                 // Kiểm tra vượt quá 10
                                 if (num > 10) {
                                   setScoreError(
@@ -1663,7 +1867,7 @@ export default function Result() {
                                 } else {
                                   setScoreError("");
                                 }
-                                
+
                                 setDrawer((d) => ({
                                   ...d,
                                   row: { ...d.row, ai_score: val },
@@ -1674,78 +1878,88 @@ export default function Result() {
                         </div>
 
                         {/* Total Score Display */}
-                        <div className="bg-slate-100 border-2 border-slate-400 rounded-lg p-6 text-center">
-                          <div className="text-xs font-bold text-slate-600 uppercase mb-2">
-                            Tổng điểm
-                          </div>
-                          <div className="text-5xl font-black text-slate-900">
-                            {(
-                              Number(drawer.row.total_score ?? 0) +
-                              Number(drawer.row.ai_score ?? 0)
-                            ).toFixed(1)}
-                          </div>
-                          <div className="text-lg font-bold text-slate-500 mt-1">
-                            / 10
-                          </div>
-                        </div>
+                        {(() => {
+                          const sum = liveTotalScore;
+                          const isInvalid = sum > 10;
+                          return (
+                            <div className={`border-2 rounded-lg p-6 text-center transition-colors ${isInvalid
+                              ? "bg-red-50 border-red-500 animate-pulse"
+                              : "bg-slate-100 border-slate-400"
+                              }`}>
+                              <div className={`text-xs font-bold uppercase mb-2 ${isInvalid ? "text-red-700" : "text-slate-600"}`}>
+                                {isInvalid ? "⚠️ Tổng điểm quá cao" : "Tổng điểm"}
+                              </div>
+                              <div className={`text-5xl font-black ${isInvalid ? "text-red-600" : "text-slate-900"}`}>
+                                {parseFloat(sum.toFixed(2))}
+                              </div>
+                              <div className={`text-lg font-bold mt-1 ${isInvalid ? "text-red-400" : "text-slate-500"}`}>
+                                / 10
+                              </div>
+                            </div>
+                          );
+                        })()}
 
                         {/* Face & Card Images */}
                         {(drawer.row.has_face_image ||
                           drawer.row.has_student_card) && (
-                          <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
-                            <h5 className="text-xs font-bold text-slate-700 uppercase mb-3">
-                              Ảnh xác thực
-                            </h5>
-                            <div className="grid grid-cols-2 gap-4">
-                              {drawer.row.has_face_image && (
-                                <div>
-                                  <div className="text-xs font-semibold text-slate-600 mb-2">
-                                    Khuôn mặt
-                                  </div>
-                                  {faceImageData ? (
-                                    <img
-                                      src={faceImageData}
-                                      alt="Face"
-                                      className="w-full h-40 object-cover rounded-lg border border-slate-300"
-                                    />
-                                  ) : (
-                                    <div className="w-full h-40 bg-slate-200 rounded-lg flex flex-col items-center justify-center text-slate-500 border border-dashed border-slate-400">
-                                      <div className="animate-spin text-xl mb-1">
-                                        ⏳
-                                      </div>
-                                      <span className="text-xs">
-                                        Đang tải...
-                                      </span>
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                              <h5 className="text-xs font-bold text-slate-700 uppercase mb-3">
+                                Ảnh xác thực
+                              </h5>
+                              <div className="grid grid-cols-2 gap-4">
+                                {drawer.row.has_face_image && (
+                                  <div>
+                                    <div className="text-xs font-semibold text-slate-600 mb-2">
+                                      Khuôn mặt
                                     </div>
-                                  )}
-                                </div>
-                              )}
-                              {drawer.row.has_student_card && (
-                                <div>
-                                  <div className="text-xs font-semibold text-slate-600 mb-2">
-                                    Thẻ sinh viên
-                                  </div>
-                                  {cardImageData ? (
-                                    <img
-                                      src={cardImageData}
-                                      alt="Student Card"
-                                      className="w-full h-40 object-cover rounded-lg border border-slate-300"
-                                    />
-                                  ) : (
-                                    <div className="w-full h-40 bg-slate-200 rounded-lg flex flex-col items-center justify-center text-slate-500 border border-dashed border-slate-400">
-                                      <div className="animate-spin text-xl mb-1">
-                                        ⏳
+                                    {faceImageData ? (
+                                      <img
+                                        src={faceImageData}
+                                        alt="Face"
+                                        className="w-full h-40 object-cover rounded-lg border border-slate-300 cursor-pointer hover:opacity-90 hover:shadow-lg transition-all"
+                                        onClick={() => setZoomImage({ src: faceImageData, alt: "Khuôn mặt" })}
+                                        title="Click để phóng to"
+                                      />
+                                    ) : (
+                                      <div className="w-full h-40 bg-slate-200 rounded-lg flex flex-col items-center justify-center text-slate-500 border border-dashed border-slate-400">
+                                        <div className="animate-spin text-xl mb-1">
+                                          ⏳
+                                        </div>
+                                        <span className="text-xs">
+                                          Đang tải...
+                                        </span>
                                       </div>
-                                      <span className="text-xs">
-                                        Đang tải...
-                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                                {drawer.row.has_student_card && (
+                                  <div>
+                                    <div className="text-xs font-semibold text-slate-600 mb-2">
+                                      Thẻ sinh viên
                                     </div>
-                                  )}
-                                </div>
-                              )}
+                                    {cardImageData ? (
+                                      <img
+                                        src={cardImageData}
+                                        alt="Student Card"
+                                        className="w-full h-40 object-cover rounded-lg border border-slate-300 cursor-pointer hover:opacity-90 hover:shadow-lg transition-all"
+                                        onClick={() => setZoomImage({ src: cardImageData, alt: "Thẻ sinh viên" })}
+                                        title="Click để phóng to"
+                                      />
+                                    ) : (
+                                      <div className="w-full h-40 bg-slate-200 rounded-lg flex flex-col items-center justify-center text-slate-500 border border-dashed border-slate-400">
+                                        <div className="animate-spin text-xl mb-1">
+                                          ⏳
+                                        </div>
+                                        <span className="text-xs">
+                                          Đang tải...
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          )}
 
                         {/* Cheating Details */}
                         {cheatingDetails &&
@@ -1766,13 +1980,12 @@ export default function Result() {
                                   >
                                     <div className="flex items-center justify-between mb-1">
                                       <span
-                                        className={`font-semibold ${
-                                          log.severity === "high"
-                                            ? "text-red-600"
-                                            : log.severity === "medium"
+                                        className={`font-semibold ${log.severity === "high"
+                                          ? "text-red-600"
+                                          : log.severity === "medium"
                                             ? "text-orange-600"
                                             : "text-yellow-600"
-                                        }`}
+                                          }`}
                                       >
                                         {log.event_type
                                           .replace(/_/g, " ")
@@ -1854,11 +2067,10 @@ export default function Result() {
                                   <div className="flex-1">
                                     <div className="flex items-center gap-2 mb-2">
                                       <span
-                                        className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                                          q.type?.toUpperCase() === "MCQ"
-                                            ? "bg-blue-100 text-blue-700"
-                                            : "bg-purple-100 text-purple-700"
-                                        }`}
+                                        className={`px-2 py-0.5 rounded text-xs font-semibold ${q.type?.toUpperCase() === "MCQ"
+                                          ? "bg-blue-100 text-blue-700"
+                                          : "bg-purple-100 text-purple-700"
+                                          }`}
                                       >
                                         {q.type?.toUpperCase() === "MCQ"
                                           ? "Trắc nghiệm"
@@ -1871,7 +2083,7 @@ export default function Result() {
                                     <div
                                       className="text-sm font-medium text-slate-800"
                                       dangerouslySetInnerHTML={{
-                                        __html: q.question_text || "",
+                                        __html: (q.question_text || "").replace(/^(?:Câu|Question)?\\s*\\d+[:.]?\\s*/i, ""),
                                       }}
                                     />
                                   </div>
@@ -1885,24 +2097,23 @@ export default function Result() {
                                       {q.options.map((opt) => {
                                         const isSelected =
                                           opt.option_id ===
-                                            q.answer?.selected_option_id ||
+                                          q.answer?.selected_option_id ||
                                           opt.id ===
-                                            q.answer?.selected_option_id;
+                                          q.answer?.selected_option_id;
                                         const isCorrect =
                                           opt.is_correct || opt.correct;
 
                                         return (
                                           <div
                                             key={opt.option_id || opt.id}
-                                            className={`flex items-start gap-2 p-2 rounded ${
-                                              isSelected && isCorrect
-                                                ? "bg-green-50 border border-green-300"
-                                                : isSelected && !isCorrect
+                                            className={`flex items-start gap-2 p-2 rounded ${isSelected && isCorrect
+                                              ? "bg-green-50 border border-green-300"
+                                              : isSelected && !isCorrect
                                                 ? "bg-red-50 border border-red-300"
                                                 : isCorrect
-                                                ? "bg-green-50/30 border border-green-200"
-                                                : "bg-slate-50"
-                                            }`}
+                                                  ? "bg-green-50/30 border border-green-200"
+                                                  : "bg-slate-50"
+                                              }`}
                                           >
                                             <div className="flex-shrink-0 mt-0.5">
                                               {isSelected ? (
@@ -1939,17 +2150,87 @@ export default function Result() {
 
                                 {/* Essay Answer */}
                                 {q.type?.toUpperCase() !== "MCQ" && (
-                                  <div className="ml-11 mt-2">
-                                    <div className="text-xs font-semibold text-slate-600 uppercase mb-1">
-                                      Câu trả lời:
-                                    </div>
-                                    {q.answer?.answer_text ? (
-                                      <div className="bg-slate-50 border border-slate-200 rounded p-3 text-sm text-slate-700 whitespace-pre-wrap">
-                                        {q.answer.answer_text}
+                                  <div className="ml-11 mt-2 space-y-3">
+                                    {/* Câu trả lời của sinh viên */}
+                                    <div>
+                                      <div className="text-xs font-semibold text-slate-600 uppercase mb-1">
+                                        Câu trả lời:
                                       </div>
-                                    ) : (
-                                      <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-600 italic">
-                                        Sinh viên chưa trả lời câu này
+                                      {q.answer?.answer_text ? (
+                                        <div className="bg-slate-50 border border-slate-200 rounded p-3 text-sm text-slate-700 whitespace-pre-wrap">
+                                          {q.answer.answer_text}
+                                        </div>
+                                      ) : (
+                                        <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-600 italic">
+                                          Sinh viên chưa trả lời câu này
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Đáp án mẫu */}
+                                    {q.model_answer && (
+                                      <div>
+                                        <div className="text-xs font-semibold text-emerald-700 uppercase mb-1 flex items-center gap-1">
+                                          <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
+                                          Đáp án mẫu:
+                                        </div>
+                                        <div className="bg-emerald-50 border border-emerald-200 rounded p-3 text-sm text-emerald-800 whitespace-pre-wrap">
+                                          {q.model_answer}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Score Editing Section for Essay */}
+                                    {q.answer?.id && (
+                                      <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border-2 border-indigo-200 rounded-lg p-4 mt-3">
+                                        <div className="flex items-center justify-between gap-4">
+                                          <div className="flex-1">
+                                            <div className="text-xs font-semibold text-indigo-700 uppercase mb-2 flex items-center gap-2">
+                                              <HiAcademicCap className="text-base" />
+                                              Chấm điểm câu này
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                              <div className="text-sm text-slate-600">
+                                                AI gợi ý: <span className="font-bold text-indigo-600">{q.answer?.score ?? 0}/{q.points || 1}</span>
+                                              </div>
+                                              <div className="flex items-center gap-2">
+                                                <input
+                                                  type="number"
+                                                  step="0.1"
+                                                  min="0"
+                                                  max={q.points || 10}
+                                                  className="w-20 px-3 py-2 border-2 border-indigo-300 rounded-lg text-center font-bold text-indigo-800 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400"
+                                                  value={essayScores[q.answer.id] ?? q.answer?.score ?? 0}
+                                                  onChange={(e) => setEssayScores(prev => ({
+                                                    ...prev,
+                                                    [q.answer.id]: e.target.value
+                                                  }))}
+                                                />
+                                                <span className="text-sm text-slate-600 font-medium">/ {q.points || 1} điểm</span>
+                                              </div>
+                                            </div>
+                                          </div>
+                                          <button
+                                            onClick={() => saveEssayScore(q.answer.id, q.question_id, q.points || 1)}
+                                            disabled={savingEssayId === q.answer.id}
+                                            className={`px-4 py-2 rounded-lg font-semibold text-white transition-all flex items-center gap-2 ${savingEssayId === q.answer.id
+                                              ? "bg-slate-400 cursor-not-allowed"
+                                              : "bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 shadow-lg hover:shadow-xl"
+                                              }`}
+                                          >
+                                            {savingEssayId === q.answer.id ? (
+                                              <>
+                                                <span className="animate-spin">⏳</span>
+                                                Đang lưu...
+                                              </>
+                                            ) : (
+                                              <>
+                                                <HiSave className="text-lg" />
+                                                Lưu điểm
+                                              </>
+                                            )}
+                                          </button>
+                                        </div>
                                       </div>
                                     )}
                                   </div>
@@ -1978,46 +2259,66 @@ export default function Result() {
         )}
       </div>
 
-      {/* Toast Notification */}
+      {/* Shared Toast Notification */}
       {toast.show && (
-        <div className="fixed top-4 right-4 z-[100] animate-slide-in">
-          <div
-            className={`rounded-lg shadow-2xl px-6 py-4 min-w-[300px] ${
-              toast.type === "success"
-                ? "bg-green-500"
-                : toast.type === "error"
-                ? "bg-red-500"
-                : "bg-blue-500"
-            } text-white font-medium`}
-          >
-            {toast.message}
-          </div>
-        </div>
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast({ show: false, type: "", message: "" })}
+        />
       )}
 
-      {/* Confirm Dialog */}
-      {confirmDialog.show && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full mx-4">
-            <div className="mb-4">
-              <div className="text-lg font-bold text-slate-800 mb-2">
-                ⚠️ Xác nhận
-              </div>
-              <div className="text-slate-600">{confirmDialog.message}</div>
+      {/* Shared Confirm Modal */}
+      <ConfirmModal
+        isOpen={confirmDialog.show}
+        title="Xác nhận"
+        message={confirmDialog.message}
+        onConfirm={handleConfirm}
+        onCancel={handleCancel}
+        confirmText="Xác nhận"
+        cancelText="Hủy"
+        type="warning"
+      />
+
+      {/* Image Zoom Modal */}
+      {zoomImage && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          onClick={() => setZoomImage(null)}
+        >
+          <div
+            className="relative max-w-4xl max-h-[90vh] w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => setZoomImage(null)}
+              className="absolute -top-12 right-0 md:top-2 md:right-2 z-10 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 text-white font-bold text-xl flex items-center justify-center transition-all backdrop-blur-sm"
+              title="Đóng"
+            >
+              ✕
+            </button>
+
+            {/* Image title */}
+            <div className="absolute -top-10 left-0 text-white text-sm font-medium md:hidden">
+              {zoomImage.alt}
             </div>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={handleCancel}
-                className="px-4 py-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 font-medium transition-all"
-              >
-                Hủy
-              </button>
-              <button
-                onClick={handleConfirm}
-                className="px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-medium transition-all"
-              >
-                Xác nhận
-              </button>
+
+            {/* Zoomed image */}
+            <img
+              src={zoomImage.src}
+              alt={zoomImage.alt}
+              className="w-full h-auto max-h-[85vh] object-contain rounded-lg shadow-2xl"
+            />
+
+            {/* Image label - Desktop */}
+            <div className="hidden md:block absolute -bottom-10 left-0 right-0 text-center text-white text-sm font-medium">
+              {zoomImage.alt} — Click ngoài hoặc nút ✕ để đóng
+            </div>
+
+            {/* Mobile instruction */}
+            <div className="md:hidden absolute -bottom-8 left-0 right-0 text-center text-white/70 text-xs">
+              Nhấn ngoài để đóng
             </div>
           </div>
         </div>
@@ -2045,7 +2346,7 @@ function Histogram({ rows }) {
       try {
         const m = await import("recharts");
         setLib(m);
-      } catch {}
+      } catch { }
     })();
   }, []);
   if (!lib)
@@ -2079,7 +2380,7 @@ function PassFail({ rows, passThreshold }) {
       try {
         const m = await import("recharts");
         setLib(m);
-      } catch {}
+      } catch { }
     })();
   }, []);
   if (!lib)

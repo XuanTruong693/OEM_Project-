@@ -10,8 +10,6 @@ export default function RolePage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    // Không tự động redirect, để user có thể chọn role mới
-    // Chỉ xóa selectedRole nếu đã đăng nhập
     const token = localStorage.getItem("token");
     if (token) {
       localStorage.removeItem("selectedRole");
@@ -24,9 +22,10 @@ export default function RolePage() {
     const selectedRole = role;
 
     try {
-      // 1. POST role lên backend để set appRole (gửi trực tiếp /role, không có /api)
+      // 1. POST role lên backend để set appRole
+      const serverUrl = import.meta.env.VITE_SERVER_URL || '';
       console.log(`[RolePage] 📤 POST role ${selectedRole} to backend...`);
-      const response = await axios.post("http://localhost:5000/role", { role: selectedRole });
+      const response = await axios.post(`${serverUrl}/role`, { role: selectedRole });
       console.log(`[RolePage] ✅ Backend confirmed role:`, response.data);
 
       // 2. Xóa tất cả dữ liệu cũ khi chọn role mới
@@ -99,12 +98,12 @@ export default function RolePage() {
               {/* Decorative elements */}
               <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl"></div>
               <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full -ml-12 -mb-12 blur-2xl"></div>
-              
+
               <div className="relative z-10">
                 <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white backdrop-blur-xl mb-3 border-2 border-white/40 shadow-2xl overflow-hidden">
-                  <img 
-                    src="/icons/UI Image/user.png" 
-                    alt="User Icon" 
+                  <img
+                    src="/icons/UI Image/user.png"
+                    alt="User Icon"
                     className="w-14 h-14 object-contain filter brightness-110 contrast-110"
                   />
                 </div>

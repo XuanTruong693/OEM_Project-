@@ -53,3 +53,45 @@ coverage/
 test_output.txt
 full_output.txt
 previous_test_output.txt
+
+# =========================
+# Python / AI Services
+# =========================
+
+# Virtual Environment
+.venv/
+venv/
+env/
+.env/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# MyPy
+.mypy_cache/
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+eggs/
+*.egg
+
+# Model cache (large files)
+ai_services/.cache/
+
+# K6 load testing
+k6/
+k6.zip

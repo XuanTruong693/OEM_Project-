@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import axiosClient from "../../api/axiosClient";
 import { useParams, useLocation } from "react-router-dom";
 import { useExamContext } from "../../context/ExamContext";
+import { SOCKET_URL } from "../../api/config";
 import io from "socket.io-client";
 
 export default function InstructorOverlay() {
@@ -54,6 +55,13 @@ export default function InstructorOverlay() {
     };
 
     fetchInstructorExams();
+
+    // Request notification permission on mount
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission().then((permission) => {
+        console.log("🔔 [Notification] Permission:", permission);
+      });
+    }
   }, []);
 
   // ===== Initialize WebSocket Connection =====
@@ -72,32 +80,42 @@ export default function InstructorOverlay() {
       `🔌 [InstructorOverlay] Connecting to WebSocket for exams:`,
       idsToJoin
     );
-    // Kết nối tới WebSocket server
-    const socketUrl = import.meta.env.REACT_APP_API_URL
-      ? import.meta.env.REACT_APP_API_URL
-      : window.location.origin; // Auto-use current origin (localhost:4000 in dev)
+    // Kết nối tới WebSocket server - use SOCKET_URL from config
+    const socketUrl = SOCKET_URL || window.location.origin;
 
     console.log(`🔗 [InstructorOverlay] Socket URL: ${socketUrl}`);
 
     const socket = io(socketUrl, {
       reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      reconnectionAttempts: 5,
-      transports: ["websocket", "polling"],
+      reconnectionDelay: 500,             // Start with 500ms (faster initial retry)
+      reconnectionDelayMax: 5000,         // Max 5s between retries (reduced from 10s)
+      reconnectionAttempts: Infinity,     // Never stop trying to reconnect
+      timeout: 20000,                     // 20s connection timeout
+      transports: ["websocket", "polling"], // Prefer websocket for lower latency
+      forceNew: false,                    // Reuse existing connection if available
+      upgrade: true,                      // Allow upgrade from polling to websocket
     });
 
     socketRef.current = socket;
 
+    // ===== Join all exam rooms on connect/reconnect =====
+    const joinAllExams = () => {
+      console.log("🔗 [Instructor] Joining exam rooms:", idsToJoin);
+      idsToJoin.forEach((id) => {
+        socket.emit("instructor:join-exam", id);
+      });
+    };
+
     // Khi kết nối thành công, join tất cả exam rooms
     socket.on("connect", () => {
       console.log("✅ [Instructor] Connected to WebSocket");
-      idsToJoin.forEach((id) => {
-        console.log(
-          `📨 [Instructor] Emitting instructor:join-exam for exam ${id}`
-        );
-        socket.emit("instructor:join-exam", id);
-      });
+      joinAllExams();
+    });
+
+    // Auto rejoin rooms after reconnection
+    socket.on("reconnect", (attemptNumber) => {
+      console.log(`🔄 [Instructor] Reconnected after ${attemptNumber} attempts`);
+      joinAllExams();  // Rejoin rooms after reconnect
     });
 
     // ===== LISTEN FOR CHEATING EVENTS =====
@@ -106,6 +124,9 @@ export default function InstructorOverlay() {
 
       // ✅ Phát âm thanh cảnh báo
       playAlarmSound();
+
+      // ✅ Send system notification for background alerts
+      showSystemNotification(data);
 
       // ✅ Add to queue instead of replacing
       const newNotification = {
@@ -147,11 +168,34 @@ export default function InstructorOverlay() {
     });
 
     // ===== Handle Disconnect =====
-    socket.on("disconnect", () => {
-      console.log("❌ [Instructor] Disconnected from WebSocket");
+    socket.on("disconnect", (reason) => {
+      console.log("❌ [Instructor] Disconnected from WebSocket:", reason);
+      // If server disconnected us, try to reconnect immediately
+      if (reason === "io server disconnect") {
+        socket.connect();
+      }
     });
 
+    // ===== Handle Connection Errors =====
+    socket.on("connect_error", (error) => {
+      console.warn("⚠️ [Instructor] Connection error:", error.message);
+    });
+
+    socket.on("reconnect_attempt", (attemptNumber) => {
+      console.log(`🔄 [Instructor] Reconnecting... attempt ${attemptNumber}`);
+    });
+
+    // ===== Heartbeat Check - Detect Stale Connections =====
+    // Every 30s, check if socket is still alive
+    const heartbeatInterval = setInterval(() => {
+      if (!socket.connected) {
+        console.warn("💔 [Instructor] Heartbeat failed - socket disconnected, forcing reconnect");
+        socket.connect();
+      }
+    }, 30000);
+
     return () => {
+      clearInterval(heartbeatInterval);
       if (socket) {
         socket.disconnect();
       }
@@ -161,22 +205,22 @@ export default function InstructorOverlay() {
   const playAlarmSound = () => {
     try {
       const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYJGGS56+efTgwOUKPh8LNiHAU2j9TwynosBSx+zPLaizsKFlm46+mjUhELTKXh8LVjHwU0kNXwynosBSx+zPHbi0ILFWa46umkVBQLTavp8Ldl5wU4ktXxzYQ1BzGB0/HbikMLFluz7emkUxMLTKjr8bhmIAU7lNnwyXo0BTuA0fLciUQNFl215+mjUhMLTKfq8LVl5gU6kdXwzIU1BTuA0PLbiUUNFl616umjUhMMSann8rZmIQU6ktbxzYYzBz2C1fLej0YOFmG37emjUhMLSqno8rZmIgU6ktbxy4U1BTuA0PLciUUNFly16+mjURMMSajm8rVmIgU6ktbxy4YzCDyB0/LdjkcNFl616+mjURMMSajm8bVmIQU6ktbxyoU1BTx/0fLciUUNFly16+mjURMMS6jo8rVmIwU5kdbxy4U1BTuA0fHbikUNFl+47OmjUxMMSqnn8rZnIgU7lNbxy4YzBzuB0/HaikYNFl6z6+ijUhMMSqnn8bVnIQU6ktXxyoU1BTx/0fHbiUUNFly06+ijUhMMSqno8rVnIwU5k9bxy4UzBzuB0/LajkYOFl216+ijUhMMSanm8bVmIgU7lNbxyoUzBzx/0fHbiUQOFlu06+mjUhMMSqnn87VnIwU5k9bxy4UzBzyA0vLbjkUOFl206+mjUhMMSanm8bVmIwU6k9bxyoU0Bzx+0PHaikQOFluz6+mjUhMLSqnn8rZnIgU7k9bxyoUzBzx/0fHaiUQOFlu06+mjUxMMSajm8rVnIQU6k9bwyoU0Bzx/0PHajkQOFluz6+mjUhMMSanm8rZnIgU7k9bxy4UzBzyA0/LajkUOFl206+mjUhMMSanm8rZnIgU6k9bxyoUzBzx/0fHaiUQOFlu06+mjUhMLSqnn8rZnIwU6k9bwyoU0Bzx/0fHaikQOFl206+mjUhMMSanm8bVnIgU7k9bxyoU0Bzt/0fHaikQOFl206+mjUhMLSajm8rZnIgU7k9bxy4UzBzx/0fLajkQOFly16+mjUhMLSajm8rZnIgU7k9bxy4UzBzx/0fLajkQOFl206+mjUhMLSajm8bVnIgU7k9bxy4UzBzx/0fLajkQOFl206+mjUhMLSajm8rZnIgU6k9bxy4UzBzx/0fHaikQOFl206+mjUhMLSajm8rZnIgU6k9bxyoU0Bzt+0fHaiUQOFl206+ijUhMLSajm8bVnIgU7k9bxy4UzBzx/0fHajkQOFl206+mjUhMLSajm8bVnIgU7k9bxy4UzBzx/0fHajkQOFly16+mjUhMLSajm8bVnIgU7k9bxy4UzBzx/0fHajkUOFly16+mjUhMLSajm8bVnIgU7k9bxy4UzBzx/0fHajkQOFly16+mjUhMLSajm8rZnIgU7k9bxy4UzBzx/0fHaikQOFl206+mjUhMLSajm8rZnIgU6k9bxy4UzBzx/0fHaikQOFl206+mjUhMLSajm8rZnIgU6k9bxyoUzBzx/0fHaikQOFl206+mjUhMLSajm8rZnIgU6k9bxyoU0Bzt/0fHaikQOFly16+mjUhMLSajm8rZnIgU6k9bxyoUzBzx/0fHajkQOFl206+mjUhMLSajm8rZnIgU6k9bxyoUzBzx/0fHajkQOFl206+mjUhMLSajm8rZnIgU6k9bxyoUzBzx/0fHajkQOFl206+mjUhMLSajm8rZnIgU6k9bxyoUzBzx/0fHajkQOFl206+mjUhMLSajm8rZnIgU6k9bxyoUzBzx/0fHajkQOFl206+mjUhMLSajm8rZnIgU6k9bxy4UzBzx/0fHaikUOFly16+mjUhMLSajm8rZnIgU6k9bxy4UzBzx/0fHaikUOFl206+mjUhMLSajm8rZnIgU6k9bxy4UzBzx/0fHajkUOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkUOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkUOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fLajkUOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fLajkUOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fLajkUOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fLajkUOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fLajkUOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fLajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fLajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fLajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fLajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkQOFly16+mjUhMLSajm8bVnIgU6k9bxy4UzBzx/0fHajkQO');
-  
+
       let playCount = 0;
-      const maxPlays = 12; 
-      
+      const maxPlays = 12;
+
       const playBeep = () => {
         if (playCount < maxPlays) {
           audio.currentTime = 0;
           audio.play().catch(e => console.log('Audio play failed:', e));
           playCount++;
-          setTimeout(playBeep, 400); 
+          setTimeout(playBeep, 400);
         }
       };
-      
+
       playBeep();
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const duration = 5; 
+      const duration = 5;
       const beepInterval = 0.4;
       const beepCount = Math.floor(duration / beepInterval);
 
@@ -201,6 +245,57 @@ export default function InstructorOverlay() {
     }
   };
 
+  // ===== Send System Notification (shows even when tab is in background) =====
+  const showSystemNotification = (data) => {
+    // Check if notifications are supported and permitted
+    if (!("Notification" in window)) {
+      console.log("⚠️ [Notification] Browser doesn't support notifications");
+      return;
+    }
+
+    if (Notification.permission !== "granted") {
+      console.log("⚠️ [Notification] Permission not granted:", Notification.permission);
+      // Try to request permission
+      Notification.requestPermission();
+      return;
+    }
+
+    try {
+      const eventTypeMap = {
+        blocked_key: "Phím bị chặn",
+        visibility_hidden: "Rời tab",
+        fullscreen_lost: "Thoát fullscreen",
+        fullscreen_exit_attempt: "Cố thoát fullscreen",
+        window_blur: "Rời cửa sổ",
+        tab_switch: "Chuyển tab",
+        alt_tab: "Alt+Tab",
+        inactivity: "Không thao tác",
+        split_screen: "Chia màn hình",
+      };
+
+      const eventTypeText = eventTypeMap[data.eventType] || data.eventType;
+      const severityEmoji = data.severity === "high" ? "🔴" : data.severity === "medium" ? "🟡" : "🟠";
+
+      const notification = new Notification("🚨 GIAN LẬN - " + data.studentName, {
+        body: `${severityEmoji} ${eventTypeText}\nLần vi phạm: ${data.cheatingCount}/5`,
+        icon: "/icons/icon-192x192.png",
+        tag: `cheating-${data.submissionId}-${Date.now()}`, // Unique tag to allow multiple notifications
+        requireInteraction: true, // Don't auto-dismiss
+        silent: false, // Play default notification sound
+      });
+
+      // Focus window when clicking notification
+      notification.onclick = () => {
+        window.focus();
+        notification.close();
+      };
+
+      console.log("🔔 [Notification] System notification sent for:", data.studentName);
+    } catch (err) {
+      console.log("⚠️ [Notification] Failed to send:", err.message);
+    }
+  };
+
   // ===== Format Event Type Display =====
   const getEventTypeDisplay = (eventType) => {
     const typeMap = {
@@ -214,6 +309,8 @@ export default function InstructorOverlay() {
       multiple_faces: "Phát hiện nhiều khuôn mặt",
       no_face_detected: "Không phát hiện khuôn mặt",
       copy_paste: "Copy / Paste",
+      inactivity: "Không thao tác, không làm bài", // 🆕
+      split_screen: "Chia đôi màn hình", // 🆕
     };
     return typeMap[eventType] || eventType;
   };
@@ -253,6 +350,12 @@ export default function InstructorOverlay() {
       },
       no_face_detected: () => {
         return `Không phát hiện khuôn mặt sinh viên - có thể rời khỏi vị trí`;
+      },
+      inactivity: () => { // 🆕
+        return `Sinh viên không thao tác trên hệ thống quá 1 phút - có thể đang tra cứu tài liệu hoặc rời khỏi vị trí`;
+      },
+      split_screen: () => { // 🆕
+        return `Sinh viên đang chia đôi màn hình hoặc thu nhỏ cửa sổ - có thể xem nội dung khác`;
       },
     };
 
@@ -354,8 +457,8 @@ export default function InstructorOverlay() {
                 {event.severity === "high"
                   ? "🔴 CAO"
                   : event.severity === "medium"
-                  ? "🟡 TRUNG BÌNH"
-                  : "🟠 THẤP"}
+                    ? "🟡 TRUNG BÌNH"
+                    : "🟠 THẤP"}
               </div>
             </div>
 
@@ -365,9 +468,8 @@ export default function InstructorOverlay() {
                 Lần vi phạm
               </p>
               <p
-                className={`text-lg font-bold ${
-                  event.cheating_count >= 5 ? "text-red-600" : "text-orange-600"
-                }`}
+                className={`text-lg font-bold ${event.cheating_count >= 5 ? "text-red-600" : "text-orange-600"
+                  }`}
               >
                 {event.cheating_count} / 5
               </p>

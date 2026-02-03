@@ -13,70 +13,35 @@ const examInstructors = new Map();
 // submissionId -> { studentId, examId, studentName, socketId }
 const activeSubmissions = new Map();
 
-// ===== SERVER LOGS STREAMING =====
-// Buffer để lưu logs gần đây (giữ 100 logs)
-const serverLogsBuffer = [];
-const MAX_LOGS_BUFFER = 100;
+// ===== SERVER LOGS =====
+// Lưu trữ logs history để gửi khi admin connect
+const serverLogsHistory = [];
+const MAX_LOGS_HISTORY = 100;
 
-// Set để tracking admin subscribers
-const adminLogSubscribers = new Set();
-
-// Store original console methods
-const originalConsoleLog = console.log;
-const originalConsoleWarn = console.warn;
-const originalConsoleError = console.error;
-
-// Function để broadcast log tới tất cả admins
-function broadcastServerLog(type, args) {
-  const timestamp = new Date().toISOString();
-  const message = args.map(arg =>
-    typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-  ).join(' ');
-
-  // Filter sensitive data
-  const filteredMessage = message
-    .replace(/password['":\s]*['"]?[^'"\s,}]+['"]?/gi, 'password: [REDACTED]')
-    .replace(/token['":\s]*['"]?[A-Za-z0-9._-]+['"]?/gi, 'token: [REDACTED]');
-
-  const logEntry = {
-    id: Date.now() + Math.random(),
-    timestamp,
-    type,
-    message: filteredMessage
+/**
+ * Thêm log vào history và broadcast tới admin
+ */
+function addServerLog(type, message) {
+  const log = {
+    id: Date.now() + Math.random().toString(36).substr(2, 9),
+    type, // 'info', 'warn', 'error'
+    message,
+    timestamp: new Date().toISOString(),
   };
 
-  // Add to buffer
-  serverLogsBuffer.push(logEntry);
-  if (serverLogsBuffer.length > MAX_LOGS_BUFFER) {
-    serverLogsBuffer.shift();
+  // Thêm vào history
+  serverLogsHistory.push(log);
+  if (serverLogsHistory.length > MAX_LOGS_HISTORY) {
+    serverLogsHistory.shift(); // Xóa log cũ nhất
   }
 
-  // Broadcast to all admin subscribers
-  if (io && adminLogSubscribers.size > 0) {
-    for (const socketId of adminLogSubscribers) {
-      const socket = io.sockets.sockets.get(socketId);
-      if (socket) {
-        socket.emit('server:log', logEntry);
-      }
-    }
+  // Broadcast tới tất cả admin đang theo dõi
+  if (io) {
+    io.to('admin:logs').emit('server:log', log);
   }
+
+  return log;
 }
-
-// Override console methods to capture logs
-console.log = function (...args) {
-  originalConsoleLog.apply(console, args);
-  broadcastServerLog('info', args);
-};
-
-console.warn = function (...args) {
-  originalConsoleWarn.apply(console, args);
-  broadcastServerLog('warn', args);
-};
-
-console.error = function (...args) {
-  originalConsoleError.apply(console, args);
-  broadcastServerLog('error', args);
-};
 
 /**
  * Khởi tạo Socket.IO server
@@ -88,10 +53,19 @@ function initializeSocket(httpServer) {
         "http://localhost:4000",
         "http://127.0.0.1:4000",
         "http://localhost:5173",
+        "http://oem.io.vn",
+        "https://oem.io.vn",
+        "http://www.oem.io.vn",
+        "https://www.oem.io.vn",
       ],
       methods: ["GET", "POST"],
       credentials: true,
     },
+    // Keep connection alive settings - optimized for real-time notifications
+    pingTimeout: 20000,        // 20 seconds - faster disconnect detection
+    pingInterval: 10000,       // 10 seconds - more frequent pings for reliability
+    upgradeTimeout: 30000,     // 30 seconds for upgrade
+    transports: ["websocket", "polling"],
   });
 
   io.on("connection", (socket) => {
@@ -121,6 +95,19 @@ function initializeSocket(httpServer) {
       socket.emit("instructor:active-submissions", submissions);
     });
 
+    // ===== ADMIN JOINS SERVER LOGS MONITORING =====
+    socket.on("admin:join-logs", () => {
+      console.log(`📋 [Socket] Admin ${socket.id} joined server logs monitoring`);
+      socket.join('admin:logs');
+      // Gửi logs history
+      socket.emit('server:logs-history', serverLogsHistory);
+    });
+
+    socket.on("admin:leave-logs", () => {
+      console.log(`📋 [Socket] Admin ${socket.id} left server logs monitoring`);
+      socket.leave('admin:logs');
+    });
+
     // ===== STUDENT REGISTERS SUBMISSION =====
     // Sinh viên đăng ký submission khi bắt đầu thi
     socket.on(
@@ -147,32 +134,9 @@ function initializeSocket(httpServer) {
       }
     );
 
-    // ===== ADMIN JOINS SERVER LOGS =====
-    // Admin subscribe để nhận server logs real-time
-    socket.on("admin:join-logs", () => {
-      console.log(`🔍 [Socket] Admin ${socket.id} joined server logs`);
-      adminLogSubscribers.add(socket.id);
-      socket.isAdminLogSubscriber = true;
-
-      // Gửi buffer logs hiện tại
-      socket.emit('server:logs-history', serverLogsBuffer);
-    });
-
-    // Admin leaves server logs
-    socket.on("admin:leave-logs", () => {
-      console.log(`👋 [Socket] Admin ${socket.id} left server logs`);
-      adminLogSubscribers.delete(socket.id);
-      socket.isAdminLogSubscriber = false;
-    });
-
     // ===== HANDLE DISCONNECT =====
     socket.on("disconnect", () => {
       console.log(`❌ [Socket] Disconnected: ${socket.id}`);
-
-      // Xóa khỏi admin log subscribers
-      if (socket.isAdminLogSubscriber) {
-        adminLogSubscribers.delete(socket.id);
-      }
 
       // Xóa khỏi exam instructors
       if (socket.examId) {
@@ -222,8 +186,9 @@ function broadcastCheatingEvent(examId, cheatingData) {
     `🚨 [Socket] Broadcasting cheating event: Student ${studentId} (${studentName}) - ${eventType} - Severity: ${severity}`
   );
 
-  // Gửi event tới tất cả instructors trong room này
-  io.to(`exam:${examId}`).emit("cheating:detected", {
+  // Use volatile emit for faster delivery (will drop if client not ready)
+  // Also emit to all connected sockets in the room immediately
+  io.to(`exam:${examId}`).volatile.emit("cheating:detected", {
     submissionId: parseInt(submissionId),
     studentId: parseInt(studentId),
     studentName,
@@ -233,6 +198,7 @@ function broadcastCheatingEvent(examId, cheatingData) {
     eventDetails,
     cheatingCount: parseInt(cheatingCount) || 0,
     timestamp: new Date().toISOString(),
+    examId: parseInt(examId), // Include examId for filtering
   });
 }
 
@@ -255,5 +221,6 @@ module.exports = {
   initializeSocket,
   broadcastCheatingEvent,
   broadcastSubmissionFinished,
+  addServerLog,
   getIO: () => io,
 };

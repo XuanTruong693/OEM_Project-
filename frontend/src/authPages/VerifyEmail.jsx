@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
+import { API_BASE_URL } from "../api/config";
 
 const VerifyEmail = () => {
   const location = useLocation();
@@ -58,7 +59,7 @@ const VerifyEmail = () => {
 
     try {
       const res = await axios.post(
-        "http://localhost:5000/api/auth/verify-otp",
+        `${API_BASE_URL}/auth/verify-otp`,
         { email, otp: code }
       );
 
@@ -81,7 +82,7 @@ const VerifyEmail = () => {
   const handleResend = async () => {
     if (timer > 0) return;
     try {
-      await axios.post("http://localhost:5000/api/auth/forgot-send-otp", {
+      await axios.post(`${API_BASE_URL}/auth/forgot-send-otp`, {
         email,
       });
       setTimer(60);
@@ -122,11 +123,10 @@ const VerifyEmail = () => {
 
         <p
           onClick={handleResend}
-          className={`text-sm ${
-            timer > 0
-              ? "text-gray-400"
-              : "text-indigo-600 cursor-pointer hover:underline"
-          } mb-4`}
+          className={`text-sm ${timer > 0
+            ? "text-gray-400"
+            : "text-indigo-600 cursor-pointer hover:underline"
+            } mb-4`}
         >
           {timer > 0 ? `You can resend code in ${timer}s` : "Resend code"}
         </p>

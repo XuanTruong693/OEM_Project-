@@ -3,6 +3,7 @@ import { BarChart, Bar, Line, XAxis, Tooltip, ResponsiveContainer, ComposedChart
 import { FiLogOut } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
+import { getFullImageUrl } from "../../utils/imageUtils";
 
 const InstructorDashboard = () => {
   const navigate = useNavigate();
@@ -62,7 +63,7 @@ const InstructorDashboard = () => {
           try {
             if (avatarUrl) localStorage.setItem("avatar", avatarUrl);
             if (fullname) localStorage.setItem("fullname", fullname);
-          } catch (e) {}
+          } catch (e) { }
           setUserInfo({ fullname, avatar: avatarUrl });
           return;
         }
@@ -136,11 +137,11 @@ const InstructorDashboard = () => {
         {/* Header */}
         <div className="flex justify-end items-center mb-6">
           <div
-            onClick={() => navigate("/profile")}
+            onClick={() => navigate("/instructor/profile")}
             className="flex items-center gap-3 px-4 py-2 cursor-pointer hover:bg-gray-100 rounded-lg transition"
           >
             <img
-              src={userInfo.avatar}
+              src={getFullImageUrl(userInfo.avatar)}
               alt="User Avatar"
               title="Xem hồ sơ cá nhân"
               className="w-10 h-10 rounded-full border border-gray-200 object-cover"
@@ -261,11 +262,11 @@ const InstructorDashboard = () => {
                 </defs>
                 <XAxis dataKey="name" />
                 <Tooltip />
-                <Line 
-                  type="monotone" 
-                  dataKey="exams" 
-                  stroke="url(#gradientBlue)" 
-                  strokeWidth={2.5} 
+                <Line
+                  type="monotone"
+                  dataKey="exams"
+                  stroke="url(#gradientBlue)"
+                  strokeWidth={2.5}
                   dot={false}
                   animationDuration={1200}
                   animationBegin={0}
@@ -292,11 +293,11 @@ const InstructorDashboard = () => {
                 </defs>
                 <XAxis dataKey="name" />
                 <Tooltip />
-                <Line 
-                  type="monotone" 
-                  dataKey="students" 
-                  stroke="url(#gradientPink)" 
-                  strokeWidth={2.5} 
+                <Line
+                  type="monotone"
+                  dataKey="students"
+                  stroke="url(#gradientPink)"
+                  strokeWidth={2.5}
                   dot={false}
                   animationDuration={1200}
                   animationBegin={0}

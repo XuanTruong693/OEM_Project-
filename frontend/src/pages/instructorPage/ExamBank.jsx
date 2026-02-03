@@ -4,6 +4,9 @@ import axios from "axios";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import { useNavigate } from "react-router-dom";
 import { timeAgo } from "../../../../backend/src/utils/timeAgo";
+import { API_BASE_URL } from "../../api/config";
+import ConfirmModal from "../../components/common/ConfirmModal";
+import Toast from "../../components/common/Toast";
 
 const ExamBank = () => {
   const [exams, setExams] = useState([]);
@@ -16,12 +19,17 @@ const ExamBank = () => {
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
 
+  // Toast state
+  const [toast, setToast] = useState(null);
+  // Confirm modal state
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: '', examId: null });
+
   const fetchExams = async () => {
     try {
       setLoading(true);
       setError("");
       const response = await axios.get(
-        `http://localhost:5000/api/assign-bank/exams`,
+        `${API_BASE_URL}/assign-bank/exams`,
         {
           headers: { Authorization: `Bearer ${token}` },
           params: {
@@ -82,35 +90,41 @@ const ExamBank = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Bạn có chắc chắn muốn xóa đề thi này?")) return;
+    setConfirmModal({ isOpen: true, type: 'delete', examId: id });
+  };
+
+  const confirmDelete = async (id) => {
     try {
-      await axios.delete(`http://localhost:5000/api/assign-bank/exams/${id}`, {
+      await axios.delete(`${API_BASE_URL}/assign-bank/exams/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      alert("Xóa đề thi thành công!");
+      setToast({ message: "Xóa đề thi thành công!", type: "success" });
       fetchExams();
     } catch (err) {
       const msg =
         err.response?.data?.message || "Xóa đề thi thất bại. Vui lòng thử lại.";
-      alert(msg);
+      setToast({ message: msg, type: "error" });
     }
   };
 
   const handlePublish = async (id) => {
-    if (!window.confirm("Bạn có chắc chắn muốn mở phòng thi?")) return;
+    setConfirmModal({ isOpen: true, type: 'publish', examId: id });
+  };
+
+  const confirmPublish = async (id) => {
     try {
       await axios.post(
-        `http://localhost:5000/api/assign-bank/exams/${id}/publish`,
+        `${API_BASE_URL}/assign-bank/exams/${id}/publish`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      alert("Mở phòng thi thành công!");
+      setToast({ message: "Mở phòng thi thành công!", type: "success" });
       fetchExams();
     } catch (err) {
       const msg =
         err.response?.data?.message ||
         "Không thể mở phòng thi. Vui lòng thử lại.";
-      alert(msg);
+      setToast({ message: msg, type: "error" });
     }
   };
 
@@ -177,7 +191,7 @@ const ExamBank = () => {
           <div className="text-center py-16 bg-white rounded-2xl shadow-sm">
             <p className="text-gray-500 mb-4">Chưa có đề thi nào</p>
             <button
-              onClick={() => navigate("/instructor/upload-exam")}
+              onClick={() => navigate("/assign-exam")}
               className="text-[#0080ff] hover:underline"
             >
               Tạo đề thi đầu tiên
@@ -284,6 +298,37 @@ const ExamBank = () => {
           </div>
         )}
       </div>
+
+      {/* Confirm Modal */}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.type === 'delete' ? 'Xóa đề thi' : 'Mở phòng thi'}
+        message={confirmModal.type === 'delete'
+          ? 'Bạn có chắc chắn muốn xóa đề thi này?'
+          : 'Bạn có chắc chắn muốn mở phòng thi?'}
+        type={confirmModal.type === 'delete' ? 'danger' : 'warning'}
+        confirmText={confirmModal.type === 'delete' ? 'Xóa' : 'Mở phòng'}
+        cancelText="Hủy"
+        onConfirm={() => {
+          const id = confirmModal.examId;
+          setConfirmModal({ isOpen: false, type: '', examId: null });
+          if (confirmModal.type === 'delete') {
+            confirmDelete(id);
+          } else {
+            confirmPublish(id);
+          }
+        }}
+        onCancel={() => setConfirmModal({ isOpen: false, type: '', examId: null })}
+      />
+
+      {/* Toast Notification */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
     </div>
   );
 };

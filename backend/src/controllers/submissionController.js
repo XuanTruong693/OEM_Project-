@@ -12,10 +12,12 @@ const CHEATING_TYPES = {
   multiple_faces: "high",
   no_face_detected: "medium",
   copy_paste: "high",
+  inactivity: "low", // Không thao tác quá 1 phút
+  split_screen: "medium",
 };
 
 const recentEvents = new Map();
-const DEDUP_WINDOW = 500; 
+const DEDUP_WINDOW = 500;
 
 exports.postProctorEvent = async (req, res) => {
   const submissionId = req.params.submissionId || req.params.id;
@@ -38,8 +40,7 @@ exports.postProctorEvent = async (req, res) => {
 
   if (lastEventTime && now - lastEventTime < DEDUP_WINDOW) {
     console.log(
-      `⏸️ [Proctor] DUPLICATE EVENT THROTTLED: ${eventKey} (${
-        now - lastEventTime
+      `⏸️ [Proctor] DUPLICATE EVENT THROTTLED: ${eventKey} (${now - lastEventTime
       }ms since last)`
     );
     return res.status(429).json({
@@ -236,6 +237,7 @@ exports.getStudentExamDetail = async (req, res) => {
       FROM student_answers sa
       JOIN exam_questions q ON sa.question_id = q.id
       WHERE sa.submission_id = ?
+      ORDER BY CASE WHEN q.type = 'MCQ' THEN 0 ELSE 1 END, COALESCE(q.order_index, 0) ASC, q.id ASC
     `,
       [submission.id]
     );
@@ -311,44 +313,75 @@ exports.getStudentCheatingDetails = async (req, res) => {
 };
 
 exports.approveStudentScores = async (req, res) => {
-  const { examId, studentId } = req.params;
-  const { mcq_score, ai_score, total_score, per_question_scores } = req.body;
-  let conn;
   try {
-    conn = await pool.getConnection();
-    await conn.beginTransaction();
+    const examId = parseInt(req.params.examId, 10);
+    const studentId = parseInt(req.params.studentId, 10);
+    const { total_score, ai_score, student_name, mcq_score } = req.body || {};
 
-    if (total_score != null) {
-      await conn.query("CALL sp_update_student_exam_record(?, ?, ?, ?, ?)", [
-        examId,
-        studentId,
-        null,
-        mcq_score,
-        ai_score,
-      ]);
-    }
+    if (!Number.isFinite(examId) || !Number.isFinite(studentId))
+      return res.status(400).json({ message: "invalid ids" });
 
-    if (per_question_scores && per_question_scores.length > 0) {
-      for (const { question_id, score } of per_question_scores) {
+    // Use mcq_score if provided, otherwise use total_score for backward compatibility
+    const mcq = mcq_score != null ? Number(mcq_score) : (total_score != null ? Number(total_score) : null);
+    const ai = ai_score != null ? Number(ai_score) : null;
+
+    if ((mcq != null && isNaN(mcq)) || (ai != null && isNaN(ai)))
+      return res.status(400).json({ message: "score must be number" });
+
+    const conn = await pool.getConnection();
+
+    try {
+      // Try calling SP first
+      await conn.query(
+        `CALL sp_update_student_exam_record(?, ?, ?, ?, ?);`,
+        [examId, studentId, student_name || null, mcq, ai]
+      );
+    } catch (e) {
+      console.warn("SP failed, using fallback:", e.message);
+
+      // Fallback direct update
+      await conn.query(
+        `UPDATE submissions s 
+         SET total_score = ?, 
+             ai_score = ?, 
+             suggested_total_score = COALESCE(?,0) + COALESCE(?,0), 
+             instructor_confirmed = 1, 
+             status='confirmed'
+         WHERE s.exam_id = ? AND s.user_id = ?`,
+        [mcq, ai, mcq, ai, examId, studentId]
+      );
+
+      // Also update results table
+      try {
         await conn.query(
-          `
-          UPDATE student_answers sa
-          JOIN submissions s ON sa.submission_id = s.id
-          SET sa.score = ?, sa.status = 'confirmed', sa.graded_at = NOW()
-          WHERE s.exam_id = ? AND s.user_id = ? AND sa.question_id = ?
-        `,
-          [score, examId, studentId, question_id]
+          `UPDATE results r 
+           SET total_score = (SELECT total_score FROM submissions WHERE exam_id=? AND user_id=?), 
+               status='confirmed'
+           WHERE r.exam_id = ? AND r.student_id = ?`,
+          [examId, studentId, examId, studentId]
         );
-      }
+      } catch { }
     }
 
-    await conn.commit();
-    conn.release();
-    res.json({ success: true });
+    // Return updated row
+    try {
+      const [rows] = await conn.query(
+        `CALL sp_get_exam_results(?, 'instructor', ?);`,
+        [examId, req.user?.id || 0]
+      );
+      conn.release();
+      const data = Array.isArray(rows) ? rows : [];
+      const row = data.find(
+        (r) => Number(r.student_id) === Number(studentId)
+      );
+      return res.json(row || { ok: true });
+    } catch {
+      conn.release();
+      return res.json({ ok: true });
+    }
   } catch (err) {
-    if (conn) await conn.rollback();
-    console.error("Error approving scores:", err);
-    res.status(500).json({ error: "Failed to approve scores" });
+    console.error("PUT score error:", err);
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -359,9 +392,14 @@ exports.getExamResults = async (req, res) => {
     const [rows] = await conn.query(
       `
       SELECT s.id AS submission_id, u.id AS student_id, u.full_name AS student_name,
-             s.mcq_score, s.ai_score, s.suggested_total_score,
-             s.started_at, s.submitted_at, s.duration_minutes, s.cheating_count,
-             s.face_card_id, s.card_number, s.status
+             s.total_score AS mcq_score, s.total_score, s.ai_score, s.suggested_total_score,
+             s.started_at, s.submitted_at,
+             TIMESTAMPDIFF(MINUTE, s.started_at, s.submitted_at) AS duration_minutes,
+             s.cheating_count,
+             (CASE WHEN s.face_image_blob IS NOT NULL THEN 1 ELSE 0 END) AS has_face_image,
+             (CASE WHEN s.student_card_blob IS NOT NULL THEN 1 ELSE 0 END) AS has_student_card,
+             s.status,
+             s.instructor_confirmed
       FROM submissions s
       JOIN users u ON s.user_id = u.id
       WHERE s.exam_id = ?
@@ -489,12 +527,12 @@ exports.getSubmissionQuestions = async (req, res) => {
       }
     }
 
-    // Lấy tất cả câu hỏi của bài thi
+    // Lấy tất cả câu hỏi của bài thi (bao gồm model_answer cho Essay)
     const [questions] = await conn.query(
-      `SELECT id as question_id, question_text, type, points, order_index 
+      `SELECT id as question_id, question_text, type, points, order_index, model_answer 
        FROM exam_questions 
        WHERE exam_id = ? 
-       ORDER BY order_index ASC, id ASC`,
+       ORDER BY CASE WHEN type = 'MCQ' THEN 0 ELSE 1 END, COALESCE(order_index, 0) ASC, type DESC, id ASC`,
       [examId]
     );
 
@@ -510,7 +548,7 @@ exports.getSubmissionQuestions = async (req, res) => {
 
     // Lấy câu trả lời từ submission có điểm cao nhất
     const [answers] = await conn.query(
-      `SELECT question_id, answer_text, selected_option_id, score, status
+      `SELECT id, question_id, answer_text, selected_option_id, score, status
        FROM student_answers
        WHERE submission_id = ? AND student_id = ?`,
       [actualSubmissionId, studentId]

@@ -149,7 +149,7 @@ const UserManagement = () => {
             case 'admin': return 'bg-red-600/20 text-red-400 border border-red-600/30';
             case 'instructor': return 'bg-purple-600/20 text-purple-400 border border-purple-600/30';
             case 'student': return 'bg-blue-600/20 text-blue-400 border border-blue-600/30';
-            default: return 'bg-gray-600/20 text-gray-400';
+            default: return 'bg-gray-600/20 text-gray-300';
         }
     };
 
@@ -162,7 +162,7 @@ const UserManagement = () => {
                 <div className="flex justify-between items-center mb-8">
                     <div>
                         <h1 className="text-3xl font-semibold text-white">{t('userManagement')}</h1>
-                        <p className="text-gray-400 mt-1">{t('userManagement')}</p>
+                        <p className="text-gray-300 mt-1">{t('userManagement')}</p>
                     </div>
                 </div>
 
@@ -178,7 +178,7 @@ const UserManagement = () => {
                 {/* Filters */}
                 <div className="flex gap-4 mb-6">
                     <div className="relative flex-1 max-w-md">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" size={18} />
                         <input
                             type="text"
                             placeholder={t('searchByNameOrEmail')}
@@ -205,24 +205,24 @@ const UserManagement = () => {
                     <table className="w-full">
                         <thead className="bg-gray-700/50">
                             <tr>
-                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">ID</th>
-                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">{t('fullName')}</th>
-                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">{t('email')}</th>
-                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">{t('role')}</th>
-                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">{t('createdAt')}</th>
-                                <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">{t('action')}</th>
+                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">ID</th>
+                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('fullName')}</th>
+                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('email')}</th>
+                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('role')}</th>
+                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('createdAt')}</th>
+                                <th className="px-6 py-4 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">{t('action')}</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-700">
                             {loading ? (
                                 <tr>
-                                    <td colSpan="6" className="px-6 py-8 text-center text-gray-400">
+                                    <td colSpan="6" className="px-6 py-8 text-center text-gray-300">
                                         {t('loading')}
                                     </td>
                                 </tr>
                             ) : users.length === 0 ? (
                                 <tr>
-                                    <td colSpan="6" className="px-6 py-8 text-center text-gray-400">
+                                    <td colSpan="6" className="px-6 py-8 text-center text-gray-300">
                                         {t('noData')}
                                     </td>
                                 </tr>
@@ -244,21 +244,21 @@ const UserManagement = () => {
                                                 {user.role}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-gray-400">
+                                        <td className="px-6 py-4 text-sm text-gray-300">
                                             {new Date(user.created_at).toLocaleDateString('vi-VN')}
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="flex justify-end gap-2">
                                                 <button
                                                     onClick={() => handleView(user.id)}
-                                                    className="p-2 text-gray-400 hover:text-blue-400 hover:bg-blue-600/10 rounded-lg transition-colors"
+                                                    className="p-2 text-gray-300 hover:text-blue-400 hover:bg-blue-600/10 rounded-lg transition-colors"
                                                     title="Xem chi tiết"
                                                 >
                                                     <Eye size={16} />
                                                 </button>
                                                 <button
                                                     onClick={() => handleEdit(user)}
-                                                    className="p-2 text-gray-400 hover:text-yellow-400 hover:bg-yellow-600/10 rounded-lg transition-colors"
+                                                    className="p-2 text-gray-300 hover:text-yellow-400 hover:bg-yellow-600/10 rounded-lg transition-colors"
                                                     title="Chỉnh sửa"
                                                 >
                                                     <Edit2 size={16} />
@@ -266,7 +266,7 @@ const UserManagement = () => {
                                                 {user.role !== 'admin' && (
                                                     <button
                                                         onClick={() => handleDelete(user)}
-                                                        className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-600/10 rounded-lg transition-colors"
+                                                        className="p-2 text-gray-300 hover:text-red-400 hover:bg-red-600/10 rounded-lg transition-colors"
                                                         title="Xóa"
                                                     >
                                                         <Trash2 size={16} />
@@ -283,14 +283,14 @@ const UserManagement = () => {
                     {/* Pagination */}
                     {totalPages > 1 && (
                         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-700">
-                            <span className="text-sm text-gray-400">
+                            <span className="text-sm text-gray-300">
                                 {t('showing')} {(page - 1) * limit + 1} - {Math.min(page * limit, total)} {t('of')} {total} {t('users')}
                             </span>
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => setPage(p => Math.max(1, p - 1))}
                                     disabled={page === 1}
-                                    className="p-2 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="p-2 text-gray-300 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     <ChevronLeft size={18} />
                                 </button>
@@ -298,7 +298,7 @@ const UserManagement = () => {
                                 <button
                                     onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                                     disabled={page === totalPages}
-                                    className="p-2 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="p-2 text-gray-300 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     <ChevronRight size={18} />
                                 </button>
@@ -313,7 +313,7 @@ const UserManagement = () => {
                         <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-lg mx-4">
                             <div className="flex justify-between items-center p-6 border-b border-gray-700">
                                 <h2 className="text-xl font-semibold text-white">Chi tiết người dùng</h2>
-                                <button onClick={() => setShowViewModal(false)} className="text-gray-400 hover:text-white">
+                                <button onClick={() => setShowViewModal(false)} className="text-gray-300 hover:text-white">
                                     <X size={20} />
                                 </button>
                             </div>
@@ -324,31 +324,31 @@ const UserManagement = () => {
                                     </div>
                                     <div>
                                         <h3 className="text-lg font-medium text-white">{selectedUser.full_name || 'Chưa cập nhật'}</h3>
-                                        <p className="text-gray-400">{selectedUser.email}</p>
+                                        <p className="text-gray-300">{selectedUser.email}</p>
                                     </div>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="text-xs text-gray-400 uppercase">Role</label>
+                                        <label className="text-xs text-gray-300 uppercase">Role</label>
                                         <p className="text-white mt-1">{selectedUser.role}</p>
                                     </div>
                                     <div>
-                                        <label className="text-xs text-gray-400 uppercase">Giới tính</label>
+                                        <label className="text-xs text-gray-300 uppercase">Giới tính</label>
                                         <p className="text-white mt-1">{selectedUser.gender || 'Chưa cập nhật'}</p>
                                     </div>
                                     <div>
-                                        <label className="text-xs text-gray-400 uppercase">Số điện thoại</label>
+                                        <label className="text-xs text-gray-300 uppercase">Số điện thoại</label>
                                         <p className="text-white mt-1">{selectedUser.phone_number || 'Chưa cập nhật'}</p>
                                     </div>
                                     <div>
-                                        <label className="text-xs text-gray-400 uppercase">Ngày tạo</label>
+                                        <label className="text-xs text-gray-300 uppercase">Ngày tạo</label>
                                         <p className="text-white mt-1">{new Date(selectedUser.created_at).toLocaleDateString('vi-VN')}</p>
                                     </div>
                                 </div>
 
                                 <div>
-                                    <label className="text-xs text-gray-400 uppercase">Địa chỉ</label>
+                                    <label className="text-xs text-gray-300 uppercase">Địa chỉ</label>
                                     <p className="text-white mt-1">{selectedUser.address || 'Chưa cập nhật'}</p>
                                 </div>
                             </div>
@@ -362,13 +362,13 @@ const UserManagement = () => {
                         <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-lg mx-4">
                             <div className="flex justify-between items-center p-6 border-b border-gray-700">
                                 <h2 className="text-xl font-semibold text-white">Chỉnh sửa người dùng</h2>
-                                <button onClick={() => setShowEditModal(false)} className="text-gray-400 hover:text-white">
+                                <button onClick={() => setShowEditModal(false)} className="text-gray-300 hover:text-white">
                                     <X size={20} />
                                 </button>
                             </div>
                             <div className="p-6 space-y-4">
                                 <div>
-                                    <label className="block text-sm text-gray-400 mb-1">Họ và tên</label>
+                                    <label className="block text-sm text-gray-300 mb-1">Họ và tên</label>
                                     <input
                                         type="text"
                                         value={editForm.full_name}
@@ -377,7 +377,7 @@ const UserManagement = () => {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm text-gray-400 mb-1">Email</label>
+                                    <label className="block text-sm text-gray-300 mb-1">Email</label>
                                     <input
                                         type="email"
                                         value={editForm.email}
@@ -386,7 +386,7 @@ const UserManagement = () => {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm text-gray-400 mb-1">Role</label>
+                                    <label className="block text-sm text-gray-300 mb-1">Role</label>
                                     <select
                                         value={editForm.role}
                                         onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
@@ -402,7 +402,7 @@ const UserManagement = () => {
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm text-gray-400 mb-1">Số điện thoại</label>
+                                        <label className="block text-sm text-gray-300 mb-1">Số điện thoại</label>
                                         <input
                                             type="text"
                                             value={editForm.phone_number}
@@ -411,7 +411,7 @@ const UserManagement = () => {
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm text-gray-400 mb-1">Giới tính</label>
+                                        <label className="block text-sm text-gray-300 mb-1">Giới tính</label>
                                         <select
                                             value={editForm.gender}
                                             onChange={(e) => setEditForm({ ...editForm, gender: e.target.value })}
@@ -425,7 +425,7 @@ const UserManagement = () => {
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-sm text-gray-400 mb-1">Địa chỉ</label>
+                                    <label className="block text-sm text-gray-300 mb-1">Địa chỉ</label>
                                     <input
                                         type="text"
                                         value={editForm.address}
@@ -437,7 +437,7 @@ const UserManagement = () => {
                             <div className="flex justify-end gap-3 p-6 border-t border-gray-700">
                                 <button
                                     onClick={() => setShowEditModal(false)}
-                                    className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+                                    className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
                                 >
                                     Hủy
                                 </button>
@@ -463,7 +463,7 @@ const UserManagement = () => {
                                     <AlertTriangle className="text-red-400" size={32} />
                                 </div>
                                 <h2 className="text-xl font-semibold text-white mb-2">Xác nhận xóa</h2>
-                                <p className="text-gray-400 mb-6">
+                                <p className="text-gray-300 mb-6">
                                     Bạn có chắc chắn muốn xóa người dùng <span className="text-white font-medium">{selectedUser.email}</span>?
                                     Hành động này không thể hoàn tác.
                                 </p>
@@ -492,3 +492,5 @@ const UserManagement = () => {
 };
 
 export default UserManagement;
+
+

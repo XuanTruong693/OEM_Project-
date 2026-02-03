@@ -10,14 +10,12 @@ export default function Setting() {
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-        checked ? "bg-emerald-500" : "bg-slate-300"
-      }`}
+      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${checked ? "bg-emerald-500" : "bg-slate-300"
+        }`}
     >
       <span
-        className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
-          checked ? "translate-x-5" : "translate-x-1"
-        }`}
+        className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${checked ? "translate-x-5" : "translate-x-1"
+          }`}
       />
     </button>
   );
@@ -46,11 +44,10 @@ export default function Setting() {
           <div className="inline-flex rounded-xl border border-slate-200 overflow-hidden mt-0 max-lg:mt-3">
             <button
               onClick={() => setLang("vi")}
-              className={`px-3 py-2 text-sm flex items-center gap-2 ${
-                lang === "vi"
+              className={`px-3 py-2 text-sm flex items-center gap-2 ${lang === "vi"
                   ? "bg-blue-600 text-white"
                   : "bg-white hover:bg-slate-50"
-              }`}
+                }`}
             >
               <svg className="w-5 h-4" viewBox="0 0 900 600" fill="currentColor">
                 <rect width="900" height="600" fill="#da251d" />
@@ -63,19 +60,18 @@ export default function Setting() {
             </button>
             <button
               onClick={() => setLang("en")}
-              className={`px-3 py-2 text-sm flex items-center gap-2 ${
-                lang === "en"
+              className={`px-3 py-2 text-sm flex items-center gap-2 ${lang === "en"
                   ? "bg-blue-600 text-white"
                   : "bg-white hover:bg-slate-50"
-              }`}
+                }`}
             >
               <svg className="w-5 h-4" viewBox="0 0 60 30">
-                <clipPath id="t"><path d="M30,15 h30 v15 z v15 h-30 z h-30 v-15 z v-15 h30 z"/></clipPath>
-                <path d="M0,0 v30 h60 v-30 z" fill="#012169"/>
-                <path d="M0,0 L60,30 M60,0 L0,30" stroke="#fff" strokeWidth="6"/>
-                <path d="M0,0 L60,30 M60,0 L0,30" clipPath="url(#t)" stroke="#C8102E" strokeWidth="4"/>
-                <path d="M30,0 v30 M0,15 h60" stroke="#fff" strokeWidth="10"/>
-                <path d="M30,0 v30 M0,15 h60" stroke="#C8102E" strokeWidth="6"/>
+                <clipPath id="t"><path d="M30,15 h30 v15 z v15 h-30 z h-30 v-15 z v-15 h30 z" /></clipPath>
+                <path d="M0,0 v30 h60 v-30 z" fill="#012169" />
+                <path d="M0,0 L60,30 M60,0 L0,30" stroke="#fff" strokeWidth="6" />
+                <path d="M0,0 L60,30 M60,0 L0,30" clipPath="url(#t)" stroke="#C8102E" strokeWidth="4" />
+                <path d="M30,0 v30 M0,15 h60" stroke="#fff" strokeWidth="10" />
+                <path d="M30,0 v30 M0,15 h60" stroke="#C8102E" strokeWidth="6" />
               </svg>
               English
             </button>

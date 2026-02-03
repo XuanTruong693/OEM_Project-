@@ -24,11 +24,11 @@ const LoginPage = () => {
       const token = localStorage.getItem("token");
       const userRole = localStorage.getItem("role");
       if (token && userRole) {
-        const dashboardPath = userRole === "student" 
-          ? "/student-dashboard" 
-          : userRole === "admin" 
-          ? "/admin-dashboard" 
-          : "/instructor-dashboard";
+        const dashboardPath = userRole === "student"
+          ? "/student-dashboard"
+          : userRole === "admin"
+            ? "/admin-dashboard"
+            : "/instructor-dashboard";
         navigate(dashboardPath);
         return;
       }
@@ -100,6 +100,9 @@ const LoginPage = () => {
 
       setTimeout(() => {
         localStorage.setItem("token", res.data.token);
+        if (res.data.refreshToken) {
+          localStorage.setItem("refreshToken", res.data.refreshToken);
+        }
         localStorage.setItem("role", res.data.user.role);
         localStorage.setItem(
           "fullname",
@@ -116,26 +119,26 @@ const LoginPage = () => {
           const roomToken = sessionStorage.getItem('room_token');
           const pendingExam = sessionStorage.getItem('pending_exam_id');
           if (roomToken && pendingExam) {
-            (async ()=>{
+            (async () => {
               try {
                 const j = await axiosClient.post('/exams/join', { room_token: roomToken });
                 const sid = j.data?.submission_id;
                 if (sid) {
-                  try { sessionStorage.setItem('exam_flags', JSON.stringify(j.data?.flags || {})); } catch(e){}
+                  try { sessionStorage.setItem('exam_flags', JSON.stringify(j.data?.flags || {})); } catch (e) { }
                   navigate(`/exam/${j.data.exam_id}/prepare?submission_id=${sid}`);
                   return;
                 }
-              } catch (e) {}
+              } catch (e) { }
               navigate('/student-dashboard');
             })();
             return;
           }
         }
-        const dashboardPath = userRole === "admin" 
-          ? "/admin-dashboard" 
-          : userRole === "instructor" 
-          ? "/instructor-dashboard" 
-          : "/student-dashboard";
+        const dashboardPath = userRole === "admin"
+          ? "/admin-dashboard"
+          : userRole === "instructor"
+            ? "/instructor-dashboard"
+            : "/student-dashboard";
         navigate(dashboardPath);
       }, 1500);
     } catch (error) {
@@ -150,7 +153,7 @@ const LoginPage = () => {
         // Xử lý lỗi 403 - Hết lượt thi
         if (error.response.status === 403 && error.response.data?.reason === 'max_attempts_exceeded') {
           console.warn(`[Login] 🚫 Hết lượt thi: ${error.response.data.current_attempts}/${error.response.data.max_attempts}`);
-          
+
           // Lưu token và thông tin user vào localStorage
           if (error.response.data.token) {
             localStorage.setItem("token", error.response.data.token);
@@ -229,6 +232,9 @@ const LoginPage = () => {
 
       setTimeout(() => {
         localStorage.setItem("token", res.data.token);
+        if (res.data.refreshToken) {
+          localStorage.setItem("refreshToken", res.data.refreshToken);
+        }
         localStorage.setItem("role", res.data.user.role);
         localStorage.setItem(
           "fullname",
@@ -245,12 +251,12 @@ const LoginPage = () => {
           const roomToken = sessionStorage.getItem('room_token');
           const pendingExam = sessionStorage.getItem('pending_exam_id');
           if (roomToken && pendingExam) {
-            (async ()=>{
+            (async () => {
               try {
                 const j = await axiosClient.post('/exams/join', { room_token: roomToken });
                 const sid = j.data?.submission_id;
                 if (sid) {
-                  try { sessionStorage.setItem('exam_flags', JSON.stringify(j.data?.flags || {})); } catch(e){}
+                  try { sessionStorage.setItem('exam_flags', JSON.stringify(j.data?.flags || {})); } catch (e) { }
                   navigate(`/exam/${j.data.exam_id}/prepare?submission_id=${sid}`);
                   return;
                 }
@@ -261,20 +267,20 @@ const LoginPage = () => {
           }
         }
 
-        const dashboardPath = userRole === "admin" 
-          ? "/admin-dashboard" 
-          : userRole === "instructor" 
-          ? "/instructor-dashboard" 
-          : "/student-dashboard";
+        const dashboardPath = userRole === "admin"
+          ? "/admin-dashboard"
+          : userRole === "instructor"
+            ? "/instructor-dashboard"
+            : "/student-dashboard";
         navigate(dashboardPath);
       }, 800);
     } catch (error) {
       console.error("❌ Lỗi Google login:", error?.response?.data || error);
-      
+
       // Xử lý lỗi 403 - Hết lượt thi
       if (error.response?.status === 403 && error.response?.data?.reason === 'max_attempts_exceeded') {
         console.warn(`[Google Login] 🚫 Hết lượt thi: ${error.response.data.current_attempts}/${error.response.data.max_attempts}`);
-        
+
         // Lưu token và thông tin user vào localStorage
         if (error.response.data.token) {
           localStorage.setItem("token", error.response.data.token);
@@ -404,11 +410,10 @@ const LoginPage = () => {
             <button
               type="submit"
               disabled={loading}
-              className={`w-full py-3 rounded-lg text-white font-semibold mt-2 active:scale-95 transition-all flex items-center justify-center gap-2 ${
-                loading
-                  ? "bg-gray-400 cursor-not-allowed"
-                  : "bg-blue-600 hover:bg-blue-700"
-              }`}
+              className={`w-full py-3 rounded-lg text-white font-semibold mt-2 active:scale-95 transition-all flex items-center justify-center gap-2 ${loading
+                ? "bg-gray-400 cursor-not-allowed"
+                : "bg-blue-600 hover:bg-blue-700"
+                }`}
             >
               {loading ? (
                 <LoadingSpinner size="sm" text="Đang đăng nhập..." />

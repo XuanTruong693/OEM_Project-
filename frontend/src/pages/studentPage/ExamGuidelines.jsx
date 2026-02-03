@@ -20,9 +20,8 @@ export default function ExamGuidelines() {
   );
 
   const Rule = ({ icon, text, variant = 'do' }) => (
-    <div className={`flex items-start gap-3 p-3 rounded-lg ${
-      variant === 'do' ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
-    }`}>
+    <div className={`flex items-start gap-3 p-3 rounded-lg ${variant === 'do' ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
+      }`}>
       <span className="text-xl flex-shrink-0">{icon}</span>
       <p className={`text-sm ${variant === 'do' ? 'text-green-800' : 'text-red-800'}`}>{text}</p>
     </div>
@@ -33,21 +32,21 @@ export default function ExamGuidelines() {
       {/* Sticky Header */}
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <button 
+          <button
             onClick={() => navigate('/student-dashboard')}
             className="flex items-center gap-2 px-3 py-2 text-slate-700 rounded-lg hover:bg-slate-100 transition-all"
           >
             <span className="text-xl">←</span>
-            <span className="font-semibold">Quay lại</span>
+            <span className="font-semibold hidden sm:inline">Quay lại</span>
           </button>
 
           <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-2">
-            <img src="/Logo.png" alt="Logo" className="h-15 w-auto" />
+            <img src="/Logo.png" alt="Logo" className="h-10 sm:h-12 w-auto" />
           </div>
 
           <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
             <FiCalendar className="w-4 h-4 text-slate-500" />
-            <span className="text-sm text-slate-600">{new Date().toLocaleDateString('vi-VN')}</span>
+            <span className="text-sm text-slate-600 hidden sm:inline">{new Date().toLocaleDateString('vi-VN')}</span>
           </div>
         </div>
       </header>
@@ -67,28 +66,28 @@ export default function ExamGuidelines() {
         <div className="space-y-6">
           {/* Quy tắc chuẩn bị */}
           <Section icon="📝" title="Trước khi bắt đầu thi">
-            <Rule 
-              icon="✅" 
+            <Rule
+              icon="✅"
               text="Chuẩn bị thiết bị: Máy tính/laptop có camera, microphone, kết nối internet ổn định"
               variant="do"
             />
-            <Rule 
-              icon="✅" 
+            <Rule
+              icon="✅"
               text="Môi trường thi: Phòng riêng, yên tĩnh, ánh sáng đủ để camera nhận diện khuôn mặt"
               variant="do"
             />
-            <Rule 
-              icon="✅" 
+            <Rule
+              icon="✅"
               text="Chuẩn bị giấy tờ: CMND/CCCD hoặc thẻ sinh viên để xác minh danh tính"
               variant="do"
             />
-            <Rule 
-              icon="✅" 
+            <Rule
+              icon="✅"
               text="Đăng nhập trước 15 phút: Kiểm tra camera, microphone, xác minh khuôn mặt"
               variant="do"
             />
-            <Rule 
-              icon="❌" 
+            <Rule
+              icon="❌"
               text="KHÔNG sử dụng điện thoại, tài liệu, sách vở trong phòng thi"
               variant="dont"
             />
@@ -96,33 +95,33 @@ export default function ExamGuidelines() {
 
           {/* Quy tắc trong khi thi */}
           <Section icon="🎯" title="Trong khi làm bài">
-            <Rule 
-              icon="✅" 
+            <Rule
+              icon="✅"
               text="Giữ khuôn mặt trong khung hình camera suốt buổi thi"
               variant="do"
             />
-            <Rule 
-              icon="✅" 
+            <Rule
+              icon="✅"
               text="Ngồi yên, nhìn thẳng màn hình, không di chuyển quá nhiều"
               variant="do"
             />
-            <Rule 
-              icon="✅" 
+            <Rule
+              icon="✅"
               text="Làm bài trong chế độ toàn màn hình (fullscreen), không thoát ra"
               variant="do"
             />
-            <Rule 
-              icon="❌" 
+            <Rule
+              icon="❌"
               text="KHÔNG mở tab/cửa sổ khác, không chuyển ứng dụng (Alt+Tab)"
               variant="dont"
             />
-            <Rule 
-              icon="❌" 
+            <Rule
+              icon="❌"
               text="KHÔNG nói chuyện, nhìn sang nơi khác, hoặc có người khác trong phòng"
               variant="dont"
             />
-            <Rule 
-              icon="❌" 
+            <Rule
+              icon="❌"
               text="KHÔNG thoát khỏi fullscreen, không nhấn F11, Esc, F5 (refresh)"
               variant="dont"
             />
@@ -183,7 +182,7 @@ export default function ExamGuidelines() {
 
             <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
               <p className="text-sm text-yellow-900">
-                <strong>⚡ Lưu ý:</strong> Giảng viên sẽ xem lại video giám sát và log vi phạm. 
+                <strong>⚡ Lưu ý:</strong> Giảng viên sẽ xem lại video giám sát và log vi phạm.
                 Nếu phát hiện gian lận nghiêm trọng → <strong className="text-red-600">Điểm 0 và xử lý kỷ luật</strong>
               </p>
             </div>
@@ -239,7 +238,7 @@ export default function ExamGuidelines() {
 
         {/* CTA */}
         <div className="mt-8 text-center">
-          <button 
+          <button
             onClick={() => navigate('/verify-room')}
             className="px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition"
           >

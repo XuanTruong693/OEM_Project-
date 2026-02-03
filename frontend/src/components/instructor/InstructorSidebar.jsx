@@ -130,28 +130,25 @@ const InstructorSidebar = () => {
                       setMobileOpen(false);
                     }
                   }}
-                  className={`group flex items-center justify-between text-lg font-medium px-4 py-3 rounded-xl transition-all duration-200 w-full ${
-                    isActive
+                  className={`group flex items-center justify-between text-lg font-medium px-4 py-3 rounded-xl transition-all duration-200 w-full ${isActive
                       ? "bg-[#0080FF]/10 border-l-4 border-[#0080FF] text-[#0080FF] shadow-sm"
                       : "text-gray-700 hover:bg-[#A0D4FF]/60 hover:text-[#0080FF]"
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-4">
                     <Icon
-                      className={`w-6 h-6 transition-colors duration-200 ${
-                        isActive
+                      className={`w-6 h-6 transition-colors duration-200 ${isActive
                           ? "text-[#0080FF]"
                           : "text-gray-600 group-hover:text-[#0080FF]"
-                      }`}
+                        }`}
                     />
                     <span>{item.label}</span>
                   </div>
 
                   {item.hasDropdown && (
                     <FiChevronDown
-                      className={`w-5 h-5 text-gray-600 transition-transform ${
-                        openDropdown === item.label ? "rotate-180" : ""
-                      }`}
+                      className={`w-5 h-5 text-gray-600 transition-transform ${openDropdown === item.label ? "rotate-180" : ""
+                        }`}
                     />
                   )}
                 </button>
@@ -211,22 +208,20 @@ const InstructorSidebar = () => {
             navigate(setting.path);
             setMobileOpen(false);
           }}
-          className={`group flex items-center gap-3 text-lg font-medium px-4 py-3 rounded-xl transition-all duration-200 w-full ${
-            location.pathname === setting.path
+          className={`group flex items-center gap-3 text-lg font-medium px-4 py-3 rounded-xl transition-all duration-200 w-full ${location.pathname === setting.path
               ? "bg-[#0080FF]/10 border-l-4 border-[#0080FF] text-[#0080FF] shadow-sm"
               : "text-gray-700 hover:bg-[#A0D4FF]/60 hover:text-[#0080FF]"
-          }`}
+            }`}
         >
           {/* render icon safely */}
           {(() => {
             const SettingIcon = setting.icon;
             return (
               <SettingIcon
-                className={`w-6 h-6 transition-colors duration-200 ${
-                  location.pathname === setting.path
+                className={`w-6 h-6 transition-colors duration-200 ${location.pathname === setting.path
                     ? "text-[#0080FF]"
                     : "text-gray-600 group-hover:text-[#0080FF]"
-                }`}
+                  }`}
               />
             );
           })()}

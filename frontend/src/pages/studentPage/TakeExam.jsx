@@ -1,9 +1,20 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
+import { SOCKET_URL } from "../../api/config";
 import io from "socket.io-client";
+import { useInactivityMonitor } from "../../hooks/useInactivityMonitor";
 
 export default function TakeExam() {
+  // PRNG helper
+  const mulberry32 = (a) => {
+    return () => {
+      let t = (a += 0x6d2b79f5);
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  };
   const { examId } = useParams();
   const [search] = useSearchParams();
   const navigate = useNavigate();
@@ -26,6 +37,7 @@ export default function TakeExam() {
   const [theme, setTheme] = useState(
     () => localStorage.getItem("examTheme") || "dark"
   ); // 'dark' | 'light'
+  const [initError, setInitError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [examTitle, setExamTitle] = useState("Bài thi – Demo UI");
   const [duration, setDuration] = useState(
@@ -43,6 +55,87 @@ export default function TakeExam() {
   const [submitted, setSubmitted] = useState(false); // Đánh dấu đã nộp bài
   const [showConfirmModal, setShowConfirmModal] = useState(false); // Modal xác nhận nộp bài
   const [unansweredQuestions, setUnansweredQuestions] = useState([]); // Danh sách câu bỏ trống
+  const [showMobileNav, setShowMobileNav] = useState(false); // Mobile drawer state
+  const [showFullscreenOverlay, setShowFullscreenOverlay] = useState(false); // Overlay bắt buộc vào lại fullscreen
+  const [monitoringActive, setMonitoringActive] = useState(false); // State for inactivity hook (not ref)
+  const [showBlurOverlay, setShowBlurOverlay] = useState(false); // Blur overlay for screenshot protection
+
+  // ===== Penalize callback for inactivity (defined early for hook) =====
+  const penalizeInactivity = useCallback(async (evt, msg) => {
+    if (submittedRef.current || !monitoringActiveRef.current) return;
+    try {
+      if (sessionStorage.getItem("exam_monitoring_active") !== "1") return;
+    } catch (e) { }
+
+    // Report to backend
+    axiosClient.post(`/submissions/${submissionId}/proctor-event`, {
+      event_type: evt,
+      details: { message: msg, severity: "low" },
+    }).catch(() => { });
+
+    // Update violation count and check for auto-submit
+    setViolations((currentCount) => {
+      const newCount = currentCount + 1;
+
+      // If this is the 5th violation, trigger auto-submit
+      if (newCount >= 5 && !submittedRef.current) {
+        submittedRef.current = true; // Prevent further processing
+
+        // Auto-submit exam via API
+        setTimeout(async () => {
+          try {
+            setToast({ msg: "⚠️ Quá 5 lần vi phạm - Bài thi tự động nộp!", kind: "danger" });
+            setSubmitting(true);
+            setSubmitted(true);
+
+            // Stop all monitoring
+            if (cleanupListenersRef.current) {
+              cleanupListenersRef.current();
+              cleanupListenersRef.current = null;
+            }
+
+            // Call submit API
+            const res = await axiosClient.post(`/submissions/${submissionId}/submit`);
+            const beMcq = typeof res.data?.total_score === "number" ? res.data.total_score : null;
+            const beAi = res.data?.ai_score ?? null;
+            const beSum = res.data?.suggested_total_score ?? null;
+            if (beMcq != null) setMcqScore(beMcq);
+            if (beAi != null) setAiScore(beAi);
+            if (beSum != null) setTotalScore(beSum);
+
+            setShowModal(true);
+            sessionStorage.removeItem("pending_exam_duration");
+            sessionStorage.removeItem("exam_flags");
+            sessionStorage.removeItem(`exam_${examId}_started`);
+            localStorage.removeItem("examTheme");
+
+            try { await document.exitFullscreen?.(); } catch { }
+          } catch (err) {
+            console.error("❌ [Auto-submit] Error:", err);
+            setShowModal(true);
+          } finally {
+            setSubmitting(false);
+          }
+        }, 100);
+      }
+
+      return newCount;
+    });
+  }, [submissionId, examId]);
+
+  // ===== Inactivity Monitor Hook =====
+  // 30s idle = warning sound, 60s idle = low-severity violation
+  const flashInactivity = useCallback((msg, kind, ms) => {
+    setToast({ msg, kind });
+    setTimeout(() => setToast({ msg: "", kind: "" }), ms);
+  }, []);
+
+  useInactivityMonitor({
+    enabled: !submitted && monitoringActive, // Use STATE, not ref
+    onWarning: () => console.log("⚠️ [Inactivity] 30s warning triggered"),
+    onViolation: penalizeInactivity,
+    flash: flashInactivity,
+  });
 
   // ===== Block navigation after submit =====
   useEffect(() => {
@@ -71,7 +164,7 @@ export default function TakeExam() {
   useEffect(() => {
     try {
       localStorage.setItem("examTheme", theme);
-    } catch {}
+    } catch { }
     if (theme === "light") document.documentElement.classList.remove("dark");
     else document.documentElement.classList.add("dark");
   }, [theme]);
@@ -80,7 +173,9 @@ export default function TakeExam() {
   useEffect(() => {
     const start = async () => {
       if (!submissionId) {
-        navigate("/verify-room");
+        // navigate("/verify-room");
+        setInitError("DEBUG: Missing submission_id in URL");
+        setLoading(false);
         return;
       }
 
@@ -103,7 +198,9 @@ export default function TakeExam() {
           sessionStorage.clear();
 
           // Redirect về verify-room
-          window.location.href = "/verify-room";
+          // window.location.href = "/verify-room";
+          setInitError(`DEBUG: Status check failed. Status: ${checkRes.data?.status}, SubmittedAt: ${checkRes.data?.submitted_at}`);
+          setLoading(false);
           return;
         }
       } catch (err) {
@@ -135,7 +232,77 @@ export default function TakeExam() {
           );
           return base;
         });
-        setQuestions(merged);
+        let finalQuestions = merged;
+
+        // Xử lý random (shuffle) câu hỏi nếu instructor bật
+        if (res.data?.intent_shuffle) {
+          console.log(
+            "🔀 [TakeExam] intent_shuffle is ON -> Shuffling questions (grouped by type)..."
+          );
+
+          // Seed: submissionId XOR started_at để tạo sự ngẫu nhiên tốt hơn
+          const baseId = parseInt(submissionId, 10) || 9999;
+          const timeComponent = res.data?.started_at
+            ? Math.floor(new Date(res.data.started_at).getTime() / 1000)
+            : Math.floor(Date.now() / 1000);
+          // XOR để tạo seed đa dạng hơn
+          const seed = (baseId * 31) ^ timeComponent;
+
+          console.log(
+            `🎲 [TakeExam] Shuffle seed: ${seed} (submissionId=${baseId}, time=${timeComponent})`
+          );
+
+          // 1. Group by type to keep sections separated (e.g. MCQ section, Essay section)
+          const typesParam = [...new Set(finalQuestions.map(q => q.type))];
+          const groups = finalQuestions.reduce((acc, q) => {
+            (acc[q.type] ||= []).push(q);
+            return acc;
+          }, {});
+
+          let shuffledAll = [];
+
+          typesParam.forEach((type, typeIdx) => {
+            const list = groups[type];
+            const originalIds = list.map(q => q.question_id);
+            console.log(`📌 [Shuffle] Type "${type}": ${list.length} questions BEFORE:`, originalIds);
+
+            if (list.length <= 1) {
+              // Chỉ 1 câu hỏi, không cần shuffle
+              shuffledAll.push(...list);
+              console.log(`⏭️ [Shuffle] Type "${type}": Only 1 question, skipping shuffle`);
+              return;
+            }
+
+            // Unique seed per type
+            const typeSeed = seed + (typeIdx + 1) * 1337;
+            const rng = mulberry32(typeSeed);
+
+            const shuffled = [...list];
+
+            // Fisher-Yates shuffle
+            for (let i = shuffled.length - 1; i > 0; i--) {
+              const j = Math.floor(rng() * (i + 1));
+              [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+            }
+
+            // Đảm bảo có sự thay đổi: nếu shuffle ra giống hoàn toàn thì swap phần tử đầu và cuối
+            const shuffledIds = shuffled.map(q => q.question_id);
+            const isSameOrder = originalIds.every((id, idx) => id === shuffledIds[idx]);
+
+            if (isSameOrder && shuffled.length >= 2) {
+              console.log(`⚠️ [Shuffle] Same order detected, forcing swap...`);
+              [shuffled[0], shuffled[shuffled.length - 1]] = [shuffled[shuffled.length - 1], shuffled[0]];
+            }
+
+            const finalIds = shuffled.map(q => q.question_id);
+            console.log(`✅ [Shuffle] Type "${type}": ${shuffled.length} questions AFTER:`, finalIds);
+            shuffledAll.push(...shuffled);
+          });
+
+          finalQuestions = shuffledAll;
+        }
+
+        setQuestions(finalQuestions);
         setDuration(res.data?.duration_minutes || duration);
 
         const startedAt = res.data?.started_at
@@ -170,7 +337,21 @@ export default function TakeExam() {
         }
         setLoading(false);
       } catch (error) {
-        navigate("/verify-room");
+        console.error("❌ Warning: Failed to initialize exam:", error);
+        if (error.response) {
+          const status = error.response.status;
+          const msg = error.response.data?.message || "Unknown error";
+          // 400: Submitted/Graded, 401: Unauthorized, 403: Forbidden (Verification needed/Time limits), 404: Not found
+          if (status === 403 || status === 400 || status === 401 || status === 404) {
+            // DEBUG: Show error instead of redirect to diagnose issues
+            setInitError(`Lỗi khởi tạo (${status}): ${msg}`);
+            setLoading(false);
+            return;
+          }
+        }
+        // Network/Server errors -> Show Retry UI
+        setInitError("Lỗi kết nối máy chủ. Vui lòng kiểm tra lại mạng và thử lại.");
+        setLoading(false);
       }
     };
 
@@ -233,22 +414,39 @@ export default function TakeExam() {
         // ignore storage errors and proceed
       }
 
+      // Group focus/visibility/fullscreen events to prevent triple counting on mobile (blur + hidden + resize/fs)
+      const SHARED_FOCUS_EVENTS = ["visibility_hidden", "window_blur", "fullscreen_lost", "split_screen"];
+
       const now = Date.now();
+
+      // 1. Individual event throttling (1s)
       const lastTime = lastViolationTimeRef.current[evt];
       if (lastTime !== undefined && now - lastTime < 1000) {
         console.log(
-          `⏸️ [TakeExam] Violation throttled (${evt}), last report: ${
-            now - lastTime
-          }ms ago`
+          `⏸️ [TakeExam] Violation throttled (${evt}), last report: ${now - lastTime}ms ago`
         );
         return;
       }
+
+      // 2. Shared group throttling (3s) - Only for focus events
+      if (SHARED_FOCUS_EVENTS.includes(evt)) {
+        const lastShared = lastViolationTimeRef.current["_last_shared_focus_loss"];
+        if (lastShared !== undefined && now - lastShared < 3000) {
+          console.log(
+            `⏸️ [TakeExam] Shared focus violation skipped (${evt}), last shared group report: ${now - lastShared}ms ago`
+          );
+          return;
+        }
+        // Update shared timestamp only if we are actually proceeding to penalize
+        lastViolationTimeRef.current["_last_shared_focus_loss"] = now;
+      }
+
       lastViolationTimeRef.current[evt] = now;
 
       // Report to backend (non-blocking)
       try {
         postProctor(evt, { message: msg, key });
-      } catch (e) {}
+      } catch (e) { }
 
       // Update local violation count and notify student
       setViolations((v) => {
@@ -258,7 +456,7 @@ export default function TakeExam() {
           // Attempt auto-submit (best-effort)
           try {
             handleSubmit(true);
-          } catch (e) {}
+          } catch (e) { }
         } else if (nv >= 3) {
           flash(`❌ Vi phạm: ${nv}/5 — Cảnh báo nghiêm trọng`, "danger", 6000);
         } else {
@@ -269,6 +467,31 @@ export default function TakeExam() {
 
       // done
     };
+
+    // Check if mobile
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+    // Mobile specific: Split screen / PIP detection
+    const checkMobileIntegrity = () => {
+      if (!isMobile) return;
+
+      // Skip check if user is typing (virtual keyboard shrinks viewport)
+      const ae = document.activeElement;
+      if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA")) {
+        return;
+      }
+
+      // Check for split screen (width significantly smaller than screen width)
+      // Tolerance: < 90% of screen width
+      const screenW = window.screen.width;
+      const windowW = window.innerWidth;
+
+      if (windowW < screenW * 0.9) {
+        penalize("split_screen", "Phát hiện chia đôi màn hình / Cửa sổ thu nhỏ");
+      }
+    };
+
+    const mobileCheckInterval = isMobile ? setInterval(checkMobileIntegrity, 3000) : null;
 
     // Fullscreenchange handler (separate from penalize)
     const onFs = () => {
@@ -289,16 +512,24 @@ export default function TakeExam() {
 
         fullscreenExitCountsRef.current = fe;
 
+        // Luôn hiển thị overlay ngay lập tức khi thoát fullscreen
+        setShowFullscreenOverlay(true);
+
         if (fe.count === 1) {
           // First fullscreen exit: warning only, try to recover but do not penalize
-          flash("⚠️ Thoát toàn màn hình (phát hiện 1 lần). Nhấn lại sẽ bị tính là vi phạm.", "warn", 4000);
+          flash("⚠️ Thoát toàn màn hình! Nhấn nút bên dưới để quay lại.", "warn", 5000);
+
+          // Thử tự động vào lại fullscreen
           if (document.documentElement.requestFullscreen) {
-            document.documentElement.requestFullscreen().catch((err) => {
-              console.log("ℹ️ [TakeExam] Cannot re-enter fullscreen on fullscreenchange (first exit):", err?.message || err);
-              // mark failed re-entry so UI can instruct the user
-              try { failedReentryRef.current['fullscreen'] = true; } catch (e) {}
-              flash("❌ Không thể tự quay lại toàn màn hình. Vui lòng nhấn lại nút 'Bật toàn màn hình' (không tính vi phạm).", "warn", 8000);
-            });
+            document.documentElement.requestFullscreen()
+              .then(() => {
+                // Vào lại thành công -> ẩn overlay
+                setShowFullscreenOverlay(false);
+              })
+              .catch((err) => {
+                console.log("ℹ️ [TakeExam] Cannot re-enter fullscreen (first exit):", err?.message || err);
+                // Giữ overlay để người dùng nhấn nút
+              });
           }
           return;
         }
@@ -312,20 +543,47 @@ export default function TakeExam() {
         fullscreenExitCountsRef.current = { count: 0, last: 0, timeout: null };
 
         penalize("fullscreen_lost", "Thoát toàn màn hình");
+
+        // Thử vào lại fullscreen
         if (document.documentElement.requestFullscreen) {
-          document.documentElement.requestFullscreen().catch((err) => {
-            console.log("ℹ️ [TakeExam] Cannot re-enter fullscreen on fullscreenchange (escalated):", err?.message || err);
-          });
+          document.documentElement.requestFullscreen()
+            .then(() => {
+              setShowFullscreenOverlay(false);
+            })
+            .catch((err) => {
+              console.log("ℹ️ [TakeExam] Cannot re-enter fullscreen (escalated):", err?.message || err);
+            });
         }
+      } else {
+        // Đã vào lại fullscreen thành công -> ẩn overlay
+        setShowFullscreenOverlay(false);
       }
     };
     const onVis = () => {
-      if (document.hidden) penalize("visibility_hidden", "Rời tab / ẩn cửa sổ");
+      if (document.hidden) {
+        const msg = isMobile
+          ? "Rời ứng dụng (Home/Switch App)"
+          : "Rời tab / ẩn cửa sổ";
+        penalize("visibility_hidden", msg);
+      }
     };
-    const onBlur = () => penalize("window_blur", "Rời cửa sổ");
+    const onBlur = () => {
+      // Show blur overlay immediately to protect against screenshots
+      setShowBlurOverlay(true);
+
+      const msg = isMobile
+        ? "Mất tiêu điểm (Blur) - Có thể do: Chụp màn hình, mở thông báo hoặc Control Center"
+        : "Rời cửa sổ / Mất tiêu điểm (Blur)";
+      penalize("window_blur", msg);
+    };
+    const onFocus = () => {
+      // Hide blur overlay when focus returns
+      setShowBlurOverlay(false);
+    };
     const onKey = (e) => {
       // Keys and combinations we want to monitor for potential cheating
-      const blockKeys = ["Escape", "F11", "F3", "F4", "F5", "F12", "Tab"]; // Allow one accidental press for these keys
+      // Added PrintScreen for detection
+      const blockKeys = ["Escape", "F11", "F3", "F4", "F5", "F12", "Tab", "PrintScreen"];
       const combos = [
         {
           check: () => e.ctrlKey && ["r", "R"].includes(e.key),
@@ -387,7 +645,7 @@ export default function TakeExam() {
         // Clear any failed re-entry marker for this key
         try {
           delete failedReentryRef.current[keyId];
-        } catch (e) {}
+        } catch (e) { }
       }, 3000);
 
       keyPressCountsRef.current[keyId] = entry;
@@ -409,7 +667,7 @@ export default function TakeExam() {
             );
             try {
               failedReentryRef.current[keyId] = true;
-            } catch (e) {}
+            } catch (e) { }
             flash(
               "❌ Không thể tự quay lại toàn màn hình. Vui lòng nhấn lại nút 'Bật toàn màn hình' (không tính vi phạm).",
               "warn",
@@ -428,7 +686,7 @@ export default function TakeExam() {
       // clear failed reentry marker when escalating to violation
       try {
         delete failedReentryRef.current[keyId];
-      } catch (e) {}
+      } catch (e) { }
 
       // Build a readable message
       const human = keyId;
@@ -441,10 +699,8 @@ export default function TakeExam() {
     };
 
     start();
-    // Kết nối tới WebSocket server để báo cáo gian lận
-    const socketUrl = import.meta.env.REACT_APP_API_URL
-      ? import.meta.env.REACT_APP_API_URL
-      : window.location.origin;
+    // Kết nối tới WebSocket server để báo cáo gian lận - use SOCKET_URL from config
+    const socketUrl = SOCKET_URL || window.location.origin;
 
     const socket = io(socketUrl, {
       reconnection: true,
@@ -479,25 +735,29 @@ export default function TakeExam() {
     });
     const activateMonitoring = setTimeout(() => {
       monitoringActiveRef.current = true;
+      setMonitoringActive(true); // Also update state for inactivity hook
       console.log("✅ [TakeExam] Monitoring activated after 2s grace period");
       try {
         sessionStorage.setItem("exam_monitoring_active", "1");
-      } catch {}
+      } catch { }
     }, 2000);
 
     window.addEventListener("keydown", onKey, true);
     document.addEventListener("fullscreenchange", onFs);
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("blur", onBlur);
+    window.addEventListener("focus", onFocus); // For blur overlay protection
     window.addEventListener("contextmenu", onCtx);
     window.addEventListener("beforeunload", onBefore);
 
     const cleanup = () => {
       clearTimeout(activateMonitoring);
+      if (mobileCheckInterval) clearInterval(mobileCheckInterval);
       monitoringActiveRef.current = false;
+      setMonitoringActive(false); // Also update state for inactivity hook
       try {
         sessionStorage.removeItem("exam_monitoring_active");
-      } catch {}
+      } catch { }
 
       // ✅ Disconnect WebSocket
       if (socketRef.current) {
@@ -509,6 +769,7 @@ export default function TakeExam() {
       document.removeEventListener("fullscreenchange", onFs);
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("blur", onBlur);
+      window.removeEventListener("focus", onFocus);
       window.removeEventListener("contextmenu", onCtx);
       window.removeEventListener("beforeunload", onBefore);
       console.log(
@@ -559,14 +820,14 @@ export default function TakeExam() {
       const payload =
         q.type === "MCQ"
           ? {
-              question_id: q.question_id,
-              type: q.type,
-              selected_option_id: value,
-            }
+            question_id: q.question_id,
+            type: q.type,
+            selected_option_id: value,
+          }
           : { question_id: q.question_id, type: q.type, answer_text: value };
       await axiosClient.post(`/submissions/${submissionId}/answer`, payload);
       flash("Đã lưu câu trả lời", "warn", 900);
-    } catch {}
+    } catch { }
   };
 
   const scrollTo = (qid) => {
@@ -637,7 +898,7 @@ export default function TakeExam() {
 
       try {
         await document.exitFullscreen?.();
-      } catch {}
+      } catch { }
     } catch (err) {
       console.error("❌ [TakeExam] Submit error:", err);
       setShowModal(true);
@@ -672,9 +933,8 @@ export default function TakeExam() {
     <div className={`min-h-screen flex flex-col ${shellBg} overflow-hidden`}>
       {/* HEADER */}
       <header
-        className={`sticky top-0 z-40 border-b ${
-          theme === "dark" ? "border-white/10" : "border-slate-200"
-        } ${headerGrad}`}
+        className={`sticky top-0 z-40 border-b ${theme === "dark" ? "border-white/10" : "border-slate-200"
+          } ${headerGrad}`}
       >
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <button
@@ -687,31 +947,38 @@ export default function TakeExam() {
               className="h-7 md:h-9 w-auto rounded-md shadow-[0_0_0_4px_rgba(106,163,255,.15),_0_8px_24px_rgba(0,0,0,.35)] ring-1 ring-white/20 bg-white flex-shrink-0"
             />
             <h1
-              className={`text-xs md:text-sm font-semibold tracking-tight truncate ${
-                theme === "dark" ? "text-slate-100" : "text-slate-800"
-              }`}
+              className={`text-xs md:text-sm font-semibold tracking-tight truncate ${theme === "dark" ? "text-slate-100" : "text-slate-800"
+                }`}
             >
               {examTitle}
             </h1>
           </button>
+
           <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
+            {/* Mobile Nav Toggle */}
+            <button
+              onClick={() => setShowMobileNav(!showMobileNav)}
+              className={`lg:hidden px-3 py-1.5 rounded-lg border text-sm
+                ${theme === 'dark' ? 'bg-white/10 border-white/20 text-slate-100' : 'bg-white border-slate-200 text-slate-800'}
+              `}
+            >
+              ☰ Map
+            </button>
             <button
               onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-              className={`px-2 md:px-3 py-1.5 md:py-2 rounded-lg border text-sm md:text-base ${
-                theme === "dark"
-                  ? "bg-white/10 border-white/20 text-slate-100"
-                  : "bg-white border-slate-200 text-slate-800"
-              }`}
+              className={`px-2 md:px-3 py-1.5 md:py-2 rounded-lg border text-sm md:text-base ${theme === "dark"
+                ? "bg-white/10 border-white/20 text-slate-100"
+                : "bg-white border-slate-200 text-slate-800"
+                }`}
               title="Đổi giao diện Sáng/Tối"
             >
               {theme === "dark" ? "🌙" : "☀️"}
             </button>
             <div
-              className={`font-mono font-bold text-xs md:text-base px-2 md:px-3 py-1.5 md:py-2 rounded-lg whitespace-nowrap ${
-                theme === "dark"
-                  ? "bg-white/10 border border-white/10 text-slate-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,.06),_0_8px_20px_rgba(0,0,0,.25)]"
-                  : "bg-indigo-50 border border-slate-200 text-slate-800"
-              }`}
+              className={`font-mono font-bold text-xs md:text-base px-2 md:px-3 py-1.5 md:py-2 rounded-lg whitespace-nowrap ${theme === "dark"
+                ? "bg-white/10 border border-white/10 text-slate-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,.06),_0_8px_20px_rgba(0,0,0,.25)]"
+                : "bg-indigo-50 border border-slate-200 text-slate-800"
+                }`}
             >
               ⏳ {fmt}
             </div>
@@ -728,9 +995,8 @@ export default function TakeExam() {
 
         {/* BLUE PROGRESS BAR on header */}
         <div
-          className={`${
-            theme === "dark" ? "bg-white/10" : "bg-slate-200"
-          } h-1 w-full`}
+          className={`${theme === "dark" ? "bg-white/10" : "bg-slate-200"
+            } h-1 w-full`}
         >
           <div
             className="h-1 bg-emerald-500 transition-all"
@@ -751,16 +1017,14 @@ export default function TakeExam() {
           >
             <div className="flex items-center justify-between mb-2 flex-shrink-0">
               <h3
-                className={`text-sm font-semibold ${
-                  theme === "dark" ? "text-slate-100" : "text-slate-800"
-                }`}
+                className={`text-sm font-semibold ${theme === "dark" ? "text-slate-100" : "text-slate-800"
+                  }`}
               >
                 Câu hỏi
               </h3>
               <span
-                className={`${
-                  theme === "dark" ? "text-slate-400" : "text-slate-500"
-                } text-xs`}
+                className={`${theme === "dark" ? "text-slate-400" : "text-slate-500"
+                  } text-xs`}
               >
                 {counts.answered}/{counts.total} đã làm
               </span>
@@ -772,16 +1036,14 @@ export default function TakeExam() {
                   title={`Câu ${i + 1}`}
                   onClick={() => scrollTo(q.question_id)}
                   className={`h-10 rounded-xl border text-sm font-semibold transition
-                  ${
-                    q.__answered
+                  ${q.__answered
                       ? "bg-emerald-500/10 border-emerald-400/40 text-emerald-200 hover:shadow-[0_8px_16px_rgba(24,201,100,.16)]"
                       : "bg-indigo-500/10 border-indigo-400/30 text-indigo-100 hover:shadow-[0_8px_16px_rgba(138,126,255,.16)]"
-                  }
-                  ${
-                    theme === "dark"
+                    }
+                  ${theme === "dark"
                       ? "hover:ring-2 hover:ring-indigo-300/40"
                       : ""
-                  }`}
+                    }`}
                 >
                   {i + 1}
                 </button>
@@ -789,17 +1051,15 @@ export default function TakeExam() {
             </div>
             <div className="mt-3 p-2 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700">
               <p
-                className={`${
-                  theme === "dark" ? "text-yellow-300" : "text-yellow-800"
-                } text-xs font-semibold flex items-center gap-1`}
+                className={`${theme === "dark" ? "text-yellow-300" : "text-yellow-800"
+                  } text-xs font-semibold flex items-center gap-1`}
               >
                 <span>⚠️</span>
                 <span>Hệ thống giám sát đang hoạt động</span>
               </p>
               <p
-                className={`${
-                  theme === "dark" ? "text-yellow-400" : "text-yellow-700"
-                } text-[10px] mt-1`}
+                className={`${theme === "dark" ? "text-yellow-400" : "text-yellow-700"
+                  } text-[10px] mt-1`}
               >
                 Giữ toàn màn hình. Rời tab/ESC/F11 sẽ bị cảnh cáo.
               </p>
@@ -820,7 +1080,32 @@ export default function TakeExam() {
 
           {/* MAIN (scrollable) */}
           <main className="flex-1 space-y-4 overflow-y-auto pr-1 h-full">
-            {loading ? (
+            {initError ? (
+              <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+                <div className="text-4xl mb-4">⚠️</div>
+                <p className={`${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'} mb-6 max-w-md`}>
+                  {initError}
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-lg transition"
+                  >
+                    Thử lại
+                  </button>
+                  <button
+                    onClick={() => navigate("/verify-room")}
+                    className={`px-5 py-2.5 border font-semibold rounded-lg transition
+                      ${theme === 'dark'
+                        ? 'border-white/20 hover:bg-white/10 text-slate-300'
+                        : 'border-slate-300 hover:bg-slate-50 text-slate-700'
+                      }`}
+                  >
+                    Về xác minh
+                  </button>
+                </div>
+              </div>
+            ) : loading ? (
               <div className="space-y-3">
                 <div className="h-4 w-40 rounded bg-slate-200 animate-pulse" />
                 <div className="h-24 w-full rounded bg-slate-200 animate-pulse" />
@@ -835,16 +1120,14 @@ export default function TakeExam() {
                 >
                   {/* Câu hỏi: trắng sáng khi dark */}
                   <div
-                    className={`${
-                      theme === "dark" ? "text-white" : "text-slate-800"
-                    } font-bold text-sm md:text-base`}
+                    className={`${theme === "dark" ? "text-white" : "text-slate-800"
+                      } font-bold text-sm md:text-base`}
                   >
-                    {idx + 1}. {q.question_text}
+                    {idx + 1}. {q.question_text.replace(/^(?:Câu|Question)?\s*\d+[:.]?\s*/i, "")}
                   </div>
                   <div
-                    className={`${
-                      theme === "dark" ? "text-slate-300" : "text-slate-500"
-                    } text-xs mb-3`}
+                    className={`${theme === "dark" ? "text-slate-300" : "text-slate-500"
+                      } text-xs mb-3`}
                   >
                     {q.type === "MCQ"
                       ? `Trắc nghiệm • ${q.points || 1} điểm`
@@ -859,11 +1142,10 @@ export default function TakeExam() {
                           <label
                             key={oid}
                             className={`flex items-start gap-2 md:gap-3 p-2 md:p-3 rounded-lg md:rounded-xl border cursor-pointer text-sm md:text-base
-                            ${
-                              theme === "dark"
+                            ${theme === "dark"
                                 ? "bg-white/5 border-white/10 hover:border-blue-300/40 text-white"
                                 : "bg-white border-slate-200 hover:border-blue-300 text-slate-800"
-                            }`}
+                              }`}
                           >
                             <input
                               type="radio"
@@ -876,21 +1158,20 @@ export default function TakeExam() {
                                   prev.map((qq) =>
                                     qq.question_id === q.question_id
                                       ? {
-                                          ...qq,
-                                          __answered: true,
-                                          __selected: oid,
-                                        }
+                                        ...qq,
+                                        __answered: true,
+                                        __selected: oid,
+                                      }
                                       : qq
                                   )
                                 );
                               }}
                             />
                             <span
-                              className={`${
-                                theme === "dark"
-                                  ? "text-white"
-                                  : "text-slate-800"
-                              }`}
+                              className={`${theme === "dark"
+                                ? "text-white"
+                                : "text-slate-800"
+                                }`}
                             >
                               {o.option_text ?? o.text}
                             </span>
@@ -902,12 +1183,16 @@ export default function TakeExam() {
                     <textarea
                       rows={4}
                       placeholder="Nhập câu trả lời…"
+                      data-gramm="false"
+                      data-enpass="false"
+                      data-lpignore="true"
+                      autoComplete="off"
+                      spellCheck="false"
                       className={`w-full rounded-lg md:rounded-xl p-2 md:p-3 text-sm md:text-base focus:ring-2 focus:ring-blue-300
-                      ${
-                        theme === "dark"
+                      ${theme === "dark"
                           ? "bg-white/5 border border-white/10 text-white placeholder:text-slate-300"
                           : "bg-white border border-slate-200 text-slate-800"
-                      }`}
+                        }`}
                       onChange={(e) => {
                         const v = e.target.value;
                         clearTimeout(window.__deb?.[q.question_id]);
@@ -937,10 +1222,9 @@ export default function TakeExam() {
       {!!toast.msg && (
         <div
           className={`fixed left-1/2 -translate-x-1/2 bottom-3 md:bottom-6 z-50 font-bold px-3 md:px-6 py-3 md:py-4 rounded-lg md:rounded-xl shadow-2xl max-w-[95vw] md:max-w-md w-full mx-2
-            ${
-              toast.kind === "danger"
-                ? "bg-red-500 text-white border-2 border-red-700"
-                : toast.kind === "warn"
+            ${toast.kind === "danger"
+              ? "bg-red-500 text-white border-2 border-red-700"
+              : toast.kind === "warn"
                 ? "bg-yellow-300 text-slate-900"
                 : "bg-white text-slate-900"
             }`}
@@ -969,9 +1253,8 @@ export default function TakeExam() {
 
       {/* MODAL */}
       <div
-        className={`fixed inset-0 z-50 ${
-          showModal ? "grid" : "hidden"
-        } place-items-center bg-black/50 p-4`}
+        className={`fixed inset-0 z-50 ${showModal ? "grid" : "hidden"
+          } place-items-center bg-black/50 p-4`}
       >
         <div
           className={`w-full max-w-[560px] p-4 md:p-6 rounded-xl md:rounded-2xl border border-slate-200 shadow-2xl text-slate-800 bg-white`}
@@ -981,11 +1264,10 @@ export default function TakeExam() {
             Kết quả tạm thời
           </h2>
           <div
-            className={`flex items-center justify-between py-2 border-b text-sm md:text-base ${
-              theme === "dark"
-                ? "border-white/10"
-                : "border-dashed border-slate-300"
-            }`}
+            className={`flex items-center justify-between py-2 border-b text-sm md:text-base ${theme === "dark"
+              ? "border-white/10"
+              : "border-dashed border-slate-300"
+              }`}
           >
             <div>Điểm trắc nghiệm (MCQ)</div>
             <strong>
@@ -993,11 +1275,10 @@ export default function TakeExam() {
             </strong>
           </div>
           <div
-            className={`flex items-center justify-between py-2 border-b text-sm md:text-base ${
-              theme === "dark"
-                ? "border-white/10"
-                : "border-dashed border-slate-300"
-            }`}
+            className={`flex items-center justify-between py-2 border-b text-sm md:text-base ${theme === "dark"
+              ? "border-white/10"
+              : "border-dashed border-slate-300"
+              }`}
           >
             <div>Điểm tự luận (AI)</div>
             <strong>
@@ -1010,15 +1291,14 @@ export default function TakeExam() {
               {totalScore != null
                 ? Number(totalScore).toFixed(1)
                 : mcqScore != null
-                ? Number(mcqScore).toFixed(1)
-                : "-"}
+                  ? Number(mcqScore).toFixed(1)
+                  : "-"}
               /10
             </strong>
           </div>
           <div
-            className={`${
-              theme === "dark" ? "text-slate-300" : "text-slate-600"
-            } text-xs md:text-sm mt-1`}
+            className={`${theme === "dark" ? "text-slate-300" : "text-slate-600"
+              } text-xs md:text-sm mt-1`}
           >
             Điểm tự luận sẽ được AI & giảng viên xác nhận sau.
           </div>
@@ -1038,9 +1318,8 @@ export default function TakeExam() {
 
       {/* MODAL XÁC NHẬN NỘP BÀI */}
       <div
-        className={`fixed inset-0 z-50 ${
-          showConfirmModal ? "grid" : "hidden"
-        } place-items-center bg-black/60 backdrop-blur-sm p-4`}
+        className={`fixed inset-0 z-50 ${showConfirmModal ? "grid" : "hidden"
+          } place-items-center bg-black/60 backdrop-blur-sm p-4`}
       >
         <div
           className="w-full max-w-[520px] p-4 md:p-6 rounded-xl md:rounded-2xl border border-slate-200 shadow-2xl bg-white max-h-[90vh] overflow-y-auto"
@@ -1175,6 +1454,132 @@ export default function TakeExam() {
           )}
         </div>
       </div>
+
+      {/* MOBILE NAV DRAWER */}
+      {showMobileNav && (
+        <div className="lg:hidden fixed inset-0 z-50 flex">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowMobileNav(false)}
+          />
+
+          {/* Drawer Content */}
+          <div className={`relative w-64 h-full flex flex-col p-4 shadow-2xl ${cardCls} bg-[#0f172a]`} style={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff' }}>
+            <div className="flex items-center justify-between mb-4 flex-shrink-0">
+              <h3 className={`text-sm font-semibold ${theme === 'dark' ? 'text-slate-100' : 'text-slate-800'}`}>
+                Danh sách câu hỏi
+              </h3>
+              <button
+                onClick={() => setShowMobileNav(false)}
+                className={`p-1 rounded-md hover:bg-slate-200 dark:hover:bg-white/10 ${theme === 'dark' ? 'text-slate-300' : 'text-slate-500'}`}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-4 gap-2 overflow-y-auto flex-1 content-start mb-2">
+              {questions.map((q, i) => (
+                <button
+                  key={q.question_id}
+                  onClick={() => {
+                    scrollTo(q.question_id);
+                    setShowMobileNav(false);
+                  }}
+                  className={`h-10 rounded-lg border text-sm font-semibold transition flex items-center justify-center
+                  ${q.__answered
+                      ? "bg-emerald-500/10 border-emerald-400/40 text-emerald-600 dark:text-emerald-400"
+                      : "bg-indigo-500/10 border-indigo-400/30 text-indigo-600 dark:text-indigo-400"
+                    }
+                  `}
+                >
+                  {i + 1}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-auto p-2 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700">
+              <p className="text-yellow-700 dark:text-yellow-300 text-xs font-semibold mb-1">
+                ⚠️ Giám sát đang bật
+              </p>
+              {violations > 0 && (
+                <p className="text-red-600 dark:text-red-400 text-xs font-bold">
+                  Vi phạm: {violations}/5
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* BLUR OVERLAY - Bảo vệ khỏi chụp màn hình */}
+      {showBlurOverlay && !submitted && (
+        <div
+          className="fixed inset-0 z-[200] backdrop-blur-xl bg-black/80 flex items-center justify-center"
+          style={{ WebkitBackdropFilter: 'blur(20px)', backdropFilter: 'blur(20px)' }}
+        >
+          <div className="text-center text-white p-8">
+            <div className="text-6xl mb-4">🔒</div>
+            <h2 className="text-2xl font-bold mb-2">Nội dung đã được bảo vệ</h2>
+            <p className="text-gray-300">Vui lòng quay lại bài thi để tiếp tục</p>
+          </div>
+        </div>
+      )}
+
+      {/* FULLSCREEN OVERLAY - Bắt buộc quay lại toàn màn hình */}
+      {showFullscreenOverlay && !submitted && (
+        <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4">
+          <div className="max-w-md w-full text-center">
+            {/* Icon */}
+            <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-red-500 to-orange-500 rounded-full flex items-center justify-center animate-pulse">
+              <span className="text-5xl">⚠️</span>
+            </div>
+
+            {/* Title */}
+            <h2 className="text-2xl font-bold text-white mb-4">
+              Đã Thoát Toàn Màn Hình!
+            </h2>
+
+            {/* Message */}
+            <p className="text-slate-300 mb-6">
+              Bạn phải quay lại chế độ toàn màn hình để tiếp tục làm bài.
+              Nhấn nút bên dưới để tiếp tục.
+            </p>
+
+            {/* Warning */}
+            <div className="bg-red-900/50 border border-red-500/50 rounded-xl p-4 mb-6">
+              <p className="text-red-300 text-sm">
+                <strong>⚠️ Lưu ý:</strong> Việc thoát toàn màn hình nhiều lần sẽ bị tính là vi phạm quy chế thi.
+              </p>
+            </div>
+
+            {/* Button */}
+            <button
+              onClick={async () => {
+                try {
+                  await document.documentElement.requestFullscreen();
+                  setShowFullscreenOverlay(false);
+                } catch (err) {
+                  console.error("Cannot enter fullscreen:", err);
+                  // Vẫn thử ẩn overlay nếu đã ở fullscreen
+                  if (document.fullscreenElement) {
+                    setShowFullscreenOverlay(false);
+                  }
+                }
+              }}
+              className="w-full px-8 py-4 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white font-bold text-lg rounded-xl shadow-lg transition transform hover:scale-105 active:scale-95"
+            >
+              🖥️ Quay Lại Toàn Màn Hình
+            </button>
+
+            <p className="text-slate-500 text-xs mt-4">
+              Số vi phạm hiện tại: {violations}/5
+            </p>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

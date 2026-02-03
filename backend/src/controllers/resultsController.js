@@ -19,6 +19,7 @@ async function getExamRow(examId) {
 async function getSummary(req, res) {
   try {
     const examId = parseInt(req.params.examId, 10);
+    console.log(`🔍 [DEBUG] getSummary hit for examId=${examId}`);
     if (!Number.isFinite(examId)) return res.status(400).json({ message: 'examId invalid' });
     const ok = await ensureExamOwnership(examId, req.user.id);
     if (!ok) {
@@ -28,30 +29,69 @@ async function getSummary(req, res) {
       }
     }
 
+    // Always fetch last_submission_time directly for reliability
+    const [[timeResult]] = await sequelize.query(
+      `SELECT MAX(submitted_at) AS last_submission_time FROM submissions WHERE exam_id = ?`,
+      { replacements: [examId] }
+    );
+    const lastSubmissionTime = timeResult?.last_submission_time || null;
+
+    // Also fetch avg_score for the summary
+    const [[avgResult]] = await sequelize.query(
+      `SELECT AVG(total_score + COALESCE(ai_score, 0)) AS avg_score FROM submissions WHERE exam_id = ? AND status IN ('graded', 'confirmed')`,
+      { replacements: [examId] }
+    );
+    const avgScore = avgResult?.avg_score || null;
+
+    console.log(`🔍 [DEBUG] Exam ${examId}: lastSub=${lastSubmissionTime}, avg=${avgScore}`);
+
     try {
       const [rows] = await sequelize.query(
         `SELECT * FROM v_instructor_exam_bank WHERE exam_id = ? LIMIT 1`,
         { replacements: [examId] }
       );
-      if (Array.isArray(rows) && rows.length) return res.json(rows[0]);
-    } catch {}
+      if (Array.isArray(rows) && rows.length) {
+        console.log(`🔍 [DEBUG] Found in v_instructor_exam_bank. Keys:`, Object.keys(rows[0]));
+        // Merge last_submission_time and avg_score into the result and return
+        const finalData = {
+          ...rows[0],
+          last_submission_time: rows[0].last_submission_time || lastSubmissionTime,
+          avg_score: rows[0].avg_score ?? avgScore
+        };
+        console.log(`🔍 [DEBUG] Final Data Keys:`, Object.keys(finalData));
+        return res.json(finalData);
+      }
+    } catch (err) { console.error('View 1 error:', err); }
     try {
       const [rows] = await sequelize.query(
         `SELECT * FROM v_exam_overview WHERE exam_id = ? LIMIT 1`,
         { replacements: [examId] }
       );
-      if (Array.isArray(rows) && rows.length) return res.json(rows[0]);
-    } catch {}
+      if (Array.isArray(rows) && rows.length) {
+        // Merge last_submission_time and avg_score into the result
+        return res.json({
+          ...rows[0],
+          last_submission_time: rows[0].last_submission_time || lastSubmissionTime,
+          avg_score: rows[0].avg_score ?? avgScore
+        });
+      }
+    } catch { }
 
     const [[q1]] = await sequelize.query(
-      `SELECT COUNT(*) AS total_submissions, MAX(submitted_at) AS last_submission_time
-       FROM submissions WHERE exam_id = ?`, { replacements: [examId] }
+      `SELECT COUNT(*) AS total_submissions FROM submissions WHERE exam_id = ?`,
+      { replacements: [examId] }
     );
     const [[q2]] = await sequelize.query(
       `SELECT COUNT(DISTINCT user_id) AS total_students FROM submissions WHERE exam_id = ?`,
       { replacements: [examId] }
     );
-    return res.json({ exam_id: examId, total_submissions: q1?.total_submissions||0, total_students: q2?.total_students||0, last_submission_time: q1?.last_submission_time || null });
+    return res.json({
+      exam_id: examId,
+      total_submissions: q1?.total_submissions || 0,
+      total_students: q2?.total_students || 0,
+      last_submission_time: lastSubmissionTime,
+      avg_score: avgScore
+    });
   } catch (err) {
     console.error('[resultsController.getSummary] error:', err);
     return res.status(500).json({ message: 'Server error' });
@@ -128,16 +168,16 @@ async function updateScore(req, res) {
 
     // LOGIC: Chỉ cập nhật nếu điểm mới cao hơn điểm hiện tại
     const newTotalScore = (mcq || 0) + (ai || 0);
-    
+
     const [currentBest] = await sequelize.query(
       `SELECT MAX(total_score) AS best_score 
        FROM submissions 
        WHERE exam_id = ? AND user_id = ? AND status = 'graded'`,
       { replacements: [examId, studentId] }
     );
-    
+
     const currentBestScore = currentBest[0]?.best_score || 0;
-    
+
     console.log(`📊 [updateScore] Instructor updating score:`, {
       exam_id: examId,
       student_id: studentId,
@@ -164,7 +204,7 @@ async function updateScore(req, res) {
              WHERE r.exam_id = ? AND r.student_id = ?`,
             { replacements: [examId, studentId, examId, studentId] }
           );
-        } catch {}
+        } catch { }
       }
       console.log(`✅ [updateScore] Score updated to ${newTotalScore} (previous best: ${currentBestScore})`);
     } else {
@@ -173,7 +213,7 @@ async function updateScore(req, res) {
 
     try {
       const [rows] = await sequelize.query(`CALL sp_get_exam_results(?, 'instructor', ?);`, { replacements: [examId, req.user.id] });
-      const data = Array.isArray(rows) ? (Array.isArray(rows[0])? rows[0] : rows) : [];
+      const data = Array.isArray(rows) ? (Array.isArray(rows[0]) ? rows[0] : rows) : [];
       const row = data.find(r => Number(r.student_id) === Number(studentId));
       return res.json(row || { ok: true });
     } catch {
@@ -201,7 +241,7 @@ async function confirmBulk(req, res) {
       const sid = Number(it.studentId);
       const mcq = it.mcq != null ? Number(it.mcq) : null;
       const ai = it.ai != null ? Number(it.ai) : null;
-      try { await sequelize.query(`CALL sp_update_student_exam_record(?, ?, ?, ?, ?);`, { replacements: [examId, sid, it.student_name || null, mcq, ai] }); } catch {}
+      try { await sequelize.query(`CALL sp_update_student_exam_record(?, ?, ?, ?, ?);`, { replacements: [examId, sid, it.student_name || null, mcq, ai] }); } catch { }
     }
     return res.json({ ok: true });
   } catch (err) {

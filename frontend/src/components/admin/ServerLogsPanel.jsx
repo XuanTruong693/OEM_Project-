@@ -12,11 +12,14 @@ const ServerLogsPanel = ({ fullWidth = false }) => {
     const socketRef = useRef(null);
 
     useEffect(() => {
-        // Connect to Socket.IO server
-        const socket = io('http://localhost:5000', {
-            transports: ['websocket'],
+        // Connect to Socket.IO server - auto-detect production
+        const serverUrl = window.location.hostname === 'localhost'
+            ? 'http://localhost:5000'
+            : window.location.origin;
+        const socket = io(serverUrl, {
+            transports: ['websocket', 'polling'],
             reconnection: true,
-            reconnectionAttempts: 5,
+            reconnectionAttempts: Infinity,
             reconnectionDelay: 1000,
         });
 

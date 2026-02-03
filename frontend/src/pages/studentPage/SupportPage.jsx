@@ -26,16 +26,16 @@ export default function SupportPage() {
             className="flex items-center gap-2 px-3 py-2 text-slate-700 rounded-lg hover:bg-slate-100 transition-all"
           >
             <FiArrowLeft className="w-5 h-5" />
-            <span className="font-semibold">Quay lại</span>
+            <span className="font-semibold hidden sm:inline">Quay lại</span>
           </button>
 
           <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-2">
-            <img src="/Logo.png" alt="Logo" className="h-15 w-auto" />
+            <img src="/Logo.png" alt="Logo" className="h-10 sm:h-12 w-auto" />
           </div>
 
           <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
             <FiCalendar className="w-4 h-4 text-slate-500" />
-            <span className="text-sm text-slate-600">{new Date().toLocaleDateString('vi-VN')}</span>
+            <span className="text-sm text-slate-600 hidden sm:inline">{new Date().toLocaleDateString('vi-VN')}</span>
           </div>
         </div>
       </header>
@@ -66,7 +66,7 @@ export default function SupportPage() {
               </h2>
               <p className="text-blue-100 mt-2">Liên hệ với chúng tôi qua các kênh sau</p>
             </div>
-            
+
             <div className="p-6 space-y-6">
               {/* Phone */}
               <div className="flex items-start gap-4 p-4 bg-blue-50 rounded-xl border border-blue-100 hover:shadow-md transition">
@@ -75,7 +75,7 @@ export default function SupportPage() {
                 </div>
                 <div className="flex-1">
                   <h3 className="font-semibold text-slate-800 mb-1">Hotline hỗ trợ</h3>
-                  <a 
+                  <a
                     href="tel:0971893750"
                     className="text-blue-600 text-lg font-bold hover:text-blue-700 transition"
                   >
@@ -137,7 +137,7 @@ export default function SupportPage() {
               <span>❓</span>
               Câu hỏi thường gặp
             </h2>
-            
+
             <div className="space-y-4">
               <details className="group p-4 bg-slate-50 rounded-xl border border-slate-200">
                 <summary className="font-semibold text-slate-800 cursor-pointer list-none flex items-center justify-between">
@@ -204,7 +204,7 @@ export default function SupportPage() {
         {/* Footer Note */}
         <div className="text-center p-4 bg-white/50 backdrop-blur rounded-xl border border-white/60">
           <p className="text-slate-600">
-            💡 <strong>Lưu ý:</strong> Đội ngũ hỗ trợ sẽ phản hồi trong vòng <strong>30 phút</strong> (giờ hành chính) 
+            💡 <strong>Lưu ý:</strong> Đội ngũ hỗ trợ sẽ phản hồi trong vòng <strong>30 phút</strong> (giờ hành chính)
             hoặc <strong>2 giờ</strong> (ngoài giờ).
           </p>
         </div>

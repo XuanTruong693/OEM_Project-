@@ -1,0 +1,401 @@
+[
+  {
+    "student_answer": "This is a wrong answer initially",
+    "model_answer": "This is the correct model answer",
+    "confirmed_score": 2,
+    "ai_score": 0,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Duy Tân University",
+    "model_answer": "Duy Tan University.",
+    "confirmed_score": 2.0,
+    "ai_score": 0.83,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Trường đại học Duy tân thuộc trường tư thục, thuộc top 500 thế thới",
+    "model_answer": "Trường đại học Duy Tân thuộc trường tư thục và thuộc top 500 thế giới",
+    "confirmed_score": 1.26,
+    "ai_score": 1.86,
+    "max_points": 2
+  },
+  {
+    "student_answer": "8",
+    "model_answer": "8.",
+    "confirmed_score": 2.0,
+    "ai_score": 2,
+    "max_points": 2
+  },
+  {
+    "student_answer": "DuyTan University",
+    "model_answer": "Duy Tan University.",
+    "confirmed_score": 2,
+    "ai_score": 0.63,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Đại học Duy tân thuộc trường tư thục và thuộc top 500 thế gioaewt",
+    "model_answer": "Trường đại học Duy Tân thuộc trường tư thục và thuộc top 500 thế giới",
+    "confirmed_score": 1.26,
+    "ai_score": 1.26,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Đại học Duy Tân thuộc trường tư thục và thuộc Top 500 trên thế giưeesa",
+    "model_answer": "Trường đại học Duy Tân thuộc trường tư thục và thuộc top 500 thế giới",
+    "confirmed_score": 1.26,
+    "ai_score": 1.26,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Đại học Duy tan thuộc trường tư thục và thuộc tóp 500 thế gioias",
+    "model_answer": "Trường đại học Duy Tân thuộc trường tư thục và thuộc top 500 thế giới",
+    "confirmed_score": 2,
+    "ai_score": 0,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Đại học Duy tânâd thuộc trường tư thục nha và nằm trong tóp 500 thế giódi",
+    "model_answer": "Trường đại học Duy Tân thuộc trường tư thục và thuộc top 500 thế giới",
+    "confirmed_score": 2,
+    "ai_score": 0,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Framework là một nền tảng phần mềm được thiết kế sẵn, bao gồm cấu trúc tổng thể cùng các công cụ và thành phần hỗ trợ giúp lập trình viên xây dựng ứng dụng theo một mô hình xác định.",
+    "model_answer": "Framework là bộ khung phần mềm cung cấp cấu trúc, thư viện và công cụ hỗ trợ để phát triển ứng dụng theo một kiến trúc nhất định.",
+    "confirmed_score": 2,
+    "ai_score": 0,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Đại học Duy tan thuộc trường tư thục và thuộc tóp 500 thế giới",
+    "model_answer": "Trường đại học Duy Tân thuộc trường tư thục và thuộc top 500 thế giới",
+    "confirmed_score": 2,
+    "ai_score": 2,
+    "max_points": 2
+  },
+  {
+    "student_answer": "8 ạ",
+    "model_answer": "8.",
+    "confirmed_score": 2,
+    "ai_score": 2,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Đại học Duy Tânaa thuocj trường tư thục và thuộc top 500 thế giódi",
+    "model_answer": "Trường đại học Duy Tân thuộc trường tư thục và thuộc top 500 thế giới",
+    "confirmed_score": 2,
+    "ai_score": 2,
+    "max_points": 2
+  },
+  {
+    "student_answer": "=8 nha ",
+    "model_answer": "8.",
+    "confirmed_score": 2,
+    "ai_score": 2,
+    "max_points": 2
+  },
+  {
+    "student_answer": "= 8 thầy ạ",
+    "model_answer": "8.",
+    "confirmed_score": 2,
+    "ai_score": 2,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Theo triết học Mác – Lênin, ý thức là hình ảnh của thế giới khách quan được phản ánh trong não người và gắn liền với hoạt động thực tiễn của con người.",
+    "model_answer": "Ý thức là sự phản ánh thế giới khách quan vào bộ não con người thông qua hoạt động thực tiễn.",
+    "confirmed_score": 2,
+    "ai_score": 2,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Đạo hàm thể hiện mức độ biến thiên của giá trị hàm số theo sự thay đổi của biến số tại một vị trí xác định.",
+    "model_answer": "Đạo hàm của hàm số tại một điểm biểu thị tốc độ thay đổi của hàm số tại điểm đó.",
+    "confirmed_score": 2,
+    "ai_score": 2,
+    "max_points": 2
+  },
+  {
+    "student_answer": "SDLC là vòng đời phát triển phần mềm",
+    "model_answer": "SDLC (Software Development Life Cycle) là quy trình phát triển phần mềm bao gồm các giai đoạn: phân tích yêu cầu, thiết kế, lập trình, kiểm thử và bảo trì.",
+    "confirmed_score": 1.5,
+    "ai_score": 1.2,
+    "max_points": 2
+  },
+  {
+    "student_answer": "SDLC là vòng đời phát triển phần mềm",
+    "model_answer": "SDLC (Software Development Life Cycle) là quy trình phát triển phần mềm bao gồm các giai đoạn: phân tích yêu cầu, thiết kế, lập trình, kiểm thử và bảo trì.",
+    "confirmed_score": 1.5,
+    "ai_score": 1.05,
+    "max_points": 2
+  },
+  {
+    "student_answer": "SDLC là vòng đời",
+    "model_answer": "SDLC (Software Development Life Cycle) là quy trình phát triển phần mềm bao gồm các giai đoạn: phân tích yêu cầu, thiết kế, lập trình, kiểm thử và bảo trì.",
+    "confirmed_score": 0.75,
+    "ai_score": 0.45,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Agile là phương pháp linh hoạt",
+    "model_answer": "Agile là phương pháp phát triển phần mềm linh hoạt, tập trung vào việc phát triển theo từng sprint ngắn và cho phép thay đổi yêu cầu.",
+    "confirmed_score": 1.6,
+    "ai_score": 1.28,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Agile là phương pháp linh hoạt",
+    "model_answer": "Agile là phương pháp phát triển phần mềm linh hoạt, tập trung vào việc phát triển theo từng sprint ngắn và cho phép thay đổi yêu cầu.",
+    "confirmed_score": 1.6,
+    "ai_score": 1.12,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Agile là phương",
+    "model_answer": "Agile là phương pháp phát triển phần mềm linh hoạt, tập trung vào việc phát triển theo từng sprint ngắn và cho phép thay đổi yêu cầu.",
+    "confirmed_score": 0.8,
+    "ai_score": 0.48,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Scrum có các sprint",
+    "model_answer": "Scrum là framework Agile với các sprint thường 2-4 tuần, có các cuộc họp daily standup, sprint planning, và retrospective.",
+    "confirmed_score": 1.4,
+    "ai_score": 1.12,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Unit test kiểm tra từng hàm",
+    "model_answer": "Unit testing là kiểm thử từng đơn vị code nhỏ nhất (hàm, method) để đảm bảo code hoạt động đúng.",
+    "confirmed_score": 1.8,
+    "ai_score": 1.44,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Unit test kiểm traa từng hàm",
+    "model_answer": "Unit testing là kiểm thử từng đơn vị code nhỏ nhất (hàm, method) để đảm bảo code hoạt động đúng.",
+    "confirmed_score": 1.8,
+    "ai_score": 1.26,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Unit test kiểm",
+    "model_answer": "Unit testing là kiểm thử từng đơn vị code nhỏ nhất (hàm, method) để đảm bảo code hoạt động đúng.",
+    "confirmed_score": 0.9,
+    "ai_score": 0.54,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Git quản lý version",
+    "model_answer": "Git là hệ thống quản lý phiên bản phân tán, cho phép theo dõi thay đổi code và cộng tác giữa nhiều developer.",
+    "confirmed_score": 1.7,
+    "ai_score": 1.36,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Design pattern la giai phap thiet ke",
+    "model_answer": "Design Pattern là giải pháp thiết kế đã được chứng minh hiệu quả cho các vấn đề lặp lại trong lập trình.",
+    "confirmed_score": 1.9,
+    "ai_score": 1.52,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Design pattern laa giai phap thiet ke",
+    "model_answer": "Design Pattern là giải pháp thiết kế đã được chứng minh hiệu quả cho các vấn đề lặp lại trong lập trình.",
+    "confirmed_score": 1.9,
+    "ai_score": 1.33,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Design pattern la",
+    "model_answer": "Design Pattern là giải pháp thiết kế đã được chứng minh hiệu quả cho các vấn đề lặp lại trong lập trình.",
+    "confirmed_score": 0.95,
+    "ai_score": 0.57,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Singleton chỉ có 1 instance",
+    "model_answer": "Singleton Pattern đảm bảo một class chỉ có một instance duy nhất và cung cấp một điểm truy cập toàn cục đến instance đó.",
+    "confirmed_score": 1.8,
+    "ai_score": 1.44,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Singleton chỉ có 1 instaance",
+    "model_answer": "Singleton Pattern đảm bảo một class chỉ có một instance duy nhất và cung cấp một điểm truy cập toàn cục đến instance đó.",
+    "confirmed_score": 1.8,
+    "ai_score": 1.26,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Factory tạo object",
+    "model_answer": "Factory Pattern cung cấp interface để tạo objects mà không cần chỉ định class cụ thể của object được tạo.",
+    "confirmed_score": 1.6,
+    "ai_score": 1.28,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Observer theo dõi thay đổi",
+    "model_answer": "Observer Pattern định nghĩa một phụ thuộc một-nhiều giữa các objects sao cho khi một object thay đổi trạng thái, tất cả các objects phụ thuộc được thông báo.",
+    "confirmed_score": 1.5,
+    "ai_score": 1.2,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Observer theo dõi thaay đổi",
+    "model_answer": "Observer Pattern định nghĩa một phụ thuộc một-nhiều giữa các objects sao cho khi một object thay đổi trạng thái, tất cả các objects phụ thuộc được thông báo.",
+    "confirmed_score": 1.5,
+    "ai_score": 1.05,
+    "max_points": 2
+  },
+  {
+    "student_answer": "MVC chia model view controller",
+    "model_answer": "MVC (Model-View-Controller) là pattern chia ứng dụng thành 3 phần: Model (dữ liệu), View (giao diện), Controller (logic điều khiển).",
+    "confirmed_score": 1.9,
+    "ai_score": 1.52,
+    "max_points": 2
+  },
+  {
+    "student_answer": "MVC chia model view controller",
+    "model_answer": "MVC (Model-View-Controller) là pattern chia ứng dụng thành 3 phần: Model (dữ liệu), View (giao diện), Controller (logic điều khiển).",
+    "confirmed_score": 1.9,
+    "ai_score": 1.33,
+    "max_points": 2
+  },
+  {
+    "student_answer": "CI/CD tự động deploy",
+    "model_answer": "CI/CD (Continuous Integration/Continuous Deployment) là quy trình tự động hóa việc build, test và deploy code.",
+    "confirmed_score": 1.7,
+    "ai_score": 1.36,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Docker là container",
+    "model_answer": "Docker là nền tảng containerization cho phép đóng gói ứng dụng cùng với dependencies vào container.",
+    "confirmed_score": 1.8,
+    "ai_score": 1.44,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Microservice chia nhỏ service",
+    "model_answer": "Microservices là kiến trúc chia ứng dụng thành các service nhỏ, độc lập, giao tiếp qua API.",
+    "confirmed_score": 1.7,
+    "ai_score": 1.36,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Microservice chiaa nhỏ service",
+    "model_answer": "Microservices là kiến trúc chia ứng dụng thành các service nhỏ, độc lập, giao tiếp qua API.",
+    "confirmed_score": 1.7,
+    "ai_score": 1.19,
+    "max_points": 2
+  },
+  {
+    "student_answer": "API là giao diện",
+    "model_answer": "API (Application Programming Interface) là giao diện cho phép các ứng dụng giao tiếp với nhau.",
+    "confirmed_score": 1.8,
+    "ai_score": 1.44,
+    "max_points": 2
+  },
+  {
+    "student_answer": "REST dùng HTTP",
+    "model_answer": "RESTful API là kiến trúc API dựa trên HTTP với các method GET, POST, PUT, DELETE.",
+    "confirmed_score": 1.6,
+    "ai_score": 1.28,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Refactoring cải thiện code",
+    "model_answer": "Refactoring là quá trình cải thiện cấu trúc code mà không thay đổi chức năng bên ngoài.",
+    "confirmed_score": 1.9,
+    "ai_score": 1.52,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Refactoring cải thiện code",
+    "model_answer": "Refactoring là quá trình cải thiện cấu trúc code mà không thay đổi chức năng bên ngoài.",
+    "confirmed_score": 1.9,
+    "ai_score": 1.33,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Code review kiểm tra code",
+    "model_answer": "Code review là quá trình xem xét code của đồng nghiệp để phát hiện lỗi và cải thiện chất lượng.",
+    "confirmed_score": 1.8,
+    "ai_score": 1.44,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Code review kiểm traa code",
+    "model_answer": "Code review là quá trình xem xét code của đồng nghiệp để phát hiện lỗi và cải thiện chất lượng.",
+    "confirmed_score": 1.8,
+    "ai_score": 1.26,
+    "max_points": 2
+  },
+  {
+    "student_answer": "TDD viết test trước",
+    "model_answer": "TDD (Test-Driven Development) là phương pháp viết test trước khi viết code thực tế.",
+    "confirmed_score": 1.7,
+    "ai_score": 1.36,
+    "max_points": 2
+  },
+  {
+    "student_answer": "BDD viết theo behavior",
+    "model_answer": "BDD (Behavior-Driven Development) là phương pháp viết test dựa trên behavior mong đợi của hệ thống.",
+    "confirmed_score": 1.6,
+    "ai_score": 1.28,
+    "max_points": 2
+  },
+  {
+    "student_answer": "BDD viết theo behaavior",
+    "model_answer": "BDD (Behavior-Driven Development) là phương pháp viết test dựa trên behavior mong đợi của hệ thống.",
+    "confirmed_score": 1.6,
+    "ai_score": 1.12,
+    "max_points": 2
+  },
+  {
+    "student_answer": "OOP là lập trình hướng đối tượng",
+    "model_answer": "OOP (Object-Oriented Programming) là paradigm lập trình dựa trên các object chứa data và methods.",
+    "confirmed_score": 1.9,
+    "ai_score": 1.52,
+    "max_points": 2
+  },
+  {
+    "student_answer": "OOP là lập trình hướng đối tượng",
+    "model_answer": "OOP (Object-Oriented Programming) là paradigm lập trình dựa trên các object chứa data và methods.",
+    "confirmed_score": 1.9,
+    "ai_score": 1.33,
+    "max_points": 2
+  },
+  {
+    "student_answer": "OOP là lập",
+    "model_answer": "OOP (Object-Oriented Programming) là paradigm lập trình dựa trên các object chứa data và methods.",
+    "confirmed_score": 0.95,
+    "ai_score": 0.57,
+    "max_points": 2
+  },
+  {
+    "student_answer": "Đại học Duy tân thuộc trường tư thục và thuộc top 500 thế giới nha thầy em nghĩ vậy",
+    "model_answer": "Trường đại học Duy Tân thuộc trường tư thục và thuộc top 500 thế giới",
+    "confirmed_score": 2.0,
+    "ai_score": 0.4,
+    "max_points": 2.0
+  },
+  {
+    "student_answer": "1 + 7 = 8 ạ",
+    "model_answer": "8.",
+    "confirmed_score": 2.0,
+    "ai_score": 2.0,
+    "max_points": 2.0
+  },
+  {
+    "student_answer": "là Duy tân University",
+    "model_answer": "Duy Tan University.",
+    "confirmed_score": 2.0,
+    "ai_score": 1.84,
+    "max_points": 2.0
+  }
+]

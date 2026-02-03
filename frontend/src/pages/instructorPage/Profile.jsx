@@ -1,13 +1,22 @@
 import React, { useState, useEffect } from "react";
 import axiosClient from "../../api/axiosClient";
 import { FiCamera, FiSave } from "react-icons/fi";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
+import { getFullImageUrl } from "../../utils/imageUtils";
 
 const Profile = () => {
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Detect user role to determine which dashboard to return to
   const userRole = localStorage.getItem("role");
+
+  // Auto-redirect Instructor to nested route to keep socket alive
+  useEffect(() => {
+    if (userRole === "instructor" && location.pathname === "/profile") {
+      navigate("/instructor/profile", { replace: true });
+    }
+  }, [userRole, location.pathname, navigate]);
 
   const [userInfo, setUserInfo] = useState({
     fullname: "Giảng viên",
@@ -19,7 +28,7 @@ const Profile = () => {
     lastName: "",
     gender: "",
     email: "",
-    phone_number: "",
+    phone: "",
     address: "",
     avatar: "/icons/UI Image/default-avatar.png",
   });
@@ -61,7 +70,7 @@ const Profile = () => {
             lastName,
             gender: genderMapBack[user.gender] || "",
             email: user.email || prev.email,
-            phone_number: user.phone_number || "",
+            phone: user.phone || "",
             address: user.address || "",
             avatar: avatarFromDB,
           }));
@@ -72,7 +81,7 @@ const Profile = () => {
             lastName,
             gender: genderMapBack[user.gender] || "",
             email: user.email || "",
-            phone_number: user.phone_number || "",
+            phone: user.phone || "",
             address: user.address || "",
             avatar: normalizedAvatar, // Store normalized version
           });
@@ -118,7 +127,7 @@ const Profile = () => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     // Prevent typing letters into phone field by stripping non-digits
-    if (name === "phone_number") {
+    if (name === "phone") {
       const digits = value.replace(/\D/g, "");
       setFormData({ ...formData, [name]: digits });
       return;
@@ -130,7 +139,7 @@ const Profile = () => {
     e.preventDefault();
 
     // Validate phone: must be 10 digits when provided
-    if (formData.phone_number && !/^\d{10}$/.test(formData.phone_number)) {
+    if (formData.phone && !/^\d{10}$/.test(formData.phone)) {
       alert("Nhập sai định dạng số điện thoại");
       return;
     }
@@ -173,7 +182,7 @@ const Profile = () => {
 
       const changed =
         fullnameNow !== fullnameThen ||
-        (formData.phone_number || "") !== (initialForm.phone_number || "") ||
+        (formData.phone || "") !== (initialForm.phone || "") ||
         (formData.address || "") !== (initialForm.address || "") ||
         (formData.gender || "") !== (initialForm.gender || "") ||
         normalizedCurrentAvatar !== normalizedInitialAvatar;
@@ -196,7 +205,7 @@ const Profile = () => {
     const payload = {
       full_name: `${formData.lastName || ""} ${formData.firstName || ""
         }`.trim(),
-      phone_number: formData.phone_number || null,
+      phone: formData.phone || null,
       address: formData.address || null,
       gender: genderMap[formData.gender] || null,
     };
@@ -228,7 +237,7 @@ const Profile = () => {
           lastName,
           gender: genderMapBack[saved.gender] || prev.gender,
           email,
-          phone_number: saved.phone_number || prev.phone_number,
+          phone: saved.phone || prev.phone,
           address: saved.address || prev.address,
           // Keep the current avatar - it's managed separately
         }));
@@ -253,7 +262,7 @@ const Profile = () => {
           lastName,
           gender: genderMapBack[saved.gender] || "",
           email,
-          phone_number: saved.phone_number || formData.phone_number || "",
+          phone: saved.phone || formData.phone || "",
           address: saved.address || formData.address || "",
           avatar: normalizedAvatarForSnapshot,
         });
@@ -296,7 +305,7 @@ const Profile = () => {
       <header className="bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
           <div className="flex items-center justify-between relative">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4">
               <button
                 onClick={() => navigate(userRole === "student" ? "/student-dashboard" : "/instructor-dashboard")}
                 className="flex items-center gap-2 px-3 py-2 text-slate-700 rounded-lg hover:bg-slate-100 transition-all"
@@ -304,21 +313,27 @@ const Profile = () => {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
-                <span className="font-medium">Quay lại</span>
+                <span className="font-medium hidden sm:inline">Quay lại</span>
               </button>
 
-              <div className="h-8 w-px bg-slate-300"></div>
+              <div className="h-8 w-px bg-slate-300 hidden sm:block"></div>
 
-              <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
+              <h1 className="text-lg sm:text-xl font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
                 Hồ sơ cá nhân
               </h1>
             </div>
 
-            <div className="absolute left-1/2 transform -translate-x-1/2">
+            {/* Desktop Center Logo */}
+            <div className="absolute left-1/2 transform -translate-x-1/2 hidden md:block">
               <img src="/Logo.png" alt="System Logo" className="h-12 w-auto" />
             </div>
 
-            <div className="w-32"></div>
+            {/* Mobile Right Logo */}
+            <div className="md:hidden">
+              <img src="/Logo.png" alt="System Logo" className="h-8 w-auto" />
+            </div>
+
+            <div className="w-32 hidden md:block"></div>
           </div>
         </div>
       </header>
@@ -331,7 +346,7 @@ const Profile = () => {
             <div className="flex justify-center mb-6">
               <div className="relative w-32 h-32 sm:w-36 sm:h-36">
                 <img
-                  src={formData.avatar}
+                  src={getFullImageUrl(formData.avatar)}
                   alt="Avatar"
                   className="w-full h-full rounded-full object-cover border-4 border-gradient-to-r from-blue-500 to-indigo-600 shadow-2xl ring-4 ring-blue-100"
                 />
@@ -652,7 +667,7 @@ const Profile = () => {
                 },
                 {
                   label: "SĐT:",
-                  name: "phone_number",
+                  name: "phone",
                   type: "text",
                   placeholder: "0123456789",
                 },
@@ -703,10 +718,10 @@ const Profile = () => {
                 {message.text && (
                   <div
                     className={`px-5 py-3 rounded-xl text-sm font-medium shadow-lg ${message.type === "success"
-                        ? "bg-gradient-to-r from-green-50 to-emerald-50 text-green-800 border-2 border-green-200"
-                        : message.type === "error"
-                          ? "bg-gradient-to-r from-red-50 to-rose-50 text-red-800 border-2 border-red-200"
-                          : "bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-800 border-2 border-blue-200"
+                      ? "bg-gradient-to-r from-green-50 to-emerald-50 text-green-800 border-2 border-green-200"
+                      : message.type === "error"
+                        ? "bg-gradient-to-r from-red-50 to-rose-50 text-red-800 border-2 border-red-200"
+                        : "bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-800 border-2 border-blue-200"
                       }`}
                     role="status"
                     aria-live="polite"

@@ -22,11 +22,17 @@ export default function PrepareExam() {
   const [faceErr, setFaceErr] = useState("");
   const [cardErr, setCardErr] = useState("");
 
+  // Camera permission state
+  const [cameraPermission, setCameraPermission] = useState("prompt"); // 'prompt' | 'granted' | 'denied'
+  const [showCameraPermissionModal, setShowCameraPermissionModal] = useState(false);
+
   //Multiple screen detection
   const [multiScreenDetected, setMultiScreenDetected] = useState(false);
   const [screenCount, setScreenCount] = useState(1);
   const [monitorWarning, setMonitorWarning] = useState("");
   const [showMultiScreenModal, setShowMultiScreenModal] = useState(false);
+  const [screenPermissionDenied, setScreenPermissionDenied] = useState(false);
+  const [showScreenPermissionModal, setShowScreenPermissionModal] = useState(false);
   const fullscreenLockRef = useRef(false);
   // Live guide + preview states
   const [faceGuideOk, setFaceGuideOk] = useState(false);
@@ -119,7 +125,7 @@ export default function PrepareExam() {
   useEffect(() => {
     try {
       localStorage.setItem("examTheme", theme);
-    } catch {}
+    } catch { }
     if (theme === "light") document.documentElement.classList.remove("dark");
     else document.documentElement.classList.add("dark");
   }, [theme]);
@@ -149,7 +155,7 @@ export default function PrepareExam() {
     try {
       const s = sessionStorage.getItem("exam_flags");
       if (s) setReqs(JSON.parse(s));
-    } catch {}
+    } catch { }
 
     if (!submissionId) {
       const roomToken = sessionStorage.getItem("room_token");
@@ -168,7 +174,7 @@ export default function PrepareExam() {
               "exam_flags",
               JSON.stringify(res.data?.flags || {})
             );
-          } catch {}
+          } catch { }
           if (sid) {
             navigate(`/exam/${res.data.exam_id}/prepare?submission_id=${sid}`, {
               replace: true,
@@ -214,7 +220,7 @@ export default function PrepareExam() {
             setCardErr("");
           }
         }
-      } catch (error) {}
+      } catch (error) { }
     })();
   }, [examId, submissionId]);
 
@@ -264,7 +270,7 @@ export default function PrepareExam() {
       const blockedKeys = [
         "Escape", // Thoát fullscreen
         "F11", // Toggle fullscreen
-        "F5", // Refresh
+        // F5 được cho phép để reload trang
         "F3", // Search
         "F12", // DevTools
         "Tab", // Switch focus (nếu kết hợp Alt)
@@ -422,7 +428,8 @@ export default function PrepareExam() {
   // VI PHẠM CHỈ ĐƯỢC TÍNH TRONG TakeExam, KHÔNG PHẢI PrepareExam
   useEffect(() => {
     const onKey = (e) => {
-      const blockKeys = ["Escape", "F11", "F3", "F4", "F5"];
+      // F5 được cho phép để reload trang
+      const blockKeys = ["Escape", "F11", "F3", "F4"];
       if (blockKeys.includes(e.key)) {
         e.preventDefault();
         e.stopPropagation();
@@ -498,18 +505,33 @@ export default function PrepareExam() {
 
       // Sử dụng Screen Detection API nếu có
       let detectedScreenCount = 1;
+      let permissionDenied = false;
+
       if ("getScreenDetails" in window) {
         try {
           const screenDetails = await window.getScreenDetails();
           detectedScreenCount = screenDetails.screens?.length || 1;
+          setScreenPermissionDenied(false);
         } catch (err) {
-          // Fallback: Ước tính dựa vào window position
+          console.warn("[Screen Detection] Permission error:", err);
+
+          // Kiểm tra xem lỗi có phải do từ chối quyền không
+          if (err.name === 'NotAllowedError' || err.message?.includes('denied') || err.message?.includes('permission')) {
+            permissionDenied = true;
+            setScreenPermissionDenied(true);
+            setShowScreenPermissionModal(true);
+            setMonitorWarning("⚠️ Bạn cần cấp quyền 'Quản lý cửa sổ' để hệ thống kiểm tra số màn hình.");
+            setMonitorOk(false);
+            return; // Không cho tiếp tục nếu từ chối quyền
+          }
+
+          // Fallback nếu lỗi khác (không phải từ chối quyền)
           const windowOutsidePrimary =
             window.screenLeft < 0 || window.screenLeft > window.screen.width;
           detectedScreenCount = windowOutsidePrimary ? 2 : 1;
         }
       } else {
-        // Fallback detection method
+        // Fallback detection method - API không được hỗ trợ
         const windowOutsidePrimary =
           window.screenLeft < 0 || window.screenLeft > window.screen.width;
         detectedScreenCount = windowOutsidePrimary ? 2 : 1;
@@ -524,8 +546,6 @@ export default function PrepareExam() {
           `⚠️ Phát hiện ${detectedScreenCount} màn hình! Vui lòng TẮT màn hình phụ và CHỈ SỬ DỤNG 1 màn hình chính để thi. Sau khi tắt, nhấn lại "Bật toàn màn hình".`
         );
         setMonitorOk(false);
-
-        // 🆕 Hiển thị modal thay vì alert
         setShowMultiScreenModal(true);
         return;
       }
@@ -538,6 +558,7 @@ export default function PrepareExam() {
       setMonitorOk(true);
       setMultiScreenDetected(false);
       setMonitorWarning("");
+      setScreenPermissionDenied(false);
       fullscreenLockRef.current = true; // 🔒 Kích hoạt khóa fullscreen
 
       console.log(
@@ -550,13 +571,47 @@ export default function PrepareExam() {
     }
   };
 
-  // Camera
+  // Camera - với kiểm tra và xử lý permission
   const startCamera = async () => {
     try {
+      // Kiểm tra trạng thái permission trước
+      if (navigator.permissions) {
+        try {
+          const permissionStatus = await navigator.permissions.query({ name: 'camera' });
+          setCameraPermission(permissionStatus.state);
+
+          // Lắng nghe thay đổi permission
+          permissionStatus.onchange = () => {
+            setCameraPermission(permissionStatus.state);
+            if (permissionStatus.state === 'granted') {
+              setShowCameraPermissionModal(false);
+              // Tự động thử lại khi được cấp quyền
+              startCamera();
+            }
+          };
+
+          // Nếu quyền đã bị từ chối vĩnh viễn
+          if (permissionStatus.state === 'denied') {
+            setCameraPermission('denied');
+            setShowCameraPermissionModal(true);
+            setFaceErr("Quyền camera đã bị từ chối. Vui lòng cấp quyền trong cài đặt trình duyệt.");
+            return;
+          }
+        } catch (permErr) {
+          console.log("[Camera] Không thể kiểm tra permission status:", permErr);
+        }
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: false,
       });
+
+      // Quyền đã được cấp
+      setCameraPermission('granted');
+      setShowCameraPermissionModal(false);
+      setFaceErr("");
+
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -612,14 +667,13 @@ export default function PrepareExam() {
                 dy <= needCenterTol &&
                 sizeRatio >= needSizeMin;
               msg = ok
-                ? "Giữ nguyên 1 giây để hệ thống chụp"
+                ? "Giữ nguyên 3 giây để hệ thống chụp"
                 : "Di chuyển khuôn mặt vào giữa, tiến gần hơn";
 
               // Debug log
               if (!ok) {
                 console.log(
-                  `[Face Guide] dx=${(dx * 100).toFixed(1)}% (max ${
-                    needCenterTol * 100
+                  `[Face Guide] dx=${(dx * 100).toFixed(1)}% (max ${needCenterTol * 100
                   }%), dy=${(dy * 100).toFixed(1)}%, size=${(
                     sizeRatio * 100
                   ).toFixed(1)}% (min ${needSizeMin * 100}%)`
@@ -662,14 +716,14 @@ export default function PrepareExam() {
                 dy <= needCenterTol &&
                 sizeRatio >= needSizeMin;
 
-              // 2. Kiểm tra mắt mở (qua landmarks) - nới lỏng hơn
+              // 2. Kiểm tra mắt mở 
               const leftEye = landmarks.getLeftEye();
               const rightEye = landmarks.getRightEye();
               const leftEyeHeight = Math.abs(leftEye[1].y - leftEye[5].y);
               const rightEyeHeight = Math.abs(rightEye[1].y - rightEye[5].y);
               const eyesOpen = leftEyeHeight > 2 && rightEyeHeight > 2;
 
-              // 3. Kiểm tra nhìn thẳng (không nghiêng đầu nhiều) - nới lỏng hơn
+              // 3. Kiểm tra nhìn thẳng
               const nose = landmarks.getNose();
               const jawline = landmarks.getJawOutline();
               const faceAngle = Math.abs(
@@ -683,7 +737,7 @@ export default function PrepareExam() {
                 const prev = prevFacePositionRef.current;
                 const movementX = Math.abs(cx - prev.cx) / c.width;
                 const movementY = Math.abs(cy - prev.cy) / c.height;
-                notMoving = movementX < 0.03 && movementY < 0.03; // Tăng từ 0.02 lên 0.03 (3%)
+                notMoving = movementX < 0.03 && movementY < 0.03;
               }
               prevFacePositionRef.current = { cx, cy };
 
@@ -700,7 +754,7 @@ export default function PrepareExam() {
               } else if (!notMoving) {
                 msg = "Giữ đầu đứng yên";
               } else {
-                msg = "Giữ nguyên 1 giây để hệ thống chụp";
+                msg = "Giữ nguyên 3 giây để hệ thống chụp";
               }
 
               // Debug log
@@ -716,7 +770,7 @@ export default function PrepareExam() {
                 );
               } else {
                 console.log(
-                  `[Face OK] ✅ Tất cả điều kiện đạt, count=${stableOkCountRef.current}/3`
+                  `[Face OK] ✅ Tất cả điều kiện đạt, count=${stableOkCountRef.current}/7`
                 );
               }
             } else if (detections && detections.length > 1) {
@@ -737,7 +791,7 @@ export default function PrepareExam() {
           // TỰ ĐỘNG CHỤP khi giữ ổn định 1 giây (vòng xanh)
           if (ok && !facePreviewUrl) {
             stableOkCountRef.current += 1;
-            if (stableOkCountRef.current >= 3) {
+            if (stableOkCountRef.current >= 7) {
               const snap = document.createElement("canvas");
               snap.width = v.videoWidth || 640;
               snap.height = v.videoHeight || 480;
@@ -755,12 +809,12 @@ export default function PrepareExam() {
                   await saveBlobToLocal(blob, `exam_${submissionId}_face`);
 
                   console.log(
-                    "[Auto Capture] ✅ Đã chụp và lưu vào localStorage"
+                    "[Auto Capture] ✅ Đã chụp và lưu"
                   );
                   // Dừng camera sau khi chụp
                   try {
                     streamRef.current?.getTracks()?.forEach((t) => t.stop());
-                  } catch {}
+                  } catch { }
                   clearInterval(guideIntervalRef.current);
                 },
                 "image/jpeg",
@@ -771,10 +825,37 @@ export default function PrepareExam() {
             stableOkCountRef.current = 0;
             prevFacePositionRef.current = null;
           }
-        } catch {}
+        } catch { }
       }, 450);
-    } catch {
-      alert("Không thể bật camera. Vui lòng cấp quyền hoặc thử lại.");
+    } catch (err) {
+      console.error("[Camera] Lỗi bật camera:", err);
+
+      // Kiểm tra lại permission status sau khi bị lỗi
+      if (navigator.permissions) {
+        try {
+          const permissionStatus = await navigator.permissions.query({ name: 'camera' });
+          setCameraPermission(permissionStatus.state);
+
+          if (permissionStatus.state === 'denied') {
+            setShowCameraPermissionModal(true);
+            setFaceErr("Quyền camera đã bị từ chối. Vui lòng cấp quyền trong cài đặt trình duyệt.");
+            return;
+          }
+        } catch { }
+      }
+
+      // Lỗi khác (không có camera, camera đang được sử dụng, etc.)
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setCameraPermission('denied');
+        setShowCameraPermissionModal(true);
+        setFaceErr("Quyền camera đã bị từ chối. Vui lòng cấp quyền trong cài đặt trình duyệt.");
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        setFaceErr("Không tìm thấy camera. Vui lòng kiểm tra kết nối camera.");
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        setFaceErr("Camera đang được sử dụng bởi ứng dụng khác. Vui lòng đóng ứng dụng đó và thử lại.");
+      } else {
+        setFaceErr("Không thể bật camera. Vui lòng cấp quyền hoặc thử lại.");
+      }
     }
   };
   const captureFace = async () => {
@@ -815,7 +896,7 @@ export default function PrepareExam() {
         // Dừng camera sau khi upload thành công
         try {
           streamRef.current?.getTracks()?.forEach((t) => t.stop());
-        } catch {}
+        } catch { }
         clearInterval(guideIntervalRef.current);
       } else {
         setFaceErr("Không thể upload ảnh");
@@ -934,9 +1015,8 @@ export default function PrepareExam() {
       }
 
       if (err?.response?.status) {
-        errorDetails = `\\nHTTP ${err.response.status}: ${
-          err.response.statusText || "Error"
-        }`;
+        errorDetails = `\\nHTTP ${err.response.status}: ${err.response.statusText || "Error"
+          }`;
       }
       if (err?.response?.data?.error) {
         errorDetails += `\\nBackend: ${err.response.data.error}`;
@@ -944,8 +1024,7 @@ export default function PrepareExam() {
 
       setCardErr(errorMsg);
       setCardVerifyLog(
-        `❌ Lỗi: ${errorMsg}${errorDetails}\\n\\n🔍 Debug: ${
-          err?.code || "Unknown error"
+        `❌ Lỗi: ${errorMsg}${errorDetails}\\n\\n🔍 Debug: ${err?.code || "Unknown error"
         }`
       );
       console.error("[Card Verify] ❌ Full Error:", {
@@ -997,10 +1076,10 @@ export default function PrepareExam() {
         const contrast = res.data.liveness?.contrast_score?.toFixed(1) || "N/A";
         setFaceVerifyLog(
           `✅ KHUÔN MẶT HỢP LỆ!\n` +
-            `══════════════════════\n` +
-            `Liveness: ${confidence}%\n` +
-            `Blur: ${blur} (≥20 OK)\n` +
-            `Contrast: ${contrast} (≥8 OK)`
+          `══════════════════════\n` +
+          `Liveness: ${confidence}%\n` +
+          `Blur: ${blur} (≥20 OK)\n` +
+          `Contrast: ${contrast} (≥8 OK)`
         );
         console.log("[Face Verify] ✅", res.data.liveness);
       } else {
@@ -1017,16 +1096,16 @@ export default function PrepareExam() {
         setFaceErr(`❌ LỖI ẢNH KHUÔN MẶT: ${reasons}`);
         setFaceVerifyLog(
           `❌ LỖI ẢNH KHUÔN MẶT\n` +
-            `══════════════════════\n` +
-            `Lý do: ${reasons}\n\n` +
-            `📊 Chi tiết kỹ thuật:\n` +
-            `- Blur score: ${blur} (cần ≥20)\n` +
-            `- Contrast: ${contrast} (cần ≥8)\n\n` +
-            `💡 Đề xuất:\n` +
-            `- Chụp rõ nét hơn (không mờ)\n` +
-            `- Đủ ánh sáng\n` +
-            `- Giữ máy chắc tay\n` +
-            `- Đảm bảo khuôn mặt thật (không dùng ảnh in)`
+          `══════════════════════\n` +
+          `Lý do: ${reasons}\n\n` +
+          `📊 Chi tiết kỹ thuật:\n` +
+          `- Blur score: ${blur} (cần ≥20)\n` +
+          `- Contrast: ${contrast} (cần ≥8)\n\n` +
+          `💡 Đề xuất:\n` +
+          `- Chụp rõ nét hơn (không mờ)\n` +
+          `- Đủ ánh sáng\n` +
+          `- Giữ máy chắc tay\n` +
+          `- Đảm bảo khuôn mặt thật (không dùng ảnh in)`
         );
         console.error("[Face Verify] ❌ Lỗi ảnh khuôn mặt:", {
           reasons,
@@ -1058,9 +1137,8 @@ export default function PrepareExam() {
       }
 
       if (err?.response?.status) {
-        errorDetails = `\nHTTP ${err.response.status}: ${
-          err.response.statusText || "Error"
-        }`;
+        errorDetails = `\nHTTP ${err.response.status}: ${err.response.statusText || "Error"
+          }`;
       }
       if (err?.response?.data?.error) {
         errorDetails += `\nBackend: ${err.response.data.error}`;
@@ -1069,21 +1147,21 @@ export default function PrepareExam() {
       setFaceErr(`❌ LỖI KHUÔN MẶT: ${errorMsg}`);
       setFaceVerifyLog(
         `❌ LỖI XÁC MINH KHUÔN MẶT\n` +
-          `════════════════════\n` +
-          `Loại lỗi: ${errorType}\n` +
-          `Chi tiết: ${errorMsg}${errorDetails}\n\n` +
-          `🔍 Debug Info:\n` +
-          `- Code: ${err?.code || "N/A"}\n` +
-          `- Status: ${err?.response?.status || "N/A"}\n` +
-          `- Response: ${JSON.stringify(err?.response?.data || {}).substring(
-            0,
-            200
-          )}\n\n` +
-          `💡 Hướng giải quyết:\n` +
-          `- Kiểm tra kết nối mạng\n` +
-          `- Chụp lại ảnh khuôn mặt\n` +
-          `- Đảm bảo đủ ánh sáng\n` +
-          `- Đảm bảo backend đang chạy`
+        `════════════════════\n` +
+        `Loại lỗi: ${errorType}\n` +
+        `Chi tiết: ${errorMsg}${errorDetails}\n\n` +
+        `🔍 Debug Info:\n` +
+        `- Code: ${err?.code || "N/A"}\n` +
+        `- Status: ${err?.response?.status || "N/A"}\n` +
+        `- Response: ${JSON.stringify(err?.response?.data || {}).substring(
+          0,
+          200
+        )}\n\n` +
+        `💡 Hướng giải quyết:\n` +
+        `- Kiểm tra kết nối mạng\n` +
+        `- Chụp lại ảnh khuôn mặt\n` +
+        `- Đảm bảo đủ ánh sáng\n` +
+        `- Đảm bảo backend đang chạy`
       );
       console.error("[Face Verify] ❌ Full Error:", {
         type: errorType,
@@ -1134,7 +1212,7 @@ export default function PrepareExam() {
 
         setCompareLog(
           `✅ So sánh pass (${confidence}%, yêu cầu ≥${threshold}%)!\n` +
-            `⏳ Đang lưu ảnh đã xác minh vào database...`
+          `⏳ Đang lưu ảnh đã xác minh vào database...`
         );
 
         try {
@@ -1243,7 +1321,7 @@ export default function PrepareExam() {
     return () => {
       try {
         streamRef.current?.getTracks()?.forEach((t) => t.stop());
-      } catch {}
+      } catch { }
       clearInterval(guideIntervalRef.current);
     };
   }, []);
@@ -1299,7 +1377,7 @@ export default function PrepareExam() {
 
   const allowFace = useMemo(() => {
     if (!reqs.face) return false;
-    if (!reqs.card) return true; 
+    if (!reqs.card) return true;
     return cardOk || faceUploaded || faceVerified;
   }, [reqs, cardOk, faceUploaded, faceVerified]);
 
@@ -1329,38 +1407,34 @@ export default function PrepareExam() {
     <div className={`min-h-screen ${shellBg}`}>
       {/* Header */}
       <header
-        className={`sticky top-0 z-40 border-b ${
-          theme === "dark" ? "border-white/10" : "border-slate-200"
-        } ${headerGrad}`}
+        className={`sticky top-0 z-40 border-b ${theme === "dark" ? "border-white/10" : "border-slate-200"
+          } ${headerGrad}`}
       >
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img src="/Logo.png" alt="Logo" className="h-9 w-auto rounded-md" />
             <h1
-              className={`text-sm font-semibold tracking-tight ${
-                theme === "dark" ? "text-slate-100" : "text-slate-800"
-              }`}
+              className={`text-sm font-semibold tracking-tight ${theme === "dark" ? "text-slate-100" : "text-slate-800"
+                }`}
             >
               {examInfo?.title || `Bài thi #${examId}`}
             </h1>
           </div>
           <div className="flex items-center gap-2">
             <div
-              className={`px-3 py-2 rounded-lg font-mono text-sm font-bold ${
-                theme === "dark"
-                  ? "bg-white/10 text-slate-100 border border-white/10"
-                  : "bg-indigo-50 text-slate-800 border border-slate-200"
-              }`}
+              className={`px-3 py-2 rounded-lg font-mono text-sm font-bold ${theme === "dark"
+                ? "bg-white/10 text-slate-100 border border-white/10"
+                : "bg-indigo-50 text-slate-800 border border-slate-200"
+                }`}
             >
               ⏱ {duration}′
             </div>
             <button
               onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-              className={`px-3 py-2 rounded-lg border transition ${
-                theme === "dark"
-                  ? "bg-white/10 border-white/20 text-slate-100 hover:ring-2 hover:ring-indigo-300/40"
-                  : "bg-white border-slate-200 text-slate-800 hover:border-blue-300"
-              }`}
+              className={`px-3 py-2 rounded-lg border transition ${theme === "dark"
+                ? "bg-white/10 border-white/20 text-slate-100 hover:ring-2 hover:ring-indigo-300/40"
+                : "bg-white border-slate-200 text-slate-800 hover:border-blue-300"
+                }`}
               title="Đổi giao diện Sáng/Tối"
             >
               {theme === "dark" ? "🌙" : "☀️"}
@@ -1376,9 +1450,8 @@ export default function PrepareExam() {
           <div className="flex items-start justify-between gap-4">
             <div>
               <p
-                className={`${
-                  theme === "dark" ? "text-slate-100" : "text-slate-600"
-                } text-xl`}
+                className={`${theme === "dark" ? "text-slate-100" : "text-slate-600"
+                  } text-xl`}
               >
                 Giảng viên:{" "}
                 <span className="font-medium">
@@ -1405,16 +1478,14 @@ export default function PrepareExam() {
             </div>
             <div className="text-right">
               <p
-                className={`${
-                  theme === "dark" ? "text-slate-300" : "text-slate-600"
-                } text-sm`}
+                className={`${theme === "dark" ? "text-slate-300" : "text-slate-600"
+                  } text-sm`}
               >
                 Thời lượng
               </p>
               <p
-                className={`${
-                  theme === "dark" ? "text-slate-100" : "text-slate-800"
-                } text-xl font-semibold`}
+                className={`${theme === "dark" ? "text-slate-100" : "text-slate-800"
+                  } text-xl font-semibold`}
               >
                 {duration} phút
               </p>
@@ -1429,9 +1500,8 @@ export default function PrepareExam() {
             <div className={`relative rounded-2xl p-4 transition ${cardCls}`}>
               <div className="flex items-center justify-between mb-2">
                 <p
-                  className={`${
-                    theme === "dark" ? "text-slate-100" : "text-slate-800"
-                  } font-semibold`}
+                  className={`${theme === "dark" ? "text-slate-100" : "text-slate-800"
+                    } font-semibold`}
                 >
                   <span className="inline-flex items-center justify-center w-6 h-6 mr-2 rounded-full bg-blue-600 text-white text-xs font-bold">
                     1
@@ -1439,21 +1509,20 @@ export default function PrepareExam() {
                   Xác minh thẻ sinh viên
                 </p>
                 <span
-                  className={`text-xs ${
-                    cardOk
-                      ? "text-emerald-400"
-                      : cardErr
+                  className={`text-xs ${cardOk
+                    ? "text-emerald-400"
+                    : cardErr
                       ? "text-red-500"
                       : theme === "dark"
-                      ? "text-slate-400"
-                      : "text-slate-500"
-                  }`}
+                        ? "text-slate-400"
+                        : "text-slate-500"
+                    }`}
                 >
                   {cardOk
                     ? "✅ Đã xác minh"
                     : cardErr
-                    ? "❌ Lỗi"
-                    : "⏳ Chưa xác minh"}
+                      ? "❌ Lỗi"
+                      : "⏳ Chưa xác minh"}
                 </span>
               </div>
 
@@ -1461,11 +1530,10 @@ export default function PrepareExam() {
               {!cardUploaded && (
                 <label
                   className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer border transition
-                  ${
-                    theme === "dark"
+                  ${theme === "dark"
                       ? "bg-white/5 border-white/10 text-slate-100 hover:border-blue-300/40"
                       : "bg-white border-slate-200 text-slate-800 hover:border-blue-300"
-                  }`}
+                    }`}
                 >
                   <input
                     type="file"
@@ -1542,11 +1610,10 @@ export default function PrepareExam() {
               {/* Verification log */}
               {cardVerifyLog && (
                 <div
-                  className={`mt-2 p-2 rounded text-xs font-mono whitespace-pre-wrap ${
-                    cardOk
-                      ? "bg-emerald-500/10 text-emerald-400"
-                      : "bg-red-500/10 text-red-400"
-                  }`}
+                  className={`mt-2 p-2 rounded text-xs font-mono whitespace-pre-wrap ${cardOk
+                    ? "bg-emerald-500/10 text-emerald-400"
+                    : "bg-red-500/10 text-red-400"
+                    }`}
                 >
                   {cardVerifyLog}
                 </div>
@@ -1578,9 +1645,8 @@ export default function PrepareExam() {
 
               {!cardUploaded && !cardErr && (
                 <p
-                  className={`${
-                    theme === "dark" ? "text-slate-400" : "text-slate-500"
-                  } text-xs mt-2`}
+                  className={`${theme === "dark" ? "text-slate-400" : "text-slate-500"
+                    } text-xs mt-2`}
                 >
                   Yêu cầu: "Thẻ sinh viên", "Đại học", domain .edu.vn, MSSV 8-11
                   số
@@ -1594,9 +1660,9 @@ export default function PrepareExam() {
             <div
               className={`relative rounded-2xl p-4 transition ${cardCls} md:col-span-2`}
             >
-              {/* Overlay khóa nếu chưa hoàn thành bước 1 */}
+              {/* Overlay khóa nếu chưa hoàn thành bước 1 - không có blur */}
               {!allowFace && (
-                <div className="absolute inset-0 rounded-2xl bg-black/50 backdrop-blur-sm z-10 grid place-items-center">
+                <div className="absolute inset-0 rounded-2xl bg-black/50 z-10 grid place-items-center">
                   <div className="text-center p-4">
                     <div className="text-4xl mb-2">🔒</div>
                     <p className="text-white font-semibold mb-1">
@@ -1611,9 +1677,8 @@ export default function PrepareExam() {
 
               <div className="flex items-center justify-between mb-2">
                 <p
-                  className={`${
-                    theme === "dark" ? "text-slate-100" : "text-slate-800"
-                  } font-semibold`}
+                  className={`${theme === "dark" ? "text-slate-100" : "text-slate-800"
+                    } font-semibold`}
                 >
                   <span className="inline-flex items-center justify-center w-6 h-6 mr-2 rounded-full bg-blue-600 text-white text-xs font-bold">
                     2
@@ -1621,21 +1686,20 @@ export default function PrepareExam() {
                   Xác minh khuôn mặt
                 </p>
                 <span
-                  className={`text-xs ${
-                    faceStepDone
-                      ? "text-emerald-400"
-                      : faceErr
+                  className={`text-xs ${faceStepDone
+                    ? "text-emerald-400"
+                    : faceErr
                       ? "text-red-500"
                       : theme === "dark"
-                      ? "text-slate-400"
-                      : "text-slate-500"
-                  }`}
+                        ? "text-slate-400"
+                        : "text-slate-500"
+                    }`}
                 >
                   {faceStepDone
                     ? "✅ Đã hoàn thành"
                     : faceErr
-                    ? "❌ Lỗi"
-                    : "⏳ Chưa hoàn thành"}
+                      ? "❌ Lỗi"
+                      : "⏳ Chưa hoàn thành"}
                 </span>
               </div>
 
@@ -1643,9 +1707,8 @@ export default function PrepareExam() {
               {!faceUploaded && (
                 <>
                   <div
-                    className={`relative rounded-xl overflow-hidden border ${
-                      theme === "dark" ? "border-white/10" : "border-slate-200"
-                    } bg-black/20`}
+                    className={`relative rounded-xl overflow-hidden border ${theme === "dark" ? "border-white/10" : "border-slate-200"
+                      } bg-black/20`}
                   >
                     <div
                       className="bg-black/20"
@@ -1654,6 +1717,9 @@ export default function PrepareExam() {
                       <video
                         ref={videoRef}
                         className="w-full h-full object-cover"
+                        playsInline
+                        webkit-playsinline="true"
+                        muted
                       />
                     </div>
                     <div className="absolute inset-0 pointer-events-none grid place-items-center">
@@ -1699,7 +1765,37 @@ export default function PrepareExam() {
                     >
                       📷 Bật camera
                     </button>
+
+                    {/* Nút mở modal hướng dẫn khi quyền bị từ chối */}
+                    {cameraPermission === 'denied' && (
+                      <button
+                        className="px-3 py-2 rounded-lg font-medium shadow transition hover:brightness-105 bg-amber-500 hover:bg-amber-600 text-white"
+                        onClick={() => setShowCameraPermissionModal(true)}
+                      >
+                        ⚙️ Hướng dẫn cấp quyền
+                      </button>
+                    )}
                   </div>
+
+                  {/* Hiển thị lỗi camera */}
+                  {faceErr && !facePreviewUrl && (
+                    <div className={`mt-3 p-3 rounded-lg ${theme === "dark"
+                      ? "bg-red-900/30 border border-red-500/30"
+                      : "bg-red-50 border border-red-200"
+                      }`}>
+                      <p className={`text-sm ${theme === "dark" ? "text-red-300" : "text-red-700"}`}>
+                        {faceErr}
+                      </p>
+                      {cameraPermission === 'denied' && (
+                        <button
+                          className="mt-2 text-sm text-blue-400 hover:text-blue-300 underline"
+                          onClick={() => setShowCameraPermissionModal(true)}
+                        >
+                          👆 Nhấn để xem hướng dẫn chi tiết
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
 
@@ -1733,11 +1829,10 @@ export default function PrepareExam() {
               {/* Liveness log */}
               {faceVerifyLog && (
                 <div
-                  className={`mt-2 p-2 rounded text-xs font-mono whitespace-pre-wrap ${
-                    faceVerified
-                      ? "bg-emerald-500/10 text-emerald-400"
-                      : "bg-red-500/10 text-red-400"
-                  }`}
+                  className={`mt-2 p-2 rounded text-xs font-mono whitespace-pre-wrap ${faceVerified
+                    ? "bg-emerald-500/10 text-emerald-400"
+                    : "bg-red-500/10 text-red-400"
+                    }`}
                 >
                   {faceVerifyLog}
                 </div>
@@ -1777,11 +1872,10 @@ export default function PrepareExam() {
               {/* Compare log */}
               {compareLog && (
                 <div
-                  className={`mt-2 p-2 rounded text-xs font-mono whitespace-pre-wrap ${
-                    faceOk
-                      ? "bg-emerald-500/10 text-emerald-400"
-                      : "bg-red-500/10 text-red-400"
-                  }`}
+                  className={`mt-2 p-2 rounded text-xs font-mono whitespace-pre-wrap ${faceOk
+                    ? "bg-emerald-500/10 text-emerald-400"
+                    : "bg-red-500/10 text-red-400"
+                    }`}
                 >
                   {compareLog}
                 </div>
@@ -1910,7 +2004,7 @@ export default function PrepareExam() {
             <div className={`relative rounded-2xl p-4 transition ${cardCls}`}>
               {/* Overlay khóa nếu chưa hoàn thành bước 1 VÀ 2 */}
               {!allowMonitor && (
-                <div className="absolute inset-0 rounded-2xl bg-black/50 backdrop-blur-sm z-10 grid place-items-center">
+                <div className="absolute inset-0 rounded-2xl bg-black/50 z-10 grid place-items-center">
                   <div className="text-center p-4">
                     <div className="text-4xl mb-2">🔒</div>
                     <p className="text-white font-semibold mb-1">
@@ -1927,9 +2021,8 @@ export default function PrepareExam() {
 
               <div className="flex items-center justify-between mb-2">
                 <p
-                  className={`${
-                    theme === "dark" ? "text-slate-100" : "text-slate-800"
-                  } font-semibold`}
+                  className={`${theme === "dark" ? "text-slate-100" : "text-slate-800"
+                    } font-semibold`}
                 >
                   <span className="inline-flex items-center justify-center w-6 h-6 mr-2 rounded-full bg-blue-600 text-white text-xs font-bold">
                     3
@@ -1937,21 +2030,19 @@ export default function PrepareExam() {
                   Bật giám sát
                 </p>
                 <span
-                  className={`text-xs ${
-                    monitorOk
-                      ? "text-emerald-400"
-                      : theme === "dark"
+                  className={`text-xs ${monitorOk
+                    ? "text-emerald-400"
+                    : theme === "dark"
                       ? "text-slate-400"
                       : "text-slate-500"
-                  }`}
+                    }`}
                 >
                   {monitorOk ? "✅ Đã bật" : "⏳ Chưa bật"}
                 </span>
               </div>
               <p
-                className={`${
-                  theme === "dark" ? "text-slate-300" : "text-slate-600"
-                } text-sm`}
+                className={`${theme === "dark" ? "text-slate-300" : "text-slate-600"
+                  } text-sm`}
               >
                 Yêu cầu bật toàn màn hình. Hệ thống sẽ ghi nhận rời tab/thoát
                 fullscreen.
@@ -1960,18 +2051,16 @@ export default function PrepareExam() {
               {/* Cảnh báo */}
               {monitorWarning && (
                 <div
-                  className={`mt-3 p-4 rounded-xl border-2 shadow-lg ${
-                    multiScreenDetected
-                      ? "bg-red-50 border-red-300 dark:bg-red-900/20 dark:border-red-500"
-                      : "bg-yellow-50 border-yellow-300 dark:bg-yellow-900/20 dark:border-yellow-500"
-                  }`}
+                  className={`mt-3 p-4 rounded-xl border-2 shadow-lg ${multiScreenDetected
+                    ? "bg-red-50 border-red-300 dark:bg-red-900/20 dark:border-red-500"
+                    : "bg-yellow-50 border-yellow-300 dark:bg-yellow-900/20 dark:border-yellow-500"
+                    }`}
                 >
                   <p
-                    className={`text-sm font-bold ${
-                      multiScreenDetected
-                        ? "text-red-700 dark:text-red-300"
-                        : "text-yellow-700 dark:text-yellow-300"
-                    }`}
+                    className={`text-sm font-bold ${multiScreenDetected
+                      ? "text-red-700 dark:text-red-300"
+                      : "text-yellow-700 dark:text-yellow-300"
+                      }`}
                   >
                     {monitorWarning}
                   </p>
@@ -2091,21 +2180,20 @@ export default function PrepareExam() {
 
               <button
                 className={`mt-3 px-3 py-2 rounded-lg text-white font-semibold shadow transition hover:brightness-105 disabled:opacity-60 disabled:cursor-not-allowed
-                ${
-                  monitorOk
+                ${monitorOk
                     ? "bg-emerald-600"
                     : multiScreenDetected
-                    ? "bg-red-600"
-                    : "bg-blue-600"
-                }`}
+                      ? "bg-red-600"
+                      : "bg-blue-600"
+                  }`}
                 onClick={enableMonitor}
                 disabled={!allowMonitor}
               >
                 {monitorOk
                   ? "✔️ Đã bật giám sát"
                   : multiScreenDetected
-                  ? "🔄 Kiểm tra lại màn hình"
-                  : "Bật toàn màn hình"}
+                    ? "🔄 Kiểm tra lại màn hình"
+                    : "Bật toàn màn hình"}
               </button>
             </div>
           )}
@@ -2117,17 +2205,42 @@ export default function PrepareExam() {
         {/* Actions */}
         <section className="flex items-center justify-between">
           <div
-            className={`${
-              theme === "dark" ? "text-slate-400" : "text-slate-600"
-            } text-sm`}
+            className={`${theme === "dark" ? "text-slate-400" : "text-slate-600"
+              } text-sm`}
           >
             Vui lòng hoàn tất các bước yêu cầu trước khi bắt đầu làm bài.
           </div>
           <button
             disabled={!submissionId || !canStart}
-            onClick={() =>
-              navigate(`/exam/${examId}/take?submission_id=${submissionId}`)
-            }
+            onClick={async () => {
+              // ✅ Kiểm tra lại số màn hình trước khi vào thi
+              if (reqs.monitor) {
+                try {
+                  let detectedScreens = 1;
+                  if (window.getScreenDetails) {
+                    const screens = await window.getScreenDetails();
+                    detectedScreens = screens.screens?.length || 1;
+                  } else if (window.screen?.isExtended) {
+                    detectedScreens = 2;
+                  }
+
+                  if (detectedScreens > 1) {
+                    // Phát hiện nhiều màn hình - chặn lại
+                    setScreenCount(detectedScreens);
+                    setMultiScreenDetected(true);
+                    setShowMultiScreenModal(true);
+                    console.log(`🚫 [PrepareExam] Blocked: ${detectedScreens} screens detected at start button`);
+                    return; // Không cho vào thi
+                  }
+                } catch (e) {
+                  console.log("⚠️ [PrepareExam] Screen check error (continuing):", e.message);
+                  // Nếu lỗi khi check, vẫn cho vào thi để không block user
+                }
+              }
+
+              // Ok - cho vào thi
+              navigate(`/exam/${examId}/take?submission_id=${submissionId}`);
+            }}
             className="px-5 py-3 rounded-xl text-white font-bold shadow-[0_8px_20px_rgba(24,201,100,.28),_inset_0_-2px_0_rgba(0,0,0,.2)] disabled:opacity-60 transition hover:brightness-105"
             style={{ background: "linear-gradient(180deg,#00cf7f,#17a55c)" }}
             title={
@@ -2143,11 +2256,10 @@ export default function PrepareExam() {
       {showMultiScreenModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
           <div
-            className={`w-full max-w-md sm:max-w-lg md:max-w-xl transform transition-all animate-slideUp ${
-              theme === "dark"
-                ? "bg-gradient-to-br from-slate-800 to-slate-900 border-red-500/50"
-                : "bg-white"
-            } rounded-2xl shadow-2xl border-2 border-red-500`}
+            className={`w-full max-w-md sm:max-w-lg md:max-w-xl transform transition-all animate-slideUp ${theme === "dark"
+              ? "bg-gradient-to-br from-slate-800 to-slate-900 border-red-500/50"
+              : "bg-white"
+              } rounded-2xl shadow-2xl border-2 border-red-500`}
           >
             {/* Header */}
             <div className="bg-gradient-to-r from-red-600 to-red-700 px-6 py-4 rounded-t-2xl">
@@ -2170,16 +2282,14 @@ export default function PrepareExam() {
             <div className="px-6 py-5 space-y-4">
               {/* Main message */}
               <div
-                className={`p-4 rounded-xl border-2 ${
-                  theme === "dark"
-                    ? "bg-red-900/20 border-red-500/30"
-                    : "bg-red-50 border-red-200"
-                }`}
+                className={`p-4 rounded-xl border-2 ${theme === "dark"
+                  ? "bg-red-900/20 border-red-500/30"
+                  : "bg-red-50 border-red-200"
+                  }`}
               >
                 <p
-                  className={`text-base font-semibold ${
-                    theme === "dark" ? "text-red-200" : "text-red-800"
-                  }`}
+                  className={`text-base font-semibold ${theme === "dark" ? "text-red-200" : "text-red-800"
+                    }`}
                 >
                   ⚠️ Để đảm bảo tính công bằng, bạn chỉ được phép sử dụng{" "}
                   <span className="underline">1 màn hình chính</span>.
@@ -2194,9 +2304,8 @@ export default function PrepareExam() {
                   </div>
                   <div>
                     <p
-                      className={`text-sm ${
-                        theme === "dark" ? "text-slate-300" : "text-slate-600"
-                      }`}
+                      className={`text-sm ${theme === "dark" ? "text-slate-300" : "text-slate-600"
+                        }`}
                     >
                       Số màn hình phát hiện
                     </p>
@@ -2210,23 +2319,20 @@ export default function PrepareExam() {
 
               {/* Instructions */}
               <div
-                className={`p-4 rounded-xl ${
-                  theme === "dark"
-                    ? "bg-slate-700/50 border border-slate-600"
-                    : "bg-blue-50 border border-blue-200"
-                }`}
+                className={`p-4 rounded-xl ${theme === "dark"
+                  ? "bg-slate-700/50 border border-slate-600"
+                  : "bg-blue-50 border border-blue-200"
+                  }`}
               >
                 <p
-                  className={`font-bold mb-3 flex items-center gap-2 ${
-                    theme === "dark" ? "text-blue-300" : "text-blue-800"
-                  }`}
+                  className={`font-bold mb-3 flex items-center gap-2 ${theme === "dark" ? "text-blue-300" : "text-blue-800"
+                    }`}
                 >
                   <span className="text-xl">📌</span> Vui lòng thực hiện:
                 </p>
                 <ol
-                  className={`space-y-2 ${
-                    theme === "dark" ? "text-slate-300" : "text-slate-700"
-                  }`}
+                  className={`space-y-2 ${theme === "dark" ? "text-slate-300" : "text-slate-700"
+                    }`}
                 >
                   <li className="flex items-start gap-3">
                     <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
@@ -2244,11 +2350,10 @@ export default function PrepareExam() {
                       Hoặc tắt chế độ mở rộng màn hình:
                       <br />
                       <code
-                        className={`text-xs px-2 py-1 rounded mt-1 inline-block ${
-                          theme === "dark"
-                            ? "bg-slate-800 text-emerald-300"
-                            : "bg-slate-100 text-slate-800"
-                        }`}
+                        className={`text-xs px-2 py-1 rounded mt-1 inline-block ${theme === "dark"
+                          ? "bg-slate-800 text-emerald-300"
+                          : "bg-slate-100 text-slate-800"
+                          }`}
                       >
                         Settings → Display → "Show only on 1"
                       </code>
@@ -2267,14 +2372,12 @@ export default function PrepareExam() {
 
               {/* Warning note */}
               <div
-                className={`p-3 rounded-lg border-l-4 border-yellow-500 ${
-                  theme === "dark" ? "bg-yellow-900/20" : "bg-yellow-50"
-                }`}
+                className={`p-3 rounded-lg border-l-4 border-yellow-500 ${theme === "dark" ? "bg-yellow-900/20" : "bg-yellow-50"
+                  }`}
               >
                 <p
-                  className={`text-sm ${
-                    theme === "dark" ? "text-yellow-200" : "text-yellow-800"
-                  }`}
+                  className={`text-sm ${theme === "dark" ? "text-yellow-200" : "text-yellow-800"
+                    }`}
                 >
                   <strong>⚡ Lưu ý:</strong> Việc sử dụng nhiều màn hình trong
                   khi thi có thể bị coi là gian lận và dẫn đến hủy bỏ kết quả
@@ -2290,6 +2393,210 @@ export default function PrepareExam() {
                 className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold rounded-xl shadow-lg transition transform hover:scale-105 active:scale-95"
               >
                 ✅ Tôi đã hiểu
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Camera Permission Modal - Hướng dẫn khi quyền camera bị từ chối */}
+      {showCameraPermissionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div
+            className={`w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200 ${theme === "dark"
+              ? "bg-gradient-to-b from-slate-800 to-slate-900 border border-slate-700"
+              : "bg-white border border-slate-200"
+              }`}
+          >
+            {/* Header */}
+            <div className="relative bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 p-6">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
+                  <span className="text-4xl">📷</span>
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">
+                    Quyền Camera Bị Từ Chối
+                  </h2>
+                  <p className="text-amber-100 text-sm mt-1">
+                    Cần cấp quyền camera để tiếp tục
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Body - scrollable */}
+            <div className="px-4 py-3 space-y-3 max-h-[60vh] overflow-y-auto">
+              {/* Main message */}
+              <div
+                className={`p-3 rounded-lg border ${theme === "dark"
+                  ? "bg-amber-900/20 border-amber-500/30"
+                  : "bg-amber-50 border-amber-200"
+                  }`}
+              >
+                <p
+                  className={`text-sm ${theme === "dark" ? "text-amber-200" : "text-amber-800"
+                    }`}
+                >
+                  ⚠️ Trình duyệt đã ghi nhớ "Từ chối". Cần <span className="underline font-semibold">reset quyền camera</span> trong cài đặt.
+                </p>
+              </div>
+
+              {/* Instructions - Compact */}
+              <div
+                className={`p-3 rounded-lg text-xs ${theme === "dark"
+                  ? "bg-slate-700/50 border border-slate-600"
+                  : "bg-blue-50 border border-blue-200"
+                  }`}
+              >
+                <p className={`font-bold mb-2 ${theme === "dark" ? "text-blue-300" : "text-blue-800"}`}>
+                  🔧 Cách reset quyền:
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {/* Chrome/Edge */}
+                  <div className={`${theme === "dark" ? "text-slate-300" : "text-slate-600"}`}>
+                    <p className="font-semibold">🌐 Chrome/Edge:</p>
+                    <p>🔒 → Cài đặt trang web → Camera → Cho phép</p>
+                  </div>
+
+                  {/* Firefox */}
+                  <div className={`${theme === "dark" ? "text-slate-300" : "text-slate-600"}`}>
+                    <p className="font-semibold">🦊 Firefox:</p>
+                    <p>🔒 → Xóa "Always Block" → Reload</p>
+                  </div>
+                </div>
+
+                {/* Mobile */}
+                <div className={`mt-2 p-2 rounded ${theme === "dark" ? "bg-purple-900/30" : "bg-purple-50"}`}>
+                  <p className={`font-semibold ${theme === "dark" ? "text-purple-300" : "text-purple-700"}`}>
+                    📱 Mobile: Thử reload trang trước! Nếu không được → Cài đặt → Ứng dụng → Trình duyệt → Camera → Cho phép
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-4 py-3 bg-slate-50 dark:bg-slate-800/50 rounded-b-2xl flex flex-col sm:flex-row gap-2 sm:justify-between">
+              <button
+                onClick={() => window.location.reload()}
+                className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold rounded-lg shadow-lg transition transform hover:scale-105 active:scale-95 text-sm"
+              >
+                🔄 Reload Trang
+              </button>
+              <button
+                onClick={() => setShowCameraPermissionModal(false)}
+                className={`w-full sm:w-auto px-4 py-2 font-bold rounded-lg shadow transition text-sm ${theme === "dark"
+                  ? "bg-slate-700 hover:bg-slate-600 text-white"
+                  : "bg-slate-200 hover:bg-slate-300 text-slate-800"
+                  }`}
+              >
+                ✕ Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Screen Permission Modal - Hướng dẫn khi quyền kiểm tra màn hình bị từ chối */}
+      {showScreenPermissionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div
+            className={`w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200 ${theme === "dark"
+              ? "bg-gradient-to-b from-slate-800 to-slate-900 border border-slate-700"
+              : "bg-white border border-slate-200"
+              }`}
+          >
+            {/* Header */}
+            <div className="relative bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                  <span className="text-3xl">🖥️</span>
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white">
+                    Cần Quyền Kiểm Tra Màn Hình
+                  </h2>
+                  <p className="text-blue-100 text-sm">
+                    Để đảm bảo công bằng trong thi cử
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="px-4 py-3 space-y-3 max-h-[60vh] overflow-y-auto">
+              {/* Main message */}
+              <div
+                className={`p-3 rounded-lg border ${theme === "dark"
+                  ? "bg-blue-900/20 border-blue-500/30"
+                  : "bg-blue-50 border-blue-200"
+                  }`}
+              >
+                <p className={`text-sm ${theme === "dark" ? "text-blue-200" : "text-blue-800"}`}>
+                  ⚠️ Hệ thống cần quyền <span className="font-semibold">"Quản lý cửa sổ"</span> để kiểm tra bạn chỉ sử dụng 1 màn hình khi thi.
+                </p>
+              </div>
+
+              {/* Instructions */}
+              <div
+                className={`p-3 rounded-lg text-xs ${theme === "dark"
+                  ? "bg-slate-700/50 border border-slate-600"
+                  : "bg-blue-50 border border-blue-200"
+                  }`}
+              >
+                <p className={`font-bold mb-2 ${theme === "dark" ? "text-blue-300" : "text-blue-800"}`}>
+                  🔧 Cách cấp quyền:
+                </p>
+
+                <div className={`space-y-2 ${theme === "dark" ? "text-slate-300" : "text-slate-600"}`}>
+                  <div>
+                    <p className="font-semibold">🌐 Chrome/Edge:</p>
+                    <ol className="ml-4 mt-1 space-y-1">
+                      <li>1. Nhấn 🔒 bên trái thanh địa chỉ</li>
+                      <li>2. Tìm "Quản lý cửa sổ" hoặc "Window management"</li>
+                      <li>3. Chọn "Cho phép" (Allow)</li>
+                      <li>4. Reload trang và nhấn "Bật giám sát" lại</li>
+                    </ol>
+                  </div>
+
+                  <div className={`p-2 rounded ${theme === "dark" ? "bg-amber-900/30" : "bg-amber-50"}`}>
+                    <p className={`font-semibold ${theme === "dark" ? "text-amber-300" : "text-amber-700"}`}>
+                      💡 Mẹo: Khi trình duyệt hỏi quyền, hãy nhấn <strong>"Cho phép"</strong> thay vì "Chặn"
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Warning */}
+              <div
+                className={`p-2 rounded-lg border-l-4 border-red-500 ${theme === "dark" ? "bg-red-900/20" : "bg-red-50"}`}
+              >
+                <p className={`text-xs ${theme === "dark" ? "text-red-200" : "text-red-800"}`}>
+                  <strong>⚠️ Lưu ý:</strong> Nếu không cấp quyền, hệ thống không thể xác nhận bạn chỉ dùng 1 màn hình và bạn sẽ không thể bật chế độ giám sát.
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-4 py-3 bg-slate-50 dark:bg-slate-800/50 rounded-b-2xl flex flex-col sm:flex-row gap-2 sm:justify-between">
+              <button
+                onClick={() => {
+                  setShowScreenPermissionModal(false);
+                  window.location.reload();
+                }}
+                className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-lg shadow-lg transition transform hover:scale-105 active:scale-95 text-sm"
+              >
+                🔄 Reload và Thử Lại
+              </button>
+              <button
+                onClick={() => setShowScreenPermissionModal(false)}
+                className={`w-full sm:w-auto px-4 py-2 font-bold rounded-lg shadow transition text-sm ${theme === "dark"
+                  ? "bg-slate-700 hover:bg-slate-600 text-white"
+                  : "bg-slate-200 hover:bg-slate-300 text-slate-800"
+                  }`}
+              >
+                ✕ Đóng
               </button>
             </div>
           </div>

@@ -36,19 +36,19 @@ const RegisterPage = () => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm({ ...form, [name]: value });
-    
+
     // Clear error when user starts typing
     if (errors[name]) {
       setErrors({ ...errors, [name]: "" });
     }
-    
+
     // Real-time validation for lastName and firstName
     if (name === 'lastName' || name === 'firstName') {
       const trimmedValue = value.trim();
       if (trimmedValue && !/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔưăâêô\s]+$/.test(trimmedValue)) {
-        setErrors({ 
-          ...errors, 
-          [name]: `${name === 'lastName' ? 'Họ' : 'Tên'} chỉ được chứa chữ cái, không được có số hoặc ký tự đặc biệt` 
+        setErrors({
+          ...errors,
+          [name]: `${name === 'lastName' ? 'Họ' : 'Tên'} chỉ được chứa chữ cái, không được có số hoặc ký tự đặc biệt`
         });
       }
     }
@@ -58,21 +58,21 @@ const RegisterPage = () => {
   const handleSendOTP = async () => {
     // Kiểm tra validation cho Họ và Tên trước khi gửi OTP
     const newErrors = {};
-    
+
     // Validation cho Họ
     if (!form.lastName.trim()) {
       newErrors.lastName = "Vui lòng nhập họ";
     } else if (!/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔưăâêô\s]+$/.test(form.lastName.trim())) {
       newErrors.lastName = "Họ chỉ được chứa chữ cái, không được có số hoặc ký tự đặc biệt";
     }
-    
+
     // Validation cho Tên
     if (!form.firstName.trim()) {
       newErrors.firstName = "Vui lòng nhập tên";
     } else if (!/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔưăâêô\s]+$/.test(form.firstName.trim())) {
       newErrors.firstName = "Tên chỉ được chứa chữ cái, không được có số hoặc ký tự đặc biệt";
     }
-    
+
     // Validation cho Email
     if (!form.email.trim()) {
       newErrors.email = "Vui lòng nhập email";
@@ -82,7 +82,7 @@ const RegisterPage = () => {
         newErrors.email = "Định dạng email không hợp lệ";
       }
     }
-    
+
     // Nếu có lỗi validation, hiển thị lỗi và không gửi OTP
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -148,25 +148,25 @@ const RegisterPage = () => {
 
   const validate = () => {
     const newErrors = {};
-    
+
     // Validation cho Họ - chỉ cho phép chữ cái và khoảng trắng
     if (!form.lastName.trim()) {
       newErrors.lastName = "Vui lòng nhập họ";
     } else if (!/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔưăâêô\s]+$/.test(form.lastName.trim())) {
       newErrors.lastName = "Họ chỉ được chứa chữ cái, không được có số hoặc ký tự đặc biệt";
     }
-    
+
     // Validation cho Tên - chỉ cho phép chữ cái và khoảng trắng
     if (!form.firstName.trim()) {
       newErrors.firstName = "Vui lòng nhập tên";
     } else if (!/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔưăâêô\s]+$/.test(form.firstName.trim())) {
       newErrors.firstName = "Tên chỉ được chứa chữ cái, không được có số hoặc ký tự đặc biệt";
     }
-    
+
     if (!form.email.trim()) newErrors.email = "Vui lòng nhập email";
     else if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(form.email))
       newErrors.email = "Định dạng email không hợp lệ";
-    else if (!emailVerified) 
+    else if (!emailVerified)
       newErrors.email = "Email chưa được xác minh";
     if (!form.password.trim()) newErrors.password = "Vui lòng nhập mật khẩu";
     else if (form.password.length < 6)

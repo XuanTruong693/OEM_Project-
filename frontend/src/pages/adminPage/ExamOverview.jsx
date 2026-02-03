@@ -109,14 +109,14 @@ const ExamOverview = () => {
                 <div className="flex justify-between items-center mb-8">
                     <div>
                         <h1 className="text-3xl font-semibold text-white">{t('examOverviewTitle')}</h1>
-                        <p className="text-gray-400 mt-1">{t('examOverviewDesc')}</p>
+                        <p className="text-gray-300 mt-1">{t('examOverviewDesc')}</p>
                     </div>
                 </div>
 
                 {/* Search */}
                 <div className="flex gap-4 mb-6">
                     <div className="relative flex-1 max-w-md">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" size={18} />
                         <input
                             type="text"
                             placeholder="Tìm kiếm bài thi..."
@@ -133,7 +133,7 @@ const ExamOverview = () => {
                         <div className="flex items-center gap-3">
                             <BookOpen className="text-blue-400" size={24} />
                             <div>
-                                <p className="text-gray-400 text-sm">{t('totalExamsCount')}</p>
+                                <p className="text-gray-300 text-sm">{t('totalExamsCount')}</p>
                                 <p className="text-2xl font-bold text-white">{total}</p>
                             </div>
                         </div>
@@ -142,7 +142,7 @@ const ExamOverview = () => {
                         <div className="flex items-center gap-3">
                             <CheckCircle className="text-green-400" size={24} />
                             <div>
-                                <p className="text-gray-400 text-sm">{t('ongoingCount')}</p>
+                                <p className="text-gray-300 text-sm">{t('ongoingCount')}</p>
                                 <p className="text-2xl font-bold text-green-400">
                                     {exams.filter(e => {
                                         const now = new Date();
@@ -158,7 +158,7 @@ const ExamOverview = () => {
                         <div className="flex items-center gap-3">
                             <Clock className="text-yellow-400" size={24} />
                             <div>
-                                <p className="text-gray-400 text-sm">Sắp diễn ra</p>
+                                <p className="text-gray-300 text-sm">Sắp diễn ra</p>
                                 <p className="text-2xl font-bold text-yellow-400">
                                     {exams.filter(e => {
                                         const now = new Date();
@@ -173,7 +173,7 @@ const ExamOverview = () => {
                         <div className="flex items-center gap-3">
                             <FileText className="text-purple-400" size={24} />
                             <div>
-                                <p className="text-gray-400 text-sm">Tổng câu hỏi</p>
+                                <p className="text-gray-300 text-sm">Tổng câu hỏi</p>
                                 <p className="text-2xl font-bold text-purple-400">
                                     {exams.reduce((acc, e) => acc + (e.total_questions || 0), 0)}
                                 </p>
@@ -184,9 +184,9 @@ const ExamOverview = () => {
 
                 {/* Exams Grid */}
                 {loading ? (
-                    <div className="text-center py-12 text-gray-400">Đang tải...</div>
+                    <div className="text-center py-12 text-gray-300">Đang tải...</div>
                 ) : exams.length === 0 ? (
-                    <div className="text-center py-12 text-gray-400">Không tìm thấy bài thi nào</div>
+                    <div className="text-center py-12 text-gray-300">Không tìm thấy bài thi nào</div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {exams.map((exam) => {
@@ -204,21 +204,21 @@ const ExamOverview = () => {
                                     </div>
 
                                     <div className="space-y-2 mb-4">
-                                        <div className="flex items-center gap-2 text-sm text-gray-400">
+                                        <div className="flex items-center gap-2 text-sm text-gray-300">
                                             <Users size={14} />
                                             <span>GV: {exam.instructor_name || 'N/A'}</span>
                                         </div>
-                                        <div className="flex items-center gap-2 text-sm text-gray-400">
+                                        <div className="flex items-center gap-2 text-sm text-gray-300">
                                             <FileText size={14} />
                                             <span>{exam.total_questions || 0} câu hỏi</span>
                                         </div>
-                                        <div className="flex items-center gap-2 text-sm text-gray-400">
+                                        <div className="flex items-center gap-2 text-sm text-gray-300">
                                             <Clock size={14} />
                                             <span>{exam.duration_minutes || 0} phút</span>
                                         </div>
                                     </div>
 
-                                    <div className="text-xs text-gray-500 mb-4">
+                                    <div className="text-xs text-gray-300 mb-4">
                                         <p>Mở: {formatDateTime(exam.time_open)}</p>
                                         <p>Đóng: {formatDateTime(exam.time_close)}</p>
                                     </div>
@@ -242,7 +242,7 @@ const ExamOverview = () => {
                         <button
                             onClick={() => setPage(p => Math.max(1, p - 1))}
                             disabled={page === 1}
-                            className="p-2 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="p-2 text-gray-300 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <ChevronLeft size={20} />
                         </button>
@@ -250,7 +250,7 @@ const ExamOverview = () => {
                         <button
                             onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                             disabled={page === totalPages}
-                            className="p-2 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="p-2 text-gray-300 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <ChevronRight size={20} />
                         </button>
@@ -264,11 +264,11 @@ const ExamOverview = () => {
                             <div className="flex justify-between items-center p-6 border-b border-gray-700 sticky top-0 bg-gray-800 z-10">
                                 <div>
                                     <h2 className="text-xl font-semibold text-white">{selectedExam.title}</h2>
-                                    <p className="text-gray-400 text-sm mt-1">GV: {selectedExam.instructor_name || 'N/A'}</p>
+                                    <p className="text-gray-300 text-sm mt-1">GV: {selectedExam.instructor_name || 'N/A'}</p>
                                 </div>
                                 <button
                                     onClick={() => setShowDetailModal(false)}
-                                    className="text-gray-400 hover:text-white text-2xl"
+                                    className="text-gray-300 hover:text-white text-2xl"
                                 >
                                     ×
                                 </button>
@@ -278,19 +278,19 @@ const ExamOverview = () => {
                                 {/* Exam Info */}
                                 <div className="grid grid-cols-4 gap-4 mb-6">
                                     <div className="bg-gray-700/50 p-4 rounded-lg">
-                                        <p className="text-xs text-gray-400 uppercase mb-1">Thời gian mở</p>
+                                        <p className="text-xs text-gray-300 uppercase mb-1">Thời gian mở</p>
                                         <p className="text-white text-sm">{formatDateTime(selectedExam.time_open)}</p>
                                     </div>
                                     <div className="bg-gray-700/50 p-4 rounded-lg">
-                                        <p className="text-xs text-gray-400 uppercase mb-1">Thời gian đóng</p>
+                                        <p className="text-xs text-gray-300 uppercase mb-1">Thời gian đóng</p>
                                         <p className="text-white text-sm">{formatDateTime(selectedExam.time_close)}</p>
                                     </div>
                                     <div className="bg-gray-700/50 p-4 rounded-lg">
-                                        <p className="text-xs text-gray-400 uppercase mb-1">Thời lượng</p>
+                                        <p className="text-xs text-gray-300 uppercase mb-1">Thời lượng</p>
                                         <p className="text-white text-sm">{selectedExam.duration_minutes || 0} phút</p>
                                     </div>
                                     <div className="bg-gray-700/50 p-4 rounded-lg">
-                                        <p className="text-xs text-gray-400 uppercase mb-1">Số câu hỏi</p>
+                                        <p className="text-xs text-gray-300 uppercase mb-1">Số câu hỏi</p>
                                         <p className="text-white text-sm">{questions.length}</p>
                                     </div>
                                 </div>
@@ -302,9 +302,9 @@ const ExamOverview = () => {
                                 </h3>
 
                                 {loadingQuestions ? (
-                                    <div className="text-center py-8 text-gray-400">Đang tải câu hỏi...</div>
+                                    <div className="text-center py-8 text-gray-300">Đang tải câu hỏi...</div>
                                 ) : questions.length === 0 ? (
-                                    <div className="text-center py-8 text-gray-400">Không có câu hỏi nào</div>
+                                    <div className="text-center py-8 text-gray-300">Không có câu hỏi nào</div>
                                 ) : (
                                     <div className="space-y-4">
                                         {questions.map((q, idx) => (
@@ -315,7 +315,7 @@ const ExamOverview = () => {
                                                     </span>
                                                     <div className="flex-1">
                                                         <p className="text-white mb-2">{q.question_text}</p>
-                                                        <div className="flex items-center gap-4 text-xs text-gray-400">
+                                                        <div className="flex items-center gap-4 text-xs text-gray-300">
                                                             <span className="px-2 py-1 bg-gray-600 rounded">{q.type || 'MCQ'}</span>
                                                             <span>{q.points || 1} điểm</span>
                                                         </div>
@@ -365,3 +365,5 @@ const ExamOverview = () => {
 };
 
 export default ExamOverview;
+
+

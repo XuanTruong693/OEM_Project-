@@ -1,0 +1,14 @@
+# OEM Exam - Robots.txt
+# https://www.robotstxt.org/
+
+User-agent: *
+Allow: /
+
+# Sitemap location (uncomment if you have one)
+# Sitemap: https://your-domain.com/sitemap.xml
+
+# Disallow sensitive paths
+Disallow: /api/
+Disallow: /admin/
+Disallow: /.env
+Disallow: /node_modules/

@@ -1,16 +1,25 @@
 const jwt = require("jsonwebtoken");
+const { isBlacklisted } = require("../utils/tokenBlacklist");
 require("dotenv").config();
 
 // ✅ Middleware xác thực token
 const verifyToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  //console.log("🧾 Token received:", authHeader);
-  //console.log("🧾 Token received:", req.headers.authorization);
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({ message: "Không có token" });
   }
 
   const token = authHeader.split(" ")[1];
+
+  // ✅ Check if token is blacklisted (logged out)
+  if (isBlacklisted(token)) {
+    console.log("🚫 [Auth] Blacklisted token used");
+    return res.status(401).json({
+      message: "Token đã bị vô hiệu hóa. Vui lòng đăng nhập lại.",
+      tokenRevoked: true
+    });
+  }
+
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = {
@@ -19,11 +28,27 @@ const verifyToken = (req, res, next) => {
       role: decoded.role,
     };
 
-    //console.log("✅ Decoded JWT:", req.user); // kiểm tra kết quả thật
+    // Store token for potential logout
+    req.token = token;
+    req.tokenExp = decoded.exp;
+
+    // Log IP mismatch (warning only, not blocking - allows multi-device)
+    const clientIp = req.ip || req.connection?.remoteAddress || req.headers['x-forwarded-for'];
+    if (decoded.ip && decoded.ip !== clientIp) {
+      console.log(`⚠️ [Auth] IP mismatch for user ${decoded.id}: token=${decoded.ip}, current=${clientIp}`);
+      // NOT blocking - just logging for security audit
+    }
+
     next();
   } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        message: "Token đã hết hạn",
+        tokenExpired: true
+      });
+    }
     console.error("❌ Token verify error:", err);
-    return res.status(401).json({ message: "Token không hợp lệ hoặc đã hết hạn" });
+    return res.status(401).json({ message: "Token không hợp lệ" });
   }
 };
 
@@ -59,3 +84,4 @@ const authorizeRole = (roles = []) => {
 };
 
 module.exports = { verifyToken, authorizeRole };
+

@@ -114,6 +114,18 @@ CREATE TABLE submissions (
         'confirmed',
         'cancelled'
     ) NOT NULL DEFAULT 'pending',
+    -- AI Grading Status for guaranteed delivery
+    ai_grading_status ENUM(
+        'not_required',  -- No essay questions in exam
+        'pending',       -- Waiting to be graded by AI
+        'in_progress',   -- Currently being processed
+        'completed',     -- Successfully graded
+        'failed'         -- Failed, needs retry
+    ) DEFAULT 'not_required',
+    ai_grading_retry_count INT DEFAULT 0,
+    ai_grading_error TEXT NULL,
+    ai_grading_started_at DATETIME NULL,
+    -- Verification images
     face_image_blob LONGBLOB NULL,
     face_image_mimetype VARCHAR(100) NULL,
     face_image_url VARCHAR(500) NULL,
@@ -129,6 +141,7 @@ CREATE TABLE submissions (
     INDEX idx_submissions_user (user_id),
     INDEX idx_submissions_exam_user (exam_id, user_id),
     INDEX idx_submissions_status (status),
+    INDEX idx_ai_grading_status (ai_grading_status),
     CONSTRAINT fk_submissions__exams FOREIGN KEY (exam_id) REFERENCES exams (id) ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT fk_submissions__users FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
@@ -839,3 +852,45 @@ EXECUTE stmt;
 
 DEALLOCATE PREPARE stmt;
 -- End of oem_migration_v5.sql
+
+
+/* ----------------------------------------------------------------
+   Updated: sp_delete_student_exam_record (Safe Delete - No User Rename)
+   ---------------------------------------------------------------- */
+DELIMITER $$
+
+DROP PROCEDURE IF EXISTS sp_delete_student_exam_record$$
+
+CREATE PROCEDURE sp_delete_student_exam_record(
+  IN p_exam_id INT,
+  IN p_student_id INT
+)
+BEGIN
+  DECLARE exit HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  START TRANSACTION;
+
+  DELETE FROM ai_logs
+   WHERE student_id = p_student_id
+     AND question_id IN (SELECT id FROM exam_questions WHERE exam_id = p_exam_id);
+
+  DELETE FROM student_answers
+   WHERE student_id = p_student_id
+     AND question_id IN (SELECT id FROM exam_questions WHERE exam_id = p_exam_id);
+
+  DELETE FROM submissions
+   WHERE user_id = p_student_id
+     AND exam_id  = p_exam_id;
+
+  DELETE FROM results
+   WHERE student_id = p_student_id
+     AND exam_id    = p_exam_id;
+
+  COMMIT;
+END$$
+
+DELIMITER ;

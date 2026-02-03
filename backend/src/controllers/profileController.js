@@ -99,12 +99,11 @@ const uploadAvatar = async (req, res) => {
 			console.warn('[uploadAvatar] user not found id=', userId);
 			return res.status(404).json({ message: 'User not found' });
 		}
-
-		// Save binary data into DB (avatar_blob) and mimetype, and set avatar URL to a GET endpoint
 		user.avatar_blob = req.file.buffer;
 		user.avatar_mimetype = req.file.mimetype || 'application/octet-stream';
-		// set avatar to an absolute endpoint the frontend can call to fetch the image
-		user.avatar = `${req.protocol}://${req.get('host')}/api/profile/avatar/${userId}`;
+
+		// Add timestamp to bust browser cache when avatar changes
+		user.avatar = `/api/profile/avatar/${userId}?t=${Date.now()}`;
 
 		console.log('[uploadAvatar] saving user avatar to DB...');
 		await user.save();
@@ -114,7 +113,6 @@ const uploadAvatar = async (req, res) => {
 		res.json({ success: true, message: 'Avatar uploaded', data: { avatar: user.avatar } });
 	} catch (err) {
 		console.error('[uploadAvatar]', err && err.stack ? err.stack : err);
-		// Return the error message to help debugging in dev; in production consider hiding details
 		res.status(500).json({ success: false, message: err.message || 'Server error' });
 	}
 };
@@ -128,8 +126,10 @@ const getAvatar = async (req, res) => {
 
 		const mime = user.avatar_mimetype || 'application/octet-stream';
 		res.set('Content-Type', mime);
-		// optional caching
-		res.set('Cache-Control', 'public, max-age=86400');
+		// Disable caching to ensure fresh load
+		res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+
+		console.log(`[getAvatar] serving avatar for user ${id}, size: ${user.avatar_blob ? user.avatar_blob.length : 0} bytes`);
 		res.send(user.avatar_blob);
 	} catch (err) {
 		console.error('[getAvatar]', err);

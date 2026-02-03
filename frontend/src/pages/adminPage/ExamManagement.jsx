@@ -153,11 +153,11 @@ const ExamManagement = () => {
         } else if (timeOpen && now < timeOpen) {
             return { label: t('upcoming'), class: 'bg-blue-600/20 text-blue-400 border border-blue-600/30' };
         } else if (timeClose && now > timeClose) {
-            return { label: t('ended'), class: 'bg-gray-600/20 text-gray-400 border border-gray-600/30' };
+            return { label: t('ended'), class: 'bg-gray-600/20 text-gray-300 border border-gray-600/30' };
         } else if (exam.status === 'draft') {
             return { label: t('draft'), class: 'bg-yellow-600/20 text-yellow-400 border border-yellow-600/30' };
         } else {
-            return { label: exam.status, class: 'bg-gray-600/20 text-gray-400 border border-gray-600/30' };
+            return { label: exam.status, class: 'bg-gray-600/20 text-gray-300 border border-gray-600/30' };
         }
     };
 
@@ -175,7 +175,7 @@ const ExamManagement = () => {
                 <div className="flex justify-between items-center mb-8">
                     <div>
                         <h1 className="text-3xl font-semibold text-white">{t('examManagement')}</h1>
-                        <p className="text-gray-400 mt-1">{t('examManagement')}</p>
+                        <p className="text-gray-300 mt-1">{t('examManagement')}</p>
                     </div>
                 </div>
 
@@ -191,7 +191,7 @@ const ExamManagement = () => {
                 {/* Filters */}
                 <div className="flex gap-4 mb-6">
                     <div className="relative flex-1 max-w-md">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" size={18} />
                         <input
                             type="text"
                             placeholder={t('searchExam')}
@@ -218,25 +218,25 @@ const ExamManagement = () => {
                     <table className="w-full">
                         <thead className="bg-gray-700/50">
                             <tr>
-                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">{t('exam')}</th>
-                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">{t('instructor')}</th>
-                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">{t('status')}</th>
-                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">{t('time')}</th>
-                                <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">{t('questions')}</th>
-                                <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">{t('candidates')}</th>
-                                <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">{t('action')}</th>
+                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('exam')}</th>
+                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('instructor')}</th>
+                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('status')}</th>
+                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('time')}</th>
+                                <th className="px-6 py-4 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">{t('questions')}</th>
+                                <th className="px-6 py-4 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">{t('candidates')}</th>
+                                <th className="px-6 py-4 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">{t('action')}</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-700">
                             {loading ? (
                                 <tr>
-                                    <td colSpan="7" className="px-6 py-8 text-center text-gray-400">
+                                    <td colSpan="7" className="px-6 py-8 text-center text-gray-300">
                                         {t('loading')}
                                     </td>
                                 </tr>
                             ) : exams.length === 0 ? (
                                 <tr>
-                                    <td colSpan="7" className="px-6 py-8 text-center text-gray-400">
+                                    <td colSpan="7" className="px-6 py-8 text-center text-gray-300">
                                         {t('noData')}
                                     </td>
                                 </tr>
@@ -254,7 +254,7 @@ const ExamManagement = () => {
                                                     </div>
                                                     <div>
                                                         <p className="text-white font-medium">{exam.title}</p>
-                                                        <p className="text-gray-400 text-xs">{exam.exam_room_code || 'Không có mã phòng'}</p>
+                                                        <p className="text-gray-300 text-xs">{exam.exam_room_code || 'Không có mã phòng'}</p>
                                                     </div>
                                                 </div>
                                             </td>
@@ -266,8 +266,8 @@ const ExamManagement = () => {
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className="text-xs">
-                                                    <p className="text-gray-400">Mở: {formatDateTime(exam.time_open)}</p>
-                                                    <p className="text-gray-400">Đóng: {formatDateTime(exam.time_close)}</p>
+                                                    <p className="text-gray-300">Mở: {formatDateTime(exam.time_open)}</p>
+                                                    <p className="text-gray-300">Đóng: {formatDateTime(exam.time_close)}</p>
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 text-center text-sm text-gray-300">{exam.total_questions || 0}</td>
@@ -276,14 +276,14 @@ const ExamManagement = () => {
                                                 <div className="flex justify-end gap-2">
                                                     <button
                                                         onClick={() => handleView(exam.id)}
-                                                        className="p-2 text-gray-400 hover:text-blue-400 hover:bg-blue-600/10 rounded-lg transition-colors"
+                                                        className="p-2 text-gray-300 hover:text-blue-400 hover:bg-blue-600/10 rounded-lg transition-colors"
                                                         title="Xem chi tiết"
                                                     >
                                                         <Eye size={16} />
                                                     </button>
                                                     <button
                                                         onClick={() => handleEditTime(exam)}
-                                                        className="p-2 text-gray-400 hover:text-yellow-400 hover:bg-yellow-600/10 rounded-lg transition-colors"
+                                                        className="p-2 text-gray-300 hover:text-yellow-400 hover:bg-yellow-600/10 rounded-lg transition-colors"
                                                         title="Sửa thời gian"
                                                     >
                                                         <Clock size={16} />
@@ -291,7 +291,7 @@ const ExamManagement = () => {
                                                     {canDelete ? (
                                                         <button
                                                             onClick={() => handleDelete(exam)}
-                                                            className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-600/10 rounded-lg transition-colors"
+                                                            className="p-2 text-gray-300 hover:text-red-400 hover:bg-red-600/10 rounded-lg transition-colors"
                                                             title="Xóa"
                                                         >
                                                             <Trash2 size={16} />
@@ -317,14 +317,14 @@ const ExamManagement = () => {
                     {/* Pagination */}
                     {totalPages > 1 && (
                         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-700">
-                            <span className="text-sm text-gray-400">
+                            <span className="text-sm text-gray-300">
                                 Hiển thị {(page - 1) * limit + 1} - {Math.min(page * limit, total)} trong tổng số {total} bài thi
                             </span>
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => setPage(p => Math.max(1, p - 1))}
                                     disabled={page === 1}
-                                    className="p-2 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="p-2 text-gray-300 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     <ChevronLeft size={18} />
                                 </button>
@@ -332,7 +332,7 @@ const ExamManagement = () => {
                                 <button
                                     onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                                     disabled={page === totalPages}
-                                    className="p-2 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="p-2 text-gray-300 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     <ChevronRight size={18} />
                                 </button>
@@ -347,31 +347,31 @@ const ExamManagement = () => {
                         <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-2xl mx-4">
                             <div className="flex justify-between items-center p-6 border-b border-gray-700 sticky top-0 bg-gray-800 z-10">
                                 <h2 className="text-xl font-semibold text-white">Chi tiết bài thi</h2>
-                                <button onClick={() => setShowViewModal(false)} className="text-gray-400 hover:text-white">
+                                <button onClick={() => setShowViewModal(false)} className="text-gray-300 hover:text-white">
                                     <X size={20} />
                                 </button>
                             </div>
                             <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
                                 <div>
                                     <h3 className="text-lg font-medium text-white mb-2">{selectedExam.title}</h3>
-                                    <p className="text-gray-400">Giảng viên: {selectedExam.instructor_name || 'N/A'}</p>
+                                    <p className="text-gray-300">Giảng viên: {selectedExam.instructor_name || 'N/A'}</p>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="bg-gray-700/50 p-4 rounded-lg">
-                                        <p className="text-xs text-gray-400 uppercase mb-1">Thời gian mở</p>
+                                        <p className="text-xs text-gray-300 uppercase mb-1">Thời gian mở</p>
                                         <p className="text-white">{formatDateTime(selectedExam.time_open)}</p>
                                     </div>
                                     <div className="bg-gray-700/50 p-4 rounded-lg">
-                                        <p className="text-xs text-gray-400 uppercase mb-1">Thời gian đóng</p>
+                                        <p className="text-xs text-gray-300 uppercase mb-1">Thời gian đóng</p>
                                         <p className="text-white">{formatDateTime(selectedExam.time_close)}</p>
                                     </div>
                                     <div className="bg-gray-700/50 p-4 rounded-lg">
-                                        <p className="text-xs text-gray-400 uppercase mb-1">Thời lượng</p>
+                                        <p className="text-xs text-gray-300 uppercase mb-1">Thời lượng</p>
                                         <p className="text-white">{selectedExam.duration_minutes || 0} phút</p>
                                     </div>
                                     <div className="bg-gray-700/50 p-4 rounded-lg">
-                                        <p className="text-xs text-gray-400 uppercase mb-1">Điểm tối đa</p>
+                                        <p className="text-xs text-gray-300 uppercase mb-1">Điểm tối đa</p>
                                         <p className="text-white">{selectedExam.max_points || 100}</p>
                                     </div>
                                 </div>
@@ -385,7 +385,7 @@ const ExamManagement = () => {
                                                     <p className="text-sm text-gray-300">
                                                         <span className="text-blue-400 font-medium">Q{idx + 1}:</span> {q.question_text?.slice(0, 100)}...
                                                     </p>
-                                                    <span className="text-xs text-gray-500">{q.type} • {q.points || 1} điểm</span>
+                                                    <span className="text-xs text-gray-300">{q.type} • {q.points || 1} điểm</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -402,14 +402,14 @@ const ExamManagement = () => {
                         <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-md mx-4">
                             <div className="flex justify-between items-center p-6 border-b border-gray-700">
                                 <h2 className="text-xl font-semibold text-white">Cập nhật thời gian kết thúc</h2>
-                                <button onClick={() => setShowEditTimeModal(false)} className="text-gray-400 hover:text-white">
+                                <button onClick={() => setShowEditTimeModal(false)} className="text-gray-300 hover:text-white">
                                     <X size={20} />
                                 </button>
                             </div>
                             <div className="p-6 space-y-4">
                                 <p className="text-gray-300">Bài thi: <span className="text-white font-medium">{selectedExam.title}</span></p>
                                 <div>
-                                    <label className="block text-sm text-gray-400 mb-2">Thời gian kết thúc mới</label>
+                                    <label className="block text-sm text-gray-300 mb-2">Thời gian kết thúc mới</label>
                                     <DatePicker
                                         selected={newTimeClose ? new Date(newTimeClose) : null}
                                         onChange={(date) => {
@@ -436,14 +436,14 @@ const ExamManagement = () => {
                                         placeholderText="Chọn thời gian..."
                                     />
                                 </div>
-                                <p className="text-xs text-gray-400">
+                                <p className="text-xs text-gray-300">
                                     * Thời gian kết thúc phải sau thời điểm hiện tại
                                 </p>
                             </div>
                             <div className="flex justify-end gap-3 p-6 border-t border-gray-700">
                                 <button
                                     onClick={() => setShowEditTimeModal(false)}
-                                    className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+                                    className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
                                 >
                                     Hủy
                                 </button>
@@ -469,7 +469,7 @@ const ExamManagement = () => {
                                     <AlertTriangle className="text-red-400" size={32} />
                                 </div>
                                 <h2 className="text-xl font-semibold text-white mb-2">Xác nhận xóa</h2>
-                                <p className="text-gray-400 mb-6">
+                                <p className="text-gray-300 mb-6">
                                     Bạn có chắc chắn muốn xóa bài thi <span className="text-white font-medium">"{selectedExam.title}"</span>?
                                     Tất cả câu hỏi và kết quả thi cũng sẽ bị xóa.
                                 </p>
@@ -498,3 +498,5 @@ const ExamManagement = () => {
 };
 
 export default ExamManagement;
+
+

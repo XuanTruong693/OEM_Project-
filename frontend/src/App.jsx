@@ -253,6 +253,7 @@ const App = () => {
               <Route path="/result" element={<Result />} />
               <Route path="/setting" element={<Setting />} />
               <Route path="/instructor/exams/:id/edit" element={<EditExam />} />
+              <Route path="/instructor/profile" element={<Profile />} />
             </Route>
 
             <Route

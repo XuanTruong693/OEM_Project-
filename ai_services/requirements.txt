@@ -1,7 +1,46 @@
+# ============================================
+# OEM AI Services - Requirements
+# ============================================
+
+# BƯỚC 1: Tạo và kích hoạt Virtual Environment
+# Windows PowerShell:
+#   python -m venv .venv
+#   .\.venv\Scripts\Activate.ps1
+#
+# Linux/macOS:
+#   python3 -m venv .venv
+#   source .venv/bin/activate
+
+# BƯỚC 2: Cài đặt TẤT CẢ (1 lệnh duy nhất)
+#   pip install --upgrade pip
+#   pip install -r requirements.txt
+
+# ============================================
+# NLP - AI Grading (chấm điểm tự luận)
+# ============================================
 fastapi
 uvicorn
 sentence-transformers
-underthesea
+underthesea<7  # Version 6.8.4 verified stable on Windows Python 3.11
+underthesea-core==1.0.4
 nltk
-numpy
+numpy>=1.26.4
 torch --index-url https://download.pytorch.org/whl/cpu
+mysql-connector-python  # For learning module DB access
+
+# ============================================
+# Face Recognition - Uniface (xác minh khuôn mặt)
+# ============================================
+uniface==1.1.2
+
+# ============================================
+# Image Processing
+# ============================================
+opencv-python>=4.10.0.84
+scikit-image>=0.24.0
+Pillow>=10.4.0
+
+# ============================================
+# OCR - Tesseract (đọc thẻ sinh viên)
+# ============================================
+pytesseract==0.3.13

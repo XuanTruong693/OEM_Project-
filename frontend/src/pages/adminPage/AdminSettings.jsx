@@ -204,7 +204,7 @@ const AdminSettings = () => {
             <div className="flex min-h-screen bg-gray-900">
                 <AdminSidebar activeTab="settings" />
                 <main className="flex-1 p-8 flex items-center justify-center">
-                    <div className="text-gray-400">{t('loading')}</div>
+                    <div className="text-gray-300">{t('loading')}</div>
                 </main>
             </div>
         );
@@ -219,7 +219,7 @@ const AdminSettings = () => {
                 <div className="flex justify-between items-center mb-8">
                     <div>
                         <h1 className="text-3xl font-semibold text-white">{t('settingsTitle')}</h1>
-                        <p className="text-gray-400 mt-1">{t('settingsDesc')}</p>
+                        <p className="text-gray-300 mt-1">{t('settingsDesc')}</p>
                     </div>
                 </div>
 
@@ -242,7 +242,7 @@ const AdminSettings = () => {
 
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-sm text-gray-400 mb-3">{t('theme')}</label>
+                                <label className="block text-sm text-gray-300 mb-3">{t('theme')}</label>
                                 <div className="flex gap-4">
                                     <button
                                         onClick={() => handleUpdatePreferences({ theme: 'dark' })}
@@ -251,8 +251,8 @@ const AdminSettings = () => {
                                             : 'border-gray-600 bg-gray-700/50 hover:border-gray-500'
                                             }`}
                                     >
-                                        <Moon className={preferences.theme === 'dark' ? 'text-blue-400' : 'text-gray-400'} size={24} />
-                                        <span className={preferences.theme === 'dark' ? 'text-white' : 'text-gray-400'}>Dark Mode</span>
+                                        <Moon className={preferences.theme === 'dark' ? 'text-blue-400' : 'text-gray-300'} size={24} />
+                                        <span className={preferences.theme === 'dark' ? 'text-white' : 'text-gray-300'}>Dark Mode</span>
                                     </button>
                                     <button
                                         onClick={() => handleUpdatePreferences({ theme: 'light' })}
@@ -261,14 +261,14 @@ const AdminSettings = () => {
                                             : 'border-gray-600 bg-gray-700/50 hover:border-gray-500'
                                             }`}
                                     >
-                                        <Sun className={preferences.theme === 'light' ? 'text-yellow-400' : 'text-gray-400'} size={24} />
-                                        <span className={preferences.theme === 'light' ? 'text-white' : 'text-gray-400'}>Light Mode</span>
+                                        <Sun className={preferences.theme === 'light' ? 'text-yellow-400' : 'text-gray-300'} size={24} />
+                                        <span className={preferences.theme === 'light' ? 'text-white' : 'text-gray-300'}>Light Mode</span>
                                     </button>
                                 </div>
                             </div>
 
                             <div>
-                                <label className="block text-sm text-gray-400 mb-2">{t('language')}</label>
+                                <label className="block text-sm text-gray-300 mb-2">{t('language')}</label>
                                 <select
                                     value={language}
                                     onChange={(e) => {
@@ -292,14 +292,14 @@ const AdminSettings = () => {
                         </h2>
 
                         <div>
-                            <label className="block text-sm text-gray-400 mb-2">{t('yearlyUserTarget')}</label>
+                            <label className="block text-sm text-gray-300 mb-2">{t('yearlyUserTarget')}</label>
                             <input
                                 type="number"
                                 value={settings.user_growth_target_yearly}
                                 onChange={(e) => setSettings({ ...settings, user_growth_target_yearly: parseInt(e.target.value) || 0 })}
                                 className="w-full px-4 py-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white text-xl font-bold focus:outline-none focus:border-blue-500"
                             />
-                            <p className="text-xs text-gray-500 mt-2">{t('yearlyUserTargetDesc')}</p>
+                            <p className="text-xs text-gray-300 mt-2">{t('yearlyUserTargetDesc')}</p>
                         </div>
                     </div>
 
@@ -328,7 +328,7 @@ const AdminSettings = () => {
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm text-gray-400 mb-2">{t('backupTime')}</label>
+                                    <label className="block text-sm text-gray-300 mb-2">{t('backupTime')}</label>
                                     <DatePicker
                                         selected={(() => {
                                             const [h, m] = (settings.backup_schedule.time || '01:00').split(':');
@@ -354,7 +354,7 @@ const AdminSettings = () => {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm text-gray-400 mb-2">{t('retentionDays')}</label>
+                                    <label className="block text-sm text-gray-300 mb-2">{t('retentionDays')}</label>
                                     <input
                                         type="number"
                                         value={settings.backup_schedule.retention_days || 30}
@@ -390,7 +390,7 @@ const AdminSettings = () => {
 
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-sm text-gray-400 mb-2">{t('massDelete')}</label>
+                                <label className="block text-sm text-gray-300 mb-2">{t('massDelete')}</label>
                                 <input
                                     type="number"
                                     value={settings.suspicious_thresholds.mass_delete || 10}
@@ -402,7 +402,7 @@ const AdminSettings = () => {
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm text-gray-400 mb-2">{t('failedLogin')}</label>
+                                <label className="block text-sm text-gray-300 mb-2">{t('failedLogin')}</label>
                                 <input
                                     type="number"
                                     value={settings.suspicious_thresholds.failed_login || 5}
@@ -414,7 +414,7 @@ const AdminSettings = () => {
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm text-gray-400 mb-2">{t('restoreFrequency')}</label>
+                                <label className="block text-sm text-gray-300 mb-2">{t('restoreFrequency')}</label>
                                 <input
                                     type="number"
                                     value={settings.suspicious_thresholds.restore_frequency || 3}
@@ -437,19 +437,19 @@ const AdminSettings = () => {
                     </h2>
 
                     {backupHistory.length === 0 ? (
-                        <p className="text-gray-400 text-center py-4">{t('noBackups')}</p>
+                        <p className="text-gray-300 text-center py-4">{t('noBackups')}</p>
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full">
                                 <thead>
                                     <tr className="border-b border-gray-700">
-                                        <th className="text-left py-2 px-4 text-xs font-medium text-gray-400 uppercase">{t('time')}</th>
-                                        <th className="text-left py-2 px-4 text-xs font-medium text-gray-400 uppercase">{t('backupType')}</th>
-                                        <th className="text-left py-2 px-4 text-xs font-medium text-gray-400 uppercase">{t('fileName')}</th>
-                                        <th className="text-left py-2 px-4 text-xs font-medium text-gray-400 uppercase">{t('fileSize')}</th>
-                                        <th className="text-left py-2 px-4 text-xs font-medium text-gray-400 uppercase">{t('status')}</th>
-                                        <th className="text-left py-2 px-4 text-xs font-medium text-gray-400 uppercase">{t('performedBy')}</th>
-                                        <th className="text-center py-2 px-4 text-xs font-medium text-gray-400 uppercase">Thao tác</th>
+                                        <th className="text-left py-2 px-4 text-xs font-medium text-gray-300 uppercase">{t('time')}</th>
+                                        <th className="text-left py-2 px-4 text-xs font-medium text-gray-300 uppercase">{t('backupType')}</th>
+                                        <th className="text-left py-2 px-4 text-xs font-medium text-gray-300 uppercase">{t('fileName')}</th>
+                                        <th className="text-left py-2 px-4 text-xs font-medium text-gray-300 uppercase">{t('fileSize')}</th>
+                                        <th className="text-left py-2 px-4 text-xs font-medium text-gray-300 uppercase">{t('status')}</th>
+                                        <th className="text-left py-2 px-4 text-xs font-medium text-gray-300 uppercase">{t('performedBy')}</th>
+                                        <th className="text-center py-2 px-4 text-xs font-medium text-gray-300 uppercase">Thao tác</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -466,7 +466,7 @@ const AdminSettings = () => {
                                                     {backup.backup_type}
                                                 </span>
                                             </td>
-                                            <td className="py-3 px-4 text-sm text-gray-400 font-mono">{backup.file_name}</td>
+                                            <td className="py-3 px-4 text-sm text-gray-300 font-mono">{backup.file_name}</td>
                                             <td className="py-3 px-4 text-sm text-gray-300">{formatFileSize(backup.file_size)}</td>
                                             <td className="py-3 px-4">
                                                 <span className={`px-2 py-1 rounded text-xs ${backup.status === 'completed' ? 'bg-green-600/20 text-green-400' :
@@ -476,7 +476,7 @@ const AdminSettings = () => {
                                                     {backup.status}
                                                 </span>
                                             </td>
-                                            <td className="py-3 px-4 text-sm text-gray-400">{backup.performed_by_email || 'System'}</td>
+                                            <td className="py-3 px-4 text-sm text-gray-300">{backup.performed_by_email || 'System'}</td>
                                             <td className="py-3 px-4 text-center">
                                                 {backup.status === 'completed' && (
                                                     <button
@@ -528,7 +528,7 @@ const AdminSettings = () => {
                             </div>
                             <button
                                 onClick={() => setShowRestoreModal(false)}
-                                className="text-gray-400 hover:text-white p-1 hover:bg-gray-700 rounded"
+                                className="text-gray-300 hover:text-white p-1 hover:bg-gray-700 rounded"
                             >
                                 <X size={18} />
                             </button>
@@ -542,15 +542,15 @@ const AdminSettings = () => {
                             </div>
                             <div className="bg-gray-700/50 rounded-lg p-4 space-y-2">
                                 <div className="flex justify-between text-sm">
-                                    <span className="text-gray-400">File backup:</span>
+                                    <span className="text-gray-300">File backup:</span>
                                     <span className="text-white font-mono text-xs">{selectedBackup.file_name}</span>
                                 </div>
                                 <div className="flex justify-between text-sm">
-                                    <span className="text-gray-400">Thời gian tạo:</span>
+                                    <span className="text-gray-300">Thời gian tạo:</span>
                                     <span className="text-white">{new Date(selectedBackup.started_at).toLocaleString('vi-VN')}</span>
                                 </div>
                                 <div className="flex justify-between text-sm">
-                                    <span className="text-gray-400">Kích thước:</span>
+                                    <span className="text-gray-300">Kích thước:</span>
                                     <span className="text-white">{formatFileSize(selectedBackup.file_size)}</span>
                                 </div>
                             </div>
@@ -558,7 +558,7 @@ const AdminSettings = () => {
                         <div className="flex justify-end gap-3 p-5 border-t border-gray-700">
                             <button
                                 onClick={() => setShowRestoreModal(false)}
-                                className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+                                className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
                             >
                                 Hủy
                             </button>
@@ -582,3 +582,5 @@ const AdminSettings = () => {
 };
 
 export default AdminSettings;
+
+

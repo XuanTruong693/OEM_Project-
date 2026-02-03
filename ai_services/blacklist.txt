@@ -1,0 +1,83 @@
+# AI Service Blacklist
+# Format: timestamp - IP - reason
+# This file is auto-generated when suspicious IPs are detected
+2025-12-13T12:38:37.247685 - 176.117.107.91 - Used CONNECT method
+2025-12-13T13:48:51.965419 - 64.62.156.221 - Used CONNECT method
+2025-12-13T22:47:22.629433 - 119.59.114.48 - Accessed suspicious path: /login.rsp
+2025-12-14T04:22:50.540421 - 64.227.147.81 - Accessed suspicious path: /login
+2025-12-14T09:36:42.880617 - 94.26.106.58 - Used CONNECT method
+2025-12-14T16:42:42.330572 - 184.105.247.198 - Used CONNECT method
+2025-12-14T20:25:38.886962 - 142.93.78.198 - Accessed suspicious path: /.env
+2025-12-15T13:43:56.725447 - 216.218.206.80 - Used CONNECT method
+2025-12-15T20:44:26.012995 - 104.234.168.143 - Used CONNECT method
+2025-12-16T02:44:37.252014 - 143.244.179.39 - Accessed suspicious path: /.env
+2025-12-16T11:45:26.619474 - 138.197.148.150 - Accessed suspicious path: /login
+2025-12-16T14:26:56.891236 - 213.209.143.82 - Used CONNECT method
+2025-12-16T15:45:07.861853 - 204.76.203.213 - Used CONNECT method
+2025-12-16T16:47:03.846772 - 65.49.1.235 - Used CONNECT method
+2025-12-16T16:54:00.568525 - 162.142.125.212 - Accessed suspicious path: /login
+2025-12-16T18:30:01.895589 - 204.76.203.18 - Accessed suspicious path: /backup/
+2025-12-17T00:34:37.060525 - 167.94.146.57 - Accessed suspicious path: /login
+2025-12-17T01:58:22.249786 - 213.209.143.52 - Used CONNECT method
+2025-12-17T08:59:11.946781 - 104.248.88.166 - Accessed suspicious path: /login
+2025-12-17T10:47:14.685910 - 184.105.247.204 - Used CONNECT method
+2025-12-17T11:36:48.812013 - 162.243.55.161 - Accessed suspicious path: /.env
+2025-12-17T15:22:11.618058 - 162.142.125.197 - Accessed suspicious path: /login
+2025-12-18T06:12:41.326788 - 167.99.179.183 - Accessed suspicious path: /login
+2025-12-18T07:36:49.743541 - 64.62.156.83 - Used CONNECT method
+2025-12-18T12:49:36.152794 - 45.156.87.74 - Used CONNECT method
+2025-12-18T19:20:43.919508 - 107.170.63.43 - Accessed suspicious path: /.env
+2025-12-19T04:35:00.547515 - 69.55.55.230 - Accessed suspicious path: /login
+2025-12-19T12:37:18.590917 - 178.128.203.219 - Accessed suspicious path: /solr/admin/info/system
+2025-12-19T14:26:58.461476 - 46.101.173.200 - Accessed suspicious path: /solr/admin/info/system
+2025-12-19T17:58:52.231912 - 176.117.107.74 - Used CONNECT method
+2025-12-19T19:55:25.786495 - 184.105.247.216 - Used CONNECT method
+2025-12-20T00:37:33.233335 - 64.225.35.77 - Accessed suspicious path: /login
+2025-12-20T05:10:10.798587 - 167.71.147.225 - Accessed suspicious path: /.env
+2025-12-20T06:52:23.699060 - 165.154.104.235 - Accessed suspicious path: /config.json
+2025-12-20T08:58:05.237151 - 36.255.98.221 - Used CONNECT method
+2025-12-21T01:38:24.243911 - 159.203.1.87 - Accessed suspicious path: /login
+2025-12-21T02:14:14.559905 - 176.117.107.97 - Used CONNECT method
+2025-12-21T07:38:26.709309 - 64.62.156.87 - Used CONNECT method
+2025-12-21T09:03:31.720826 - 79.124.49.130 - Used CONNECT method
+2025-12-21T10:45:23.403960 - 209.38.93.170 - Accessed suspicious path: /.env
+2025-12-21T15:51:51.864250 - 130.12.180.82 - Used CONNECT method
+2025-12-21T20:46:25.438038 - 134.199.173.96 - Accessed suspicious path: /login
+2025-12-22T13:16:05.760253 - 159.223.217.166 - Accessed suspicious path: /.env
+2025-12-22T18:31:54.072754 - 142.93.142.250 - Accessed suspicious path: /login
+2025-12-22T19:55:46.222293 - 65.49.1.151 - Used CONNECT method
+2025-12-23T19:46:59.014596 - 162.142.125.201 - Accessed suspicious path: /login
+2025-12-23T23:06:11.834187 - 206.168.34.205 - Accessed suspicious path: /login
+2025-12-24T00:16:51.810765 - 104.236.18.127 - Accessed suspicious path: /login
+2025-12-24T09:34:18.726232 - 142.93.246.112 - Accessed suspicious path: /.env
+2025-12-24T19:38:40.100872 - 64.62.197.62 - Used CONNECT method
+2025-12-25T01:05:47.374846 - 164.90.188.175 - Accessed suspicious path: /login
+2025-12-25T04:10:13.334296 - 152.32.243.98 - Accessed suspicious path: /config.json
+2025-12-25T17:56:33.344789 - 176.117.107.94 - Used CONNECT method
+2025-12-25T19:38:41.264927 - 64.62.197.195 - Used CONNECT method
+2025-12-26T05:47:13.325405 - 134.199.226.118 - Accessed suspicious path: /.env
+2025-12-26T07:56:05.064933 - 45.194.92.18 - Accessed suspicious path: /rpcform/login
+2025-12-26T08:31:18.473990 - 162.243.9.242 - Accessed suspicious path: /login
+2025-12-26T19:41:20.685839 - 64.62.156.143 - Used CONNECT method
+2025-12-27T05:43:36.366292 - 143.198.178.150 - Accessed suspicious path: /login
+2025-12-27T14:45:40.997021 - 138.68.28.251 - Accessed suspicious path: /.env
+2025-12-27T19:23:13.566908 - 167.99.249.109 - Accessed suspicious path: /solr/admin/info/system
+2025-12-28T08:16:50.815843 - 64.227.74.41 - Accessed suspicious path: /login
+2025-12-28T14:26:17.838707 - 123.58.210.106 - Accessed suspicious path: /config.json
+2025-12-28T19:36:15.511666 - 64.62.156.127 - Used CONNECT method
+2025-12-28T22:44:21.642250 - 165.22.199.43 - Accessed suspicious path: /.env
+2025-12-28T23:28:07.823885 - 84.247.188.191 - Used CONNECT method
+2025-12-29T04:35:36.842724 - 167.71.105.138 - Accessed suspicious path: /login
+2025-12-29T10:35:27.862068 - 65.49.1.54 - Used CONNECT method
+2025-12-29T13:54:35.563469 - 204.76.203.87 - Used CONNECT method
+2025-12-30T04:28:44.097263 - 161.35.161.174 - Accessed suspicious path: /login
+2025-12-30T07:38:52.787839 - 64.62.197.132 - Used CONNECT method
+2025-12-30T08:43:02.023431 - 134.199.148.209 - Accessed suspicious path: /.env
+2025-12-30T09:56:48.235381 - 45.79.123.76 - Accessed suspicious path: /login.php
+2025-12-30T20:43:22.598034 - 84.247.163.90 - Used CONNECT method
+2025-12-31T00:37:47.934187 - 104.236.204.238 - Accessed suspicious path: /login
+2025-12-31T07:35:08.798604 - 65.49.1.123 - Used CONNECT method
+2025-12-31T08:01:58.341490 - 178.249.214.10 - Accessed suspicious path: /login.rsp
+2025-12-31T15:07:02.413408 - 154.43.52.51 - Used CONNECT method
+2025-12-31T21:43:01.023686 - 162.243.78.103 - Accessed suspicious path: /.env
+2026-01-01T00:38:42.074798 - 130.12.180.52 - Used CONNECT method

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import axiosClient from '../../api/axiosClient';
+import { getFullImageUrl } from '../../utils/imageUtils';
 
 export default function StudentDashboard() {
   const navigate = useNavigate();
@@ -20,14 +21,14 @@ export default function StudentDashboard() {
           const existing = examMap.get(examId);
           const currentScore = Number(r.suggested_total_score ?? r.total_score ?? 0);
           const existingScore = existing ? Number(existing.suggested_total_score ?? existing.total_score ?? 0) : -1;
-          
+
           if (!existing) {
             examMap.set(examId, r);
           } else {
             // Priority 1: instructor_confirmed = 1 (approved)
             const currentConfirmed = r.instructor_confirmed === 1 || r.status === 'confirmed';
             const existingConfirmed = existing.instructor_confirmed === 1 || existing.status === 'confirmed';
-            
+
             if (currentConfirmed && !existingConfirmed) {
               examMap.set(examId, r);
             } else if (!currentConfirmed && existingConfirmed) {
@@ -39,10 +40,10 @@ export default function StudentDashboard() {
           }
         });
 
-        const filteredResults = Array.from(examMap.values()).sort((a, b) => 
+        const filteredResults = Array.from(examMap.values()).sort((a, b) =>
           new Date(b.submitted_at || 0) - new Date(a.submitted_at || 0)
         );
-        
+
         setResults(filteredResults);
       } catch (e) {
         setResults([]);
@@ -60,10 +61,10 @@ export default function StudentDashboard() {
           try {
             localStorage.setItem('fullname', u.full_name || '');
             if (u.avatar) localStorage.setItem('avatar', u.avatar);
-          } catch {}
+          } catch { }
           return;
         }
-      } catch {}
+      } catch { }
 
       const fullname = localStorage.getItem('fullname') || 'Người dùng';
       const avatar = localStorage.getItem('avatar') || '/icons/UI Image/default-avatar.png';
@@ -78,26 +79,26 @@ export default function StudentDashboard() {
     const avg = n ? (results.reduce((s, r) => s + Number(r.suggested_total_score ?? r.total_score ?? 0), 0) / n) : 0;
     const passCount = results.filter(r => Number(r.suggested_total_score ?? r.total_score ?? 0) >= 5).length;
     const passRate = n ? Math.round((passCount / n) * 100) : 0;
-    
+
     // Lấy 7 bài thi gần nhất
     const recent7 = results.slice(0, Math.min(7, results.length));
-    
+
     // 1. Chart Tổng bài thi: Số bài thi theo 7 NGÀY gần nhất
     const now = new Date();
     const chartDataTotal = [6, 5, 4, 3, 2, 1, 0].map(daysAgo => {
       const targetDate = new Date(now);
       targetDate.setDate(now.getDate() - daysAgo);
       targetDate.setHours(0, 0, 0, 0);
-      
+
       const nextDate = new Date(targetDate);
       nextDate.setDate(targetDate.getDate() + 1);
-      
+
       const count = results.filter(r => {
         if (!r.submitted_at) return false;
         const submitDate = new Date(r.submitted_at);
         return submitDate >= targetDate && submitDate < nextDate;
       }).length;
-      
+
       return count; // Số bài thi trong ngày đó
     });
 
@@ -106,18 +107,18 @@ export default function StudentDashboard() {
       const targetDate = new Date(now);
       targetDate.setDate(now.getDate() - daysAgo);
       targetDate.setHours(0, 0, 0, 0);
-      
+
       const nextDate = new Date(targetDate);
       nextDate.setDate(targetDate.getDate() + 1);
-      
+
       const dayResults = results.filter(r => {
         if (!r.submitted_at) return false;
         const submitDate = new Date(r.submitted_at);
         return submitDate >= targetDate && submitDate < nextDate;
       });
-      
+
       if (dayResults.length === 0) return 0;
-      
+
       const sum = dayResults.reduce((s, r) => s + Number(r.suggested_total_score ?? r.total_score ?? 0), 0);
       return sum / dayResults.length; // Trung bình cộng trong ngày
     });
@@ -127,18 +128,18 @@ export default function StudentDashboard() {
       const targetDate = new Date(now);
       targetDate.setDate(now.getDate() - daysAgo);
       targetDate.setHours(0, 0, 0, 0);
-      
+
       const nextDate = new Date(targetDate);
       nextDate.setDate(targetDate.getDate() + 1);
-      
+
       const dayResults = results.filter(r => {
         if (!r.submitted_at) return false;
         const submitDate = new Date(r.submitted_at);
         return submitDate >= targetDate && submitDate < nextDate;
       });
-      
+
       if (dayResults.length === 0) return 0;
-      
+
       return Math.max(...dayResults.map(r => Number(r.suggested_total_score ?? r.total_score ?? 0)));
     });
 
@@ -147,38 +148,38 @@ export default function StudentDashboard() {
       const targetDate = new Date(now);
       targetDate.setDate(now.getDate() - daysAgo);
       targetDate.setHours(0, 0, 0, 0);
-      
+
       const nextDate = new Date(targetDate);
       nextDate.setDate(targetDate.getDate() + 1);
-      
+
       const dayResults = results.filter(r => {
         if (!r.submitted_at) return false;
         const submitDate = new Date(r.submitted_at);
         return submitDate >= targetDate && submitDate < nextDate;
       });
-      
+
       if (dayResults.length === 0) return 0;
-      
+
       // Lấy bài gần nhất trong ngày đó
       return Number(dayResults[0].suggested_total_score ?? dayResults[0].total_score ?? 0);
     });
-    
-    const finalStats = { 
-      n, 
-      best, 
-      avg: avg.toFixed(1), 
+
+    const finalStats = {
+      n,
+      best,
+      avg: avg.toFixed(1),
       passRate,
       chartDataTotal,
       chartDataAvg,
       chartDataBest,
       chartDataPass
     };
-    
+
     return finalStats;
   }, [results]);
 
   const logout = () => {
-    try { localStorage.clear(); sessionStorage.clear(); } catch {}
+    try { localStorage.clear(); sessionStorage.clear(); } catch { }
     navigate('/login');
   };
 
@@ -211,12 +212,12 @@ export default function StudentDashboard() {
       const lineTimer = setTimeout(() => {
         setLineProgress(100);
       }, 50);
-      
+
       // Animation cho bars
       const barTimer = setTimeout(() => {
         setAnimated(true);
       }, 400);
-      
+
       return () => {
         clearTimeout(lineTimer);
         clearTimeout(barTimer);
@@ -233,7 +234,7 @@ export default function StudentDashboard() {
           </div>
           <span className="text-xs font-medium text-slate-500 bg-slate-50 px-2.5 py-1 rounded-full">{title}</span>
         </div>
-        
+
         <div className="mb-3">
           <div className="text-3xl font-bold text-slate-800 mb-1">{value}</div>
           <p className="text-xs text-slate-500">{subtitle}</p>
@@ -242,9 +243,9 @@ export default function StudentDashboard() {
         {/* Mini bar chart với 7 cột */}
         <div className="relative flex items-end gap-1 h-16 bg-slate-100/50 rounded-lg px-1.5 pb-1 pt-2 overflow-hidden">
           {chartData && chartData.length > 0 && (
-            <svg 
-              className="absolute inset-0 pointer-events-none z-0" 
-              viewBox="0 0 100 100" 
+            <svg
+              className="absolute inset-0 pointer-events-none z-0"
+              viewBox="0 0 100 100"
               preserveAspectRatio="none"
               style={{ width: '100%', height: 'calc(100% - 12px)' }}
             >
@@ -277,19 +278,19 @@ export default function StudentDashboard() {
               />
             </svg>
           )}
-          
+
           {chartData && chartData.length > 0 ? (
             chartData.map((height, index) => {
               const barHeight = maxHeight > 0 ? (height / maxHeight) * 100 : 0;
               const finalHeight = barHeight;
-              
+
               return (
                 <div key={index} className="flex-1 flex flex-col items-center justify-end gap-0.5 relative z-10" style={{ height: '100%' }}>
                   {/* Bar */}
                   <div className="w-full flex items-end" style={{ flex: 1 }}>
-                    <div 
+                    <div
                       className={`w-full rounded-t ${barColor}`}
-                      style={{ 
+                      style={{
                         height: animated ? `${finalHeight}%` : '0%',
                         transition: 'height 700ms ease-out',
                         transitionDelay: `${index * 80}ms`,
@@ -332,7 +333,7 @@ export default function StudentDashboard() {
               className="flex items-center gap-2 text-left group focus-visible:outline-none"
             >
               <img
-                src={user.avatar || '/icons/UI Image/default-avatar.png'}
+                src={getFullImageUrl(user.avatar)}
                 alt="avatar"
                 className="w-8 h-8 rounded-full object-cover border border-slate-200"
               />
@@ -397,10 +398,10 @@ export default function StudentDashboard() {
 
         {/* Quick actions mapped to user stories */}
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-          <Card 
-            title="Vào thi" 
-            desc="Nhập mã phòng được giảng viên cung cấp." 
-            action="Xác minh ngay" 
+          <Card
+            title="Vào thi"
+            desc="Nhập mã phòng được giảng viên cung cấp."
+            action="Xác minh ngay"
             onClick={() => {
               // Xóa toàn bộ session trước khi vào verify room
               try {
@@ -414,41 +415,41 @@ export default function StudentDashboard() {
                 console.error('Error clearing session:', err);
               }
               navigate('/verify-room', { state: { fromStudentDashboard: true } });
-            }} 
-            icon="🔐" 
+            }}
+            icon="🔐"
           />
-          <Card 
-            title="Kết quả & lịch sử" 
-            desc="Xem điểm các bài đã thi." 
-            action="Xem bảng điểm" 
-            onClick={() => navigate('/student-dashboard/results')} 
-            icon="📊" 
+          <Card
+            title="Kết quả & lịch sử"
+            desc="Xem điểm các bài đã thi."
+            action="Xem bảng điểm"
+            onClick={() => navigate('/student-dashboard/results')}
+            icon="📊"
           />
-          <Card 
-            title="Hồ sơ" 
-            desc="Cập nhật thông tin cá nhân, avatar." 
-            action="Cập nhật" 
-            onClick={() => navigate('/profile')} 
-            icon="👤" 
+          <Card
+            title="Hồ sơ"
+            desc="Cập nhật thông tin cá nhân, avatar."
+            action="Cập nhật"
+            onClick={() => navigate('/profile')}
+            icon="👤"
           />
         </section>
 
         {/* Centered bottom cards */}
         <section className="flex justify-center mb-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl w-full">
-            <Card 
-              title="Hướng dẫn & Trợ giúp" 
-              desc="Quy tắc chống gian lận & liên hệ hỗ trợ." 
-              action="Xem hướng dẫn" 
-              onClick={() => navigate('/student-dashboard/guidelines')} 
-              icon="🛡️" 
+            <Card
+              title="Hướng dẫn & Trợ giúp"
+              desc="Quy tắc chống gian lận & liên hệ hỗ trợ."
+              action="Xem hướng dẫn"
+              onClick={() => navigate('/student-dashboard/guidelines')}
+              icon="🛡️"
             />
-            <Card 
-              title="Trợ giúp" 
-              desc="Liên hệ hỗ trợ khi gặp lỗi." 
-              action="Gửi yêu cầu" 
-              onClick={() => navigate('/student-dashboard/support')} 
-              icon="❓" 
+            <Card
+              title="Trợ giúp"
+              desc="Liên hệ hỗ trợ khi gặp lỗi."
+              action="Gửi yêu cầu"
+              onClick={() => navigate('/student-dashboard/support')}
+              icon="❓"
             />
           </div>
         </section>
@@ -490,11 +491,10 @@ export default function StudentDashboard() {
                         <td className="py-2 pr-4">{r.ai_score != null ? Number(r.ai_score).toFixed(1) : '-'}</td>
                         <td className="py-2 pr-4 font-semibold">{r.suggested_total_score != null ? Number(r.suggested_total_score).toFixed(1) : '-'}</td>
                         <td className="py-2 pr-4">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                            isConfirmed 
-                              ? 'bg-emerald-100 text-emerald-700' 
-                              : 'bg-amber-100 text-amber-700'
-                          }`}>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${isConfirmed
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-amber-100 text-amber-700'
+                            }`}>
                             {isConfirmed ? '✓ Đã duyệt' : '⏳ Chưa duyệt'}
                           </span>
                         </td>
