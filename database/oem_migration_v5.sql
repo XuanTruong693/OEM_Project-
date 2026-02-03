@@ -53,6 +53,7 @@ CREATE TABLE exams (
     require_student_card TINYINT(1) NOT NULL DEFAULT 0,
     monitor_screen TINYINT(1) NOT NULL DEFAULT 0,
     max_attempts INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0 = unlimited, >0 = limit retake attempts',
+    intent_shuffle TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Shuffle questions order for each student',
     exam_room_code VARCHAR(64) NULL,
     status ENUM(
         'draft',
@@ -266,13 +267,25 @@ CREATE TRIGGER trg_update_submission_score
 AFTER UPDATE ON student_answers
 FOR EACH ROW
 BEGIN
-  DECLARE total FLOAT DEFAULT 0;
-  SELECT COALESCE(SUM(score),0) INTO total
-    FROM student_answers WHERE submission_id = NEW.submission_id;
+  DECLARE mcq_total FLOAT DEFAULT 0;
+  DECLARE essay_total FLOAT DEFAULT 0;
+  
+  -- Chỉ tính tổng điểm MCQ
+  SELECT COALESCE(SUM(sa.score),0) INTO mcq_total
+    FROM student_answers sa
+    JOIN exam_questions q ON q.id = sa.question_id
+    WHERE sa.submission_id = NEW.submission_id AND q.type = 'MCQ';
+  
+  -- Tính riêng điểm Essay
+  SELECT COALESCE(SUM(sa.score),0) INTO essay_total
+    FROM student_answers sa
+    JOIN exam_questions q ON q.id = sa.question_id
+    WHERE sa.submission_id = NEW.submission_id AND q.type = 'Essay';
 
   UPDATE submissions
-     SET total_score = total,
-         suggested_total_score = total + COALESCE(ai_score,0)
+     SET total_score = mcq_total,
+         ai_score = essay_total,
+         suggested_total_score = mcq_total + essay_total
    WHERE id = NEW.submission_id;
 END$$
 
@@ -313,13 +326,25 @@ DELIMITER $$
 
 CREATE PROCEDURE finalize_submission(IN p_submission_id INT)
 BEGIN
-  DECLARE total FLOAT DEFAULT 0;
-  SELECT COALESCE(SUM(score),0) INTO total
-    FROM student_answers WHERE submission_id = p_submission_id;
+  DECLARE mcq_total FLOAT DEFAULT 0;
+  DECLARE essay_total FLOAT DEFAULT 0;
+  
+  -- Chỉ tính tổng điểm MCQ
+  SELECT COALESCE(SUM(sa.score),0) INTO mcq_total
+    FROM student_answers sa
+    JOIN exam_questions q ON q.id = sa.question_id
+    WHERE sa.submission_id = p_submission_id AND q.type = 'MCQ';
+  
+  -- Tính riêng điểm Essay
+  SELECT COALESCE(SUM(sa.score),0) INTO essay_total
+    FROM student_answers sa
+    JOIN exam_questions q ON q.id = sa.question_id
+    WHERE sa.submission_id = p_submission_id AND q.type = 'Essay';
 
   UPDATE submissions
-     SET total_score = total,
-         suggested_total_score = total + COALESCE(ai_score,0),
+     SET total_score = mcq_total,
+         ai_score = essay_total,
+         suggested_total_score = mcq_total + essay_total,
          status = 'graded',
          updated_at = NOW()
    WHERE id = p_submission_id;

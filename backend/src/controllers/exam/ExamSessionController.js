@@ -301,7 +301,10 @@ async function saveAnswer(req, res) {
                 );
                 await sequelize.query(
                     `UPDATE submissions SET total_score = (
-              SELECT COALESCE(SUM(score),0) FROM student_answers WHERE submission_id = ?
+              SELECT COALESCE(SUM(sa.score),0) 
+              FROM student_answers sa
+              JOIN exam_questions q ON q.id = sa.question_id
+              WHERE sa.submission_id = ? AND q.type = 'MCQ'
            ) WHERE id = ?`,
                     { replacements: [submissionId, submissionId] }
                 );

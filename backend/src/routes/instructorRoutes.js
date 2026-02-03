@@ -347,7 +347,12 @@ router.post("/submissions/:submissionId/batch-grade", ...auth, async (req, res) 
     // Recalculate total
     await sequelize.query(
       `UPDATE submissions 
-       SET total_score = (SELECT COALESCE(SUM(score), 0) FROM student_answers WHERE submission_id = ?),
+       SET total_score = (
+         SELECT COALESCE(SUM(sa.score), 0) 
+         FROM student_answers sa
+         JOIN exam_questions q ON q.id = sa.question_id
+         WHERE sa.submission_id = ? AND q.type = 'MCQ'
+       ),
            status = 'graded'
        WHERE id = ?`,
       { replacements: [submissionId, submissionId] }
