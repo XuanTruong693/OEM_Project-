@@ -137,8 +137,8 @@ export default function ResultsDashboard() {
               <button
                 onClick={() => setSort('date_desc')}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${sort === 'date_desc'
-                    ? 'bg-white text-slate-800 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-800'
+                  ? 'bg-white text-slate-800 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-800'
                   }`}
               >
                 Mới nhất
@@ -146,8 +146,8 @@ export default function ResultsDashboard() {
               <button
                 onClick={() => setSort('score_desc')}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${sort === 'score_desc'
-                    ? 'bg-white text-slate-800 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-800'
+                  ? 'bg-white text-slate-800 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-800'
                   }`}
               >
                 Điểm cao
@@ -155,8 +155,8 @@ export default function ResultsDashboard() {
               <button
                 onClick={() => setSort('score_asc')}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${sort === 'score_asc'
-                    ? 'bg-white text-slate-800 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-800'
+                  ? 'bg-white text-slate-800 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-800'
                   }`}
               >
                 Điểm thấp
@@ -188,8 +188,8 @@ export default function ResultsDashboard() {
         ) : (
           <div className="space-y-4">
             {filtered.map((r, i) => {
-              const mcq = r.total_score ?? r.mcq_score;
-              const essay = r.ai_score;
+              const mcq = r.mcq_score ?? r.total_score;
+              const essay = r.essay_score ?? r.ai_score;
               const total = r.suggested_total_score ?? (Number(mcq || 0) + Number(essay || 0));
               const totalBadge = getScoreBadge(total);
               const mcqBadge = getScoreBadge(mcq);
@@ -230,16 +230,16 @@ export default function ResultsDashboard() {
 
                             {/* Status Badge */}
                             <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 ${statusColor === 'emerald'
-                                ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-                                : 'bg-amber-100 text-amber-700 border border-amber-200'
+                              ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                              : 'bg-amber-100 text-amber-700 border border-amber-200'
                               }`}>
                               {isConfirmed ? '✓' : '⏳'} {statusLabel}
                             </span>
 
                             {totalBadge.grade && (
                               <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${totalBadge.color === 'emerald' ? 'bg-emerald-100 text-emerald-700' :
-                                  totalBadge.color === 'amber' ? 'bg-amber-100 text-amber-700' :
-                                    'bg-rose-100 text-rose-700'
+                                totalBadge.color === 'amber' ? 'bg-amber-100 text-amber-700' :
+                                  'bg-rose-100 text-rose-700'
                                 }`}>
                                 {totalBadge.grade}
                               </span>
@@ -254,9 +254,9 @@ export default function ResultsDashboard() {
                       <div className="text-center">
                         <div className="text-xs text-slate-500 mb-1">Trắc nghiệm</div>
                         <div className={`text-2xl font-bold ${mcqBadge.color === 'emerald' ? 'text-emerald-600' :
-                            mcqBadge.color === 'amber' ? 'text-amber-600' :
-                              mcqBadge.color === 'rose' ? 'text-rose-600' :
-                                'text-slate-400'
+                          mcqBadge.color === 'amber' ? 'text-amber-600' :
+                            mcqBadge.color === 'rose' ? 'text-rose-600' :
+                              'text-slate-400'
                           }`}>
                           {mcqBadge.label}
                         </div>
@@ -265,9 +265,9 @@ export default function ResultsDashboard() {
                       <div className="text-center">
                         <div className="text-xs text-slate-500 mb-1">Tự luận</div>
                         <div className={`text-2xl font-bold ${essayBadge.color === 'emerald' ? 'text-emerald-600' :
-                            essayBadge.color === 'amber' ? 'text-amber-600' :
-                              essayBadge.color === 'rose' ? 'text-rose-600' :
-                                'text-slate-400'
+                          essayBadge.color === 'amber' ? 'text-amber-600' :
+                            essayBadge.color === 'rose' ? 'text-rose-600' :
+                              'text-slate-400'
                           }`}>
                           {essayBadge.label}
                         </div>
@@ -281,9 +281,9 @@ export default function ResultsDashboard() {
                           {isConfirmed && <span className="text-emerald-600">✓</span>}
                         </div>
                         <div className={`text-3xl font-bold ${totalBadge.color === 'emerald' ? 'text-emerald-600' :
-                            totalBadge.color === 'amber' ? 'text-amber-600' :
-                              totalBadge.color === 'rose' ? 'text-rose-600' :
-                                'text-slate-400'
+                          totalBadge.color === 'amber' ? 'text-amber-600' :
+                            totalBadge.color === 'rose' ? 'text-rose-600' :
+                              'text-slate-400'
                           }`}>
                           {totalBadge.label}
                         </div>

@@ -7,21 +7,29 @@ async function myResults(req, res) {
     try {
         const userId = req.user.id;
 
-        // Try view first
+        // Try view first (with all required columns)
         try {
             const [rows] = await sequelize.query(
-                `SELECT * FROM v_student_results WHERE student_id = ? ORDER BY submitted_at DESC`,
+                `SELECT 
+                    submission_id, exam_id, exam_title,
+                    mcq_score, essay_score, suggested_total_score,
+                    display_score, score_status, status, submitted_at, duration
+                 FROM v_student_results 
+                 WHERE student_id = ? 
+                 ORDER BY submitted_at DESC`,
                 { replacements: [userId] }
             );
             return res.json(rows);
         } catch (e) {
-            // fallback
+            // fallback if view doesn't exist or has different structure
             const [rows] = await sequelize.query(
                 `SELECT s.id AS submission_id, s.exam_id, e.title AS exam_title,
-                s.total_score AS mcq_score, s.ai_score AS essay_score,
-                s.suggested_total_score, s.submitted_at
-         FROM submissions s JOIN exams e ON e.id = s.exam_id
-         WHERE s.user_id = ? ORDER BY s.submitted_at DESC`,
+                    s.total_score AS mcq_score, s.ai_score AS essay_score,
+                    s.suggested_total_score, s.status, s.submitted_at
+                 FROM submissions s 
+                 JOIN exams e ON e.id = s.exam_id
+                 WHERE s.user_id = ? 
+                 ORDER BY s.submitted_at DESC`,
                 { replacements: [userId] }
             );
             return res.json(rows);

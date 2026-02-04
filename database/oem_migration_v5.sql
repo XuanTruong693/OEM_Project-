@@ -620,13 +620,20 @@ ORDER BY e.id, s.submitted_at DESC;
 -- 5.4 v_student_results
 CREATE OR REPLACE VIEW v_student_results AS
 SELECT
+    s.user_id AS student_id,
+    s.id AS submission_id,
+    s.exam_id,
     e.title AS exam_title,
+    s.total_score AS mcq_score,
+    s.ai_score AS essay_score,
+    s.suggested_total_score,
     COALESCE(r.total_score, s.suggested_total_score) AS display_score,
     CASE
         WHEN r.status = 'confirmed' THEN 'Final Score (Confirmed)'
         WHEN s.status = 'graded' THEN 'Suggested Score (Awaiting Instructor Approval)'
         ELSE 'Pending Grading'
     END AS score_status,
+    s.status,
     s.submitted_at,
     e.duration_minutes AS duration
 FROM

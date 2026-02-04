@@ -487,8 +487,8 @@ export default function StudentDashboard() {
                     return (
                       <tr key={r.submission_id} className="border-t border-slate-100">
                         <td className="py-2 pr-4 font-medium text-slate-700">{r.exam_title || r.exam_id}</td>
-                        <td className="py-2 pr-4">{(r.total_score ?? r.mcq_score) != null ? Number(r.total_score ?? r.mcq_score).toFixed(1) : '-'}</td>
-                        <td className="py-2 pr-4">{r.ai_score != null ? Number(r.ai_score).toFixed(1) : '-'}</td>
+                        <td className="py-2 pr-4">{(r.mcq_score ?? r.total_score) != null ? Number(r.mcq_score ?? r.total_score).toFixed(1) : '-'}</td>
+                        <td className="py-2 pr-4">{(r.essay_score ?? r.ai_score) != null ? Number(r.essay_score ?? r.ai_score).toFixed(1) : '-'}</td>
                         <td className="py-2 pr-4 font-semibold">{r.suggested_total_score != null ? Number(r.suggested_total_score).toFixed(1) : '-'}</td>
                         <td className="py-2 pr-4">
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${isConfirmed
