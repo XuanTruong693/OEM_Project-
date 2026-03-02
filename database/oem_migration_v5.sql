@@ -238,6 +238,19 @@ CREATE TABLE cheating_logs (
     CONSTRAINT fk_cheating_logs_exam FOREIGN KEY (exam_id) REFERENCES exams (id) ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
+-- 2.11 student_cards
+CREATE TABLE student_cards (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    student_code VARCHAR(20) NOT NULL UNIQUE COMMENT 'Mã số sinh viên',
+    student_name VARCHAR(100) NOT NULL COMMENT 'Tên sinh viên',
+    card_image_blob LONGBLOB NOT NULL COMMENT 'Ảnh thẻ SV upload lưu vào DB',
+    card_image_mimetype VARCHAR(100) NOT NULL DEFAULT 'image/jpeg' COMMENT 'MIME type của ảnh thẻ',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT 'Ngày nhập',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Ngày sửa',
+    saved_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT 'Ngày lưu',
+    INDEX idx_student_cards_code (student_code)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
 
 /* =========================================
    3) Triggers

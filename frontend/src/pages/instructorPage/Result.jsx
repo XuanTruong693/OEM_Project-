@@ -135,7 +135,9 @@ export default function Result() {
   });
   const [scoreError, setScoreError] = React.useState("");
   const [essayScores, setEssayScores] = React.useState({}); // { answerId: score }
+  const [essayFeedback, setEssayFeedback] = React.useState({}); // { answerId: feedbackText }
   const [savingEssayId, setSavingEssayId] = React.useState(null); // Track which answer is saving
+  const [correctedQuestions, setCorrectedQuestions] = React.useState({}); // { answerId: { oldScore, newScore, aiLearned } }
   const [adminModifiedIds, setAdminModifiedIds] = React.useState([]); // Track submissions modified by admin
   const [zoomImage, setZoomImage] = React.useState(null); // { src: string, alt: string } for zoom modal
 
@@ -1066,6 +1068,7 @@ export default function Result() {
     if (!submissionId || !answerId) return;
 
     const newScore = Number(essayScores[answerId] ?? 0);
+    const feedback = essayFeedback[answerId] || "";
 
     // Validation
     if (isNaN(newScore) || newScore < 0) {
@@ -1082,13 +1085,24 @@ export default function Result() {
     try {
       const res = await axiosClient.put(
         `/instructor/submissions/${submissionId}/answers/${answerId}/score`,
-        { score: newScore }
+        { score: newScore, feedback }
       );
+
+      // Track correction with ML learning status
+      setCorrectedQuestions(prev => ({
+        ...prev,
+        [answerId]: {
+          oldScore: res.data?.old_ai_score ?? 0,
+          newScore: newScore,
+          aiLearned: res.data?.ai_learned || false,
+          correctedAt: new Date().toLocaleTimeString("vi-VN")
+        }
+      }));
 
       showToast(
         "success",
-        res.data?.score_increased
-          ? "✅ Điểm đã tăng - AI sẽ học từ câu này!"
+        res.data?.ai_learned
+          ? "✅ Điểm đã cập nhật — 🧠 AI đã học từ correction này!"
           : "✅ Đã cập nhật điểm!"
       );
 
@@ -1123,6 +1137,7 @@ export default function Result() {
 
         // ✅ Clear essayScores so liveAiScore uses new drawer.row.ai_score
         setEssayScores({});
+        setEssayFeedback({});
       }
 
       // Update submissionQuestions to reflect new score
@@ -2183,6 +2198,33 @@ export default function Result() {
                                     {/* Score Editing Section for Essay */}
                                     {q.answer?.id && (
                                       <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border-2 border-indigo-200 rounded-lg p-4 mt-3">
+                                        {/* Correction History Badge */}
+                                        {correctedQuestions[q.answer.id] && (
+                                          <div className={`mb-3 px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${correctedQuestions[q.answer.id].aiLearned
+                                              ? "bg-emerald-100 border border-emerald-300 text-emerald-800"
+                                              : "bg-amber-100 border border-amber-300 text-amber-800"
+                                            }`}>
+                                            {correctedQuestions[q.answer.id].aiLearned ? (
+                                              <>
+                                                <span>🧠</span>
+                                                <span>AI đã học từ correction này</span>
+                                                <span className="ml-auto text-xs opacity-70">
+                                                  {correctedQuestions[q.answer.id].oldScore} → {correctedQuestions[q.answer.id].newScore} điểm
+                                                  {" · "}{correctedQuestions[q.answer.id].correctedAt}
+                                                </span>
+                                              </>
+                                            ) : (
+                                              <>
+                                                <span>✏️</span>
+                                                <span>Đã sửa điểm (AI chấm → Instructor sửa)</span>
+                                                <span className="ml-auto text-xs opacity-70">
+                                                  {correctedQuestions[q.answer.id].correctedAt}
+                                                </span>
+                                              </>
+                                            )}
+                                          </div>
+                                        )}
+
                                         <div className="flex items-center justify-between gap-4">
                                           <div className="flex-1">
                                             <div className="text-xs font-semibold text-indigo-700 uppercase mb-2 flex items-center gap-2">
@@ -2190,8 +2232,24 @@ export default function Result() {
                                               Chấm điểm câu này
                                             </div>
                                             <div className="flex items-center gap-3">
-                                              <div className="text-sm text-slate-600">
-                                                AI gợi ý: <span className="font-bold text-indigo-600">{q.answer?.score ?? 0}/{q.points || 1}</span>
+                                              {/* Score Comparison Display */}
+                                              <div className="text-sm text-slate-600 flex items-center gap-1">
+                                                <span>AI:</span>
+                                                <span className="font-bold text-indigo-600">{q.answer?.score ?? 0}/{q.points || 1}</span>
+                                                {essayScores[q.answer.id] !== undefined && Number(essayScores[q.answer.id]) !== Number(q.answer?.score ?? 0) && (
+                                                  <>
+                                                    <span className="text-indigo-400 mx-1">→</span>
+                                                    <span className={`font-bold ${Number(essayScores[q.answer.id]) > Number(q.answer?.score ?? 0)
+                                                        ? "text-emerald-600"
+                                                        : "text-orange-600"
+                                                      }`}>
+                                                      {essayScores[q.answer.id]}/{q.points || 1}
+                                                    </span>
+                                                    {Number(essayScores[q.answer.id]) > Number(q.answer?.score ?? 0) && (
+                                                      <HiTrendingUp className="text-emerald-500 text-base" />
+                                                    )}
+                                                  </>
+                                                )}
                                               </div>
                                               <div className="flex items-center gap-2">
                                                 <input
@@ -2231,6 +2289,25 @@ export default function Result() {
                                             )}
                                           </button>
                                         </div>
+
+                                        {/* Correction Feedback Textarea */}
+                                        {essayScores[q.answer.id] !== undefined && Number(essayScores[q.answer.id]) !== Number(q.answer?.score ?? 0) && (
+                                          <div className="mt-3 pt-3 border-t border-indigo-200">
+                                            <label className="text-xs font-semibold text-indigo-700 uppercase mb-1 block flex items-center gap-1">
+                                              💬 Lý do sửa điểm (tùy chọn — giúp AI học tốt hơn)
+                                            </label>
+                                            <textarea
+                                              rows={2}
+                                              placeholder="Ví dụ: Sinh viên dùng cách diễn đạt khác nhưng đúng nghĩa..."
+                                              className="w-full px-3 py-2 border border-indigo-200 rounded-lg text-sm text-slate-700 bg-white/80 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 resize-none placeholder:text-slate-400"
+                                              value={essayFeedback[q.answer.id] || ""}
+                                              onChange={(e) => setEssayFeedback(prev => ({
+                                                ...prev,
+                                                [q.answer.id]: e.target.value
+                                              }))}
+                                            />
+                                          </div>
+                                        )}
                                       </div>
                                     )}
                                   </div>

@@ -1,0 +1,9 @@
+{
+  "corrections_since_last_retrain": 5,
+  "total_corrections": 6,
+  "last_retrain_at": "2026-03-01T17:59:21.454230",
+  "retrain_count": 1,
+  "accuracy_before": 63,
+  "accuracy_after": 63,
+  "is_retraining": false
+}

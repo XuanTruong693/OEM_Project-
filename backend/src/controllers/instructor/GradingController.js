@@ -356,7 +356,7 @@ async function updateStudentAnswerScore(req, res) {
     try {
         const submissionId = parseInt(req.params.submissionId, 10);
         const answerId = parseInt(req.params.answerId, 10);
-        const { score } = req.body;
+        const { score, feedback: correctionFeedback } = req.body;
 
         if (!Number.isFinite(submissionId) || !Number.isFinite(answerId)) {
             return res.status(400).json({ message: "Invalid IDs" });
@@ -384,6 +384,7 @@ async function updateStudentAnswerScore(req, res) {
 
         const oldScore = Number(oldAnswer[0]?.score || 0);
         const scoreIncreased = score > oldScore;
+        let aiLearned = false;
 
         // Update answer score
         await sequelize.query(
@@ -405,8 +406,9 @@ async function updateStudentAnswerScore(req, res) {
                     ai_score: oldScore,
                     max_points: oldAnswer[0].max_points,
                     category: "General",
-                    feedback: "Corrected by Instructor (Score Increased)"
+                    feedback: correctionFeedback || `Instructor corrected: ${oldScore} → ${score}`
                 }).catch(err => console.error("Video AI Training Data Save Error:", err));
+                aiLearned = true;
             } catch (e) {
                 console.error("Trigger AI Learning Error:", e);
             }
@@ -467,7 +469,9 @@ async function updateStudentAnswerScore(req, res) {
             new_ai_score: newAiSum,
             new_mcq_score: newMcqScore,
             new_grand_total: newSuggestedTotal,
-            score_increased: scoreIncreased // ✅ Return flag for Frontend Toast
+            score_increased: scoreIncreased, // ✅ Return flag for Frontend Toast
+            ai_learned: aiLearned, // ✅ Return flag for ML learning indicator
+            old_ai_score: oldScore // ✅ Return old score for comparison
         });
     } catch (err) {
         console.error("updateStudentAnswerScore error:", err);
