@@ -6,6 +6,10 @@ const { activityLoggerMiddleware, logActivity, sanitizeForLog } = require('../mi
 const { User } = require('../models/User');
 const ExamRoom = require('../models/ExamRoom');
 const { pool } = require('../config/db');
+const multer = require('multer');
+
+// Admin controllers
+const studentCardController = require('../controllers/admin/studentCardController');
 
 // Admin models
 const {
@@ -19,9 +23,21 @@ const {
 const backupService = require('../services/backupService');
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
 // Apply activity logger middleware to all admin routes
 router.use(activityLoggerMiddleware);
+
+// ============================================================================
+// STUDENT CARD MANAGEMENT APIs
+// ============================================================================
+
+router.get('/student-cards', verifyToken, verifyRole('admin'), studentCardController.getStudentCards);
+router.get('/student-cards/:id', verifyToken, verifyRole('admin'), studentCardController.getStudentCardById);
+router.post('/student-cards', verifyToken, verifyRole('admin'), upload.fields([{ name: 'card_image', maxCount: 1 }]), studentCardController.createStudentCard);
+router.put('/student-cards/:id', verifyToken, verifyRole('admin'), upload.fields([{ name: 'card_image', maxCount: 1 }]), studentCardController.updateStudentCard);
+router.delete('/student-cards/:id', verifyToken, verifyRole('admin'), studentCardController.deleteStudentCard);
+router.post('/student-cards/batch', verifyToken, verifyRole('admin'), upload.any(), studentCardController.batchUploadStudentCards);
 
 // ============================================================================
 // DASHBOARD APIs

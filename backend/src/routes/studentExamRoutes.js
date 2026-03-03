@@ -11,6 +11,7 @@ const {
   uploadVerifyAssets,
   uploadImages,
   verifyStudentCardImage,
+  verifyStudentCardByCode,
   verifyFaceImage,
   compareFaceImages,
   uploadVerifiedImages,
@@ -27,8 +28,8 @@ const { requireRoomVerification } = require("../middleware/verifyRoomMiddleware"
 const upload = multer({ storage: multer.memoryStorage() });
 
 // Exams
-router.post("/exams/verify-room", verifyRoom); 
-router.post("/exams/join", verifyToken, joinExam); 
+router.post("/exams/verify-room", verifyRoom);
+router.post("/exams/join", verifyToken, joinExam);
 router.get("/exams/:id/public-info", verifyToken, requireRoomVerification, getExamPublicInfo);
 
 // Submissions - Tất cả đều cần verify room
@@ -46,6 +47,7 @@ router.post("/submissions/:id/upload-images", verifyToken, requireRoomVerificati
   { name: "student_card_image", maxCount: 1 },
 ]), uploadImages);
 router.post("/submissions/:id/verify-card", verifyToken, requireRoomVerification, verifyStudentCardImage);
+router.post("/submissions/:id/verify-student-code", verifyToken, requireRoomVerification, verifyStudentCardByCode);
 router.post("/submissions/:id/verify-face", verifyToken, requireRoomVerification, verifyFaceImage);
 router.post("/submissions/:id/compare-faces", verifyToken, requireRoomVerification, compareFaceImages);
 router.post("/submissions/:id/upload-verified-images", verifyToken, requireRoomVerification, upload.fields([
