@@ -41,7 +41,7 @@ app.add_middleware(
 )
 
 # ===== AUTO-RETRAIN SYSTEM =====
-RETRAIN_THRESHOLD = int(os.getenv("RETRAIN_THRESHOLD", "50"))  # Số corrections cần đạt để auto-retrain
+RETRAIN_THRESHOLD = int(os.getenv("RETRAIN_THRESHOLD", "1"))  # Số corrections cần đạt để auto-retrain
 RETRAIN_LOG_PATH = os.path.join(os.path.dirname(__file__), "retrain_history.json")
 _retrain_lock = threading.Lock()
 

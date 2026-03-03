@@ -14,6 +14,7 @@ module.exports = {
     // Verification Controller
     uploadImages: VerificationController.uploadImages,
     verifyStudentCardImage: VerificationController.verifyStudentCardImage,
+    verifyStudentCardByCode: VerificationController.verifyStudentCardByCode,
     verifyFaceImage: VerificationController.verifyFaceImage,
     compareFaceImages: VerificationController.compareFaceImages,
     uploadVerifiedImages: VerificationController.uploadVerifiedImages,

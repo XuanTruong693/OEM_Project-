@@ -796,9 +796,23 @@ async function uploadVerifyAssets(req, res) {
     }
 }
 
+/**
+ * POST /api/submissions/:id/verify-student-code (auth)
+ * Cải tiến mới: Thay vì upload hình thẻ, sinh viên nhập MSSV để kiểm tra.
+ */
+async function verifyStudentCardByCode(req, res) {
+    // TODO: 
+    // - Nhận student_code từ req.body
+    // - Tra cứu MSSV trong bảng student_cards (lấy thông tin, tên, card_image_blob, card_image_mimetype)
+    // - Cập nhật ảnh lấy từ student_cards vào bảng submissions (student_card_blob) để PrepareExam sử dụng
+    // - Trả về thành công + base64 image để FE hiển thị Preview
+    res.status(501).json({ ok: false, message: "Chưa triển khai logic backend" });
+}
+
 module.exports = {
     uploadImages,
     verifyStudentCardImage,
+    verifyStudentCardByCode,
     verifyFaceImage,
     compareFaceImages,
     uploadVerifiedImages,
