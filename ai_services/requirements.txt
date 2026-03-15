@@ -44,3 +44,10 @@ Pillow>=10.4.0
 # OCR - Tesseract (đọc thẻ sinh viên)
 # ============================================
 pytesseract==0.3.13
+
+# ============================================
+# Behavior Cheating Detection (ML Model)
+# ============================================
+scikit-learn>=1.3.0
+pandas>=2.0.0
+#.\.venv\Scripts\python.exe -m pip install scikit-learn pandas

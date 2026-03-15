@@ -138,44 +138,26 @@ async function verifyRoom(req, res) {
             }
         }
 
-        // time window check, if available (chuẩn hoá timezone theo ENV để tránh lệch TZ giữa DB và cột lưu)
+        // time window check
         if (extra.time_open || extra.time_close) {
-            const tz = process.env.APP_TZ || "+07:00";
-            const [checkRows] = await sequelize.query(
-                `SELECT 
-            CONVERT_TZ(NOW(), @@session.time_zone, ?) AS now_ts,
-            time_open                                AS open_ts,
-            time_close                               AS close_ts,
-            (CASE WHEN time_open IS NOT NULL AND CONVERT_TZ(NOW(), @@session.time_zone, ?) < time_open THEN 1 ELSE 0 END) AS before_open,
-            (CASE WHEN time_close IS NOT NULL AND CONVERT_TZ(NOW(), @@session.time_zone, ?) > time_close THEN 1 ELSE 0 END) AS after_close
-         FROM exams
-         WHERE id = ? LIMIT 1
-         `,
-                {
-                    replacements: [
-                        tz,
-                        tz,
-                        tz,
-                        exam.id,
-                    ],
-                }
-            );
-            const tw = Array.isArray(checkRows) ? checkRows[0] : checkRows;
-            if (tw && Number(tw.before_open) === 1) {
+            const nowTime = new Date().getTime();
+            const openTime = extra.time_open ? new Date(extra.time_open).getTime() : null;
+            const closeTime = extra.time_close ? new Date(extra.time_close).getTime() : null;
+
+            if (openTime && nowTime < openTime) {
                 return res.status(403).json({
                     message: "Chưa đến giờ mở phòng",
-                    now: tw.now_ts,
-                    time_open: tw.open_ts,
-                    time_close: tw.close_ts,
+                    now: nowTime,
+                    time_open: extra.time_open,
                     reason: "before_open",
                 });
             }
-            if (tw && Number(tw.after_close) === 1) {
+
+            if (closeTime && nowTime > closeTime) {
                 return res.status(403).json({
                     message: "Đã hết giờ làm bài",
-                    now: tw.now_ts,
-                    time_open: tw.open_ts,
-                    time_close: tw.close_ts,
+                    now: nowTime,
+                    time_close: extra.time_close,
                     reason: "after_close",
                 });
             }

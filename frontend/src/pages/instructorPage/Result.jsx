@@ -1,6 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
+import { API_SERVER_URL } from "../../api/config";
 import {
   HiChartBar,
   HiClipboardList,
@@ -125,6 +126,8 @@ export default function Result() {
 
   const [drawer, setDrawer] = React.useState({ open: false, row: null });
   const [cheatingDetails, setCheatingDetails] = React.useState(null);
+  const [violationVideoUrl, setViolationVideoUrl] = React.useState(null);
+  const [violationVideoLoading, setViolationVideoLoading] = React.useState(false);
   const [faceImageData, setFaceImageData] = React.useState(null);
   const [cardImageData, setCardImageData] = React.useState(null);
   const [submissionQuestions, setSubmissionQuestions] = React.useState(null); // Câu hỏi và đáp án
@@ -2006,11 +2009,51 @@ export default function Result() {
                                           .replace(/_/g, " ")
                                           .toUpperCase()}
                                       </span>
-                                      <span className="text-slate-500">
-                                        {new Date(
-                                          log.detected_at
-                                        ).toLocaleTimeString("vi-VN")}
-                                      </span>
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-slate-500">
+                                          {new Date(
+                                            log.detected_at
+                                          ).toLocaleTimeString("vi-VN")}
+                                        </span>
+                                        {/* Nút Xem video cho từng lỗi */}
+                                        <button
+                                          onClick={async () => {
+                                            try {
+                                              setViolationVideoLoading(true);
+                                              setViolationVideoUrl(null);
+                                              const sid = drawer.row?.submission_id;
+
+                                              // Trích xuất snapshot_id từ event_details (JSON)
+                                              let snapshotId = null;
+                                              try {
+                                                if (log.event_details) {
+                                                  const details = typeof log.event_details === 'string'
+                                                    ? JSON.parse(log.event_details)
+                                                    : log.event_details;
+                                                  snapshotId = details.snapshot_id || null;
+                                                }
+                                              } catch (e) { }
+
+                                              // Nếu có snapshotId thì gọi API merge đúng thư mục đó, nếu không thì lấy toàn bộ
+                                              const res = await axiosClient.post(`/submissions/${sid}/videos/merge`, { violation_id: snapshotId });
+                                              if (res.data?.video_url) {
+                                                const base = API_SERVER_URL;
+                                                setViolationVideoUrl(`${base}${res.data.video_url}`);
+                                              } else {
+                                                alert("Ước tiếng việt: Không có video cho vi phạm này (chưa có ảnh chụp liên quan).");
+                                              }
+                                            } catch (e) {
+                                              alert("Không thể tải video: " + (e.response?.data?.error || e.message));
+                                            } finally {
+                                              setViolationVideoLoading(false);
+                                            }
+                                          }}
+                                          disabled={violationVideoLoading}
+                                          className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded hover:bg-purple-200 disabled:opacity-50 whitespace-nowrap"
+                                        >
+                                          {violationVideoLoading ? "⏳" : "🎥"} Xem video
+                                        </button>
+                                      </div>
                                     </div>
                                     {log.event_details &&
                                       typeof log.event_details === "object" && (
@@ -2045,6 +2088,50 @@ export default function Result() {
                                   <div className="text-yellow-600">Thấp</div>
                                 </div>
                               </div>
+
+                              {/* Nút xem toàn bộ video */}
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    setViolationVideoLoading(true);
+                                    setViolationVideoUrl(null);
+                                    const sid = drawer.row?.submission_id;
+                                    const res = await axiosClient.post(`/submissions/${sid}/videos/merge`, {});
+                                    if (res.data?.video_url) {
+                                      const base = API_SERVER_URL;
+                                      setViolationVideoUrl(`${base}${res.data.video_url}`);
+                                    } else {
+                                      alert("Ước tiếng việt: Không có video cho bài thi này (chưa có ảnh chụp nào được lưu).");
+                                    }
+                                  } catch (e) {
+                                    alert("Không thể tải video: " + (e.response?.data?.error || e.message));
+                                  } finally {
+                                    setViolationVideoLoading(false);
+                                  }
+                                }}
+                                disabled={violationVideoLoading}
+                                className="w-full text-xs bg-gray-800 text-white py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                              >
+                                {violationVideoLoading ? <span className="animate-spin">⏳</span> : "📹"}
+                                Xem toàn bộ video quá trình thi
+                              </button>
+
+                              {/* Video player */}
+                              {violationVideoUrl && (
+                                <div className="mt-2 rounded-xl overflow-hidden border-2 border-purple-300 bg-black">
+                                  <div className="flex items-center justify-between bg-purple-800 px-3 py-1.5">
+                                    <span className="text-white text-xs font-bold">🎬 Video bằng chứng gian lận</span>
+                                    <button
+                                      onClick={() => setViolationVideoUrl(null)}
+                                      className="text-white/70 hover:text-white text-xs"
+                                    >✕ Đóng</button>
+                                  </div>
+                                  <video controls autoPlay className="w-full max-h-64 bg-black">
+                                    <source src={violationVideoUrl} type="video/mp4" />
+                                    Trình duyệt không hỗ trợ HTML5 video.
+                                  </video>
+                                </div>
+                              )}
                             </div>
                           )}
                       </div>
@@ -2201,8 +2288,8 @@ export default function Result() {
                                         {/* Correction History Badge */}
                                         {correctedQuestions[q.answer.id] && (
                                           <div className={`mb-3 px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${correctedQuestions[q.answer.id].aiLearned
-                                              ? "bg-emerald-100 border border-emerald-300 text-emerald-800"
-                                              : "bg-amber-100 border border-amber-300 text-amber-800"
+                                            ? "bg-emerald-100 border border-emerald-300 text-emerald-800"
+                                            : "bg-amber-100 border border-amber-300 text-amber-800"
                                             }`}>
                                             {correctedQuestions[q.answer.id].aiLearned ? (
                                               <>
@@ -2240,8 +2327,8 @@ export default function Result() {
                                                   <>
                                                     <span className="text-indigo-400 mx-1">→</span>
                                                     <span className={`font-bold ${Number(essayScores[q.answer.id]) > Number(q.answer?.score ?? 0)
-                                                        ? "text-emerald-600"
-                                                        : "text-orange-600"
+                                                      ? "text-emerald-600"
+                                                      : "text-orange-600"
                                                       }`}>
                                                       {essayScores[q.answer.id]}/{q.points || 1}
                                                     </span>

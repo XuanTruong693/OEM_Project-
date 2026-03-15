@@ -419,64 +419,73 @@
   {
     "student_answer": "Đại học Duy Tân thuộc trường tư thục và thuocj top 500 thế giói",
     "model_answer": "Trường đại học Duy Tân thuộc trường tư thục và thuộc top 500 thế giới",
-    "confirmed_score": 2.0,
-    "ai_score": 2.0,
-    "max_points": 2.0
+    "confirmed_score": 2,
+    "ai_score": 2,
+    "max_points": 2
   },
   {
     "student_answer": "1+7= 8 ạ",
     "model_answer": "8.",
-    "confirmed_score": 2.0,
-    "ai_score": 2.0,
-    "max_points": 2.0
+    "confirmed_score": 2,
+    "ai_score": 2,
+    "max_points": 2
   },
   {
     "student_answer": "Duy Tan University",
     "model_answer": "Duy Tan University.",
-    "confirmed_score": 2.0,
-    "ai_score": 2.0,
-    "max_points": 2.0
+    "confirmed_score": 2,
+    "ai_score": 2,
+    "max_points": 2
   },
   {
     "student_answer": "Phần mềm là tập hợp các chương trình máy tính cùng với tài liệu hướng dẫn, được thiết kế để thực hiện các chức năng xử lý thông tin cụ thể",
     "model_answer": "Phần mềm là tập hợp các câu lệnh được viết bằng ngôn ngữ lập trình, kèm theo tài liệu liên quan, dùng để điều khiển máy tính thực hiện các tác vụ xử lý dữ liệu",
-    "confirmed_score": 8.0,
-    "ai_score": 0.0,
-    "max_points": 10.0
+    "confirmed_score": 8,
+    "ai_score": 0,
+    "max_points": 10
   },
   {
     "student_answer": "Batch test answer 0: Lập trình là viết code cho máy tính thực hiện",
     "model_answer": "Lập trình là quá trình tạo ra các chương trình máy tính bằng ngôn ngữ lập trình",
-    "confirmed_score": 7.0,
-    "ai_score": 0.0,
-    "max_points": 10.0
+    "confirmed_score": 7,
+    "ai_score": 0,
+    "max_points": 10
   },
   {
     "student_answer": "Batch test answer 1: Lập trình là viết code cho máy tính thực hiện",
     "model_answer": "Lập trình là quá trình tạo ra các chương trình máy tính bằng ngôn ngữ lập trình",
     "confirmed_score": 7.5,
-    "ai_score": 0.0,
-    "max_points": 10.0
+    "ai_score": 0,
+    "max_points": 10
   },
   {
     "student_answer": "Batch test answer 2: Lập trình là viết code cho máy tính thực hiện",
     "model_answer": "Lập trình là quá trình tạo ra các chương trình máy tính bằng ngôn ngữ lập trình",
-    "confirmed_score": 8.0,
-    "ai_score": 0.0,
-    "max_points": 10.0
+    "confirmed_score": 8,
+    "ai_score": 0,
+    "max_points": 10
   },
   {
     "student_answer": "Batch test answer 3: Lập trình là viết code cho máy tính thực hiện",
     "model_answer": "Lập trình là quá trình tạo ra các chương trình máy tính bằng ngôn ngữ lập trình",
     "confirmed_score": 8.5,
-    "ai_score": 0.0,
-    "max_points": 10.0
+    "ai_score": 0,
+    "max_points": 10
   },
   {
     "student_answer": "Batch test answer 4: Lập trình là viết code cho máy tính thực hiện",
     "model_answer": "Lập trình là quá trình tạo ra các chương trình máy tính bằng ngôn ngữ lập trình",
-    "confirmed_score": 9.0,
-    "ai_score": 0.0,
-    "max_points": 10.0
+    "confirmed_score": 9,
+    "ai_score": 0,
+    "max_points": 10
+  },
+  {
+    "student_answer": "fgdfgdfgdfgdfgdfds d gdfg df",
+    "model_answer": "Trong lịch sử Việt Nam có 8 vị vua thuộc các triều đại Nguyễn, Lý, Trần, Lê và các triều đại khác.",
+    "confirmed_score": 1,
+    "max_points": 1.5,
+    "score_ratio": 0.6666666666666666,
+    "feedback": "Instructor corrected: 0 → 1",
+    "learned_at": "2026-03-10T08:03:54.799Z"
   }
 ]

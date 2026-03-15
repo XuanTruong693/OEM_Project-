@@ -536,6 +536,38 @@ def force_retrain():
     }
 
 
+# ===== BEHAVIOR DETECTION ENDPOINT =====
+class BehaviorEvent(BaseModel):
+    timestamp: int
+    event_type: str
+    details: dict = {}
+
+class DetectBehaviorRequest(BaseModel):
+    student_id: int
+    exam_id: int
+    events: list[BehaviorEvent]
+    window_duration_seconds: int = 10
+
+@app.post("/api/ai/detect-behavior")
+async def detect_behavior(req: DetectBehaviorRequest):
+    try:
+        from app.nlp.behavior_detection import behavior_model
+        # Parse events to dict
+        raw_events = [e.dict() for e in req.events]
+        result = behavior_model.detect_cheating(raw_events)
+        return {
+            "success": True,
+            "is_cheating": result["is_cheating"],
+            "confidence": result["confidence"],
+            "cheating_type": result["reason"],
+            "features": result["features_extracted"]
+        }
+    except Exception as e:
+        import logging
+        logging.error(f"Error in detect_behavior: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import os
     is_dev = os.getenv("ENVIRONMENT", "production").lower() == "development"

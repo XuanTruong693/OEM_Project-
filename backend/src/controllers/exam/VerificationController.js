@@ -799,6 +799,7 @@ async function uploadVerifyAssets(req, res) {
 /**
  * POST /api/submissions/:id/verify-student-code (auth)
  * Cải tiến mới: Thay vì upload hình thẻ, sinh viên nhập MSSV để kiểm tra.
+ * Hàm này lấy ảnh thẻ từ bảng student_cards và lưu vào submission nếu MSSV đúng.
  */
 async function verifyStudentCardByCode(req, res) {
     try {
@@ -828,9 +829,9 @@ async function verifyStudentCardByCode(req, res) {
         );
 
         if (!Array.isArray(cardRows) || cardRows.length === 0) {
-            return res.status(404).json({ 
-                ok: false, 
-                message: `❌ Không tìm thấy dữ liệu thẻ sinh viên cho MSSV: ${student_code}. Vui lòng liên hệ Giảng viên hoặc Admin để được cập nhật dữ liệu thi.` 
+            return res.status(404).json({
+                ok: false,
+                message: `❌ Không tìm thấy dữ liệu thẻ sinh viên cho MSSV: ${student_code}. Vui lòng liên hệ Giảng viên hoặc Admin để được cập nhật dữ liệu thi.`
             });
         }
 
@@ -839,9 +840,9 @@ async function verifyStudentCardByCode(req, res) {
         const cardMime = 'image/jpeg';
 
         if (!cardBlob) {
-             return res.status(400).json({ 
-                ok: false, 
-                message: `❌ Dữ liệu thẻ sinh viên của MSSV ${student_code} bị thiếu ảnh. Vui lòng báo lại với Admin.` 
+            return res.status(400).json({
+                ok: false,
+                message: `❌ Dữ liệu thẻ sinh viên của MSSV ${student_code} bị thiếu ảnh. Vui lòng báo lại với Admin.`
             });
         }
 
@@ -854,12 +855,12 @@ async function verifyStudentCardByCode(req, res) {
             );
             console.log(`[Verify Card By Code] ✅ Đã lưu thẻ SV từ kho vào bộ nhớ tạm của buổi thi (Submission ${submissionId})`);
         } else {
-             console.warn(`[Verify Card By Code] ⚠️ Không tìm thấy cột 'student_card_blob' trong bảng submissions. Bỏ qua ghi Database.`);
+            console.warn(`[Verify Card By Code] ⚠️ Không tìm thấy cột 'student_card_blob' trong bảng submissions. Bỏ qua ghi Database.`);
         }
 
         // 4. Trả về kết quả cho Frontend (bao gồm cả ảnh để xem trước)
         const base64Preview = `data:${cardMime};base64,${Buffer.from(cardBlob).toString("base64")}`;
-        
+
         return res.json({
             ok: true,
             valid: true,

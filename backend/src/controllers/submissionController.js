@@ -61,7 +61,13 @@ exports.postProctorEvent = async (req, res) => {
   let conn;
   try {
     conn = await pool.getConnection();
-    const severity = CHEATING_TYPES[event_type];
+
+    let severity = CHEATING_TYPES[event_type];
+    // Dynamic AI events
+    if (!severity && event_type.startsWith("ai_")) {
+      severity = "high";
+    }
+
     const isCheating = !!severity;
 
     let updatedCheatingCount = null;

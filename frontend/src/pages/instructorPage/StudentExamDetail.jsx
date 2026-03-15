@@ -8,6 +8,8 @@ export default function StudentExamDetail() {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [videoUrl, setVideoUrl] = useState(null);
+  const [mergingVideo, setMergingVideo] = useState(false);
   const [scores, setScores] = useState({
     mcq: 0,
     ai: 0,
@@ -50,7 +52,7 @@ export default function StudentExamDetail() {
         }
       );
       alert("Approved all scores!");
-    } catch {}
+    } catch { }
   };
 
   const handleApprovePerQuestion = async (qid, newScore) => {
@@ -66,7 +68,28 @@ export default function StudentExamDetail() {
         }
       );
       alert("Approved question score!");
-    } catch {}
+    } catch { }
+  };
+
+  const handleViewVideo = async (violationId = null) => {
+    try {
+      setMergingVideo(true);
+      setVideoUrl(null);
+      // Gọi API merge video
+      const res = await axiosClient.post(`/submissions/${detail.submission.id}/videos/merge`, {
+        violation_id: violationId
+      });
+      if (res.data?.video_url) {
+        // Assume backend is on port 5000, adjust if it uses REACT_APP_API_URL
+        const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
+        const serverOrigin = baseURL.replace('/api', '');
+        setVideoUrl(`${serverOrigin}${res.data.video_url}`);
+      }
+    } catch (err) {
+      alert("Lỗi khi tải/ghép video: " + (err.response?.data?.error || err.message));
+    } finally {
+      setMergingVideo(false);
+    }
   };
 
   if (loading) return <div>Loading...</div>;
@@ -171,23 +194,54 @@ export default function StudentExamDetail() {
         </div>
       ))}
 
-      <h2 className="text-xl mt-4">Violations (Gian lận)</h2>
-      <table className="min-w-full">
+      <div className="flex justify-between items-center mt-4">
+        <h2 className="text-xl">Violations (Gian lận)</h2>
+        <button
+          onClick={() => handleViewVideo()}
+          disabled={mergingVideo}
+          className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+        >
+          {mergingVideo ? "Đang ghép video..." : "Xem toàn bộ quá trình thi"}
+        </button>
+      </div>
+
+      {videoUrl && (
+        <div className="mt-4 p-4 border rounded bg-slate-50">
+          <h3 className="font-bold mb-2">Video Bằng Chứng:</h3>
+          <video controls className="w-full max-h-[500px] bg-black">
+            <source src={videoUrl} type="video/mp4" />
+            Trình duyệt của bạn không hỗ trợ HTML5 video.
+          </video>
+        </div>
+      )}
+
+      <table className="min-w-full bg-white border mt-4">
         <thead>
-          <tr>
-            <th>Event</th>
-            <th>Time</th>
-            <th>Details</th>
+          <tr className="bg-slate-100 border-b">
+            <th className="p-2 text-left">Event</th>
+            <th className="p-2 text-left">Time</th>
+            <th className="p-2 text-left">Details</th>
+            <th className="p-2 text-center">Action</th>
           </tr>
         </thead>
         <tbody>
           {detail.violations.map((v) => (
-            <tr key={v.id}>
-              <td>{v.event_type}</td>
-              <td>{new Date(v.timestamp).toLocaleString()}</td>
-              <td>
+            <tr key={v.id} className="border-b hover:bg-slate-50">
+              <td className="p-2">{v.event_type}</td>
+              <td className="p-2">{new Date(v.timestamp).toLocaleString()}</td>
+              <td className="p-2">
                 {v.details?.message}{" "}
                 {v.details?.key ? `(Phím: ${v.details.key})` : ""}
+              </td>
+              <td className="p-2 text-center">
+                {/* Normally we'd pass v.proctor_id or something specific, but for now we pass general snapshot logic ID if implemented */}
+                <button
+                  onClick={() => handleViewVideo(v.id)}
+                  disabled={mergingVideo}
+                  className="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded hover:bg-blue-200"
+                >
+                  Xem lỗi này
+                </button>
               </td>
             </tr>
           ))}

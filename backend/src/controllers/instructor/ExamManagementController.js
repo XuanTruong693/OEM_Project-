@@ -99,7 +99,7 @@ async function getExamPreview(req, res) {
         );
 
         const [[examInfo]] = await sequelize.query(
-            `SELECT time_open, time_close, status, title FROM exams WHERE id = ? LIMIT 1`,
+            `SELECT time_open, time_close, status, title, duration_minutes FROM exams WHERE id = ? LIMIT 1`,
             { replacements: [examId] }
         );
         const exam = examInfo || {};
@@ -132,6 +132,7 @@ async function getExamPreview(req, res) {
             questions: Array.from(map.values()),
             time_open: exam.time_open || null,
             time_close: exam.time_close || null,
+            duration_minutes: exam.duration_minutes || null,
             status: exam.status || "draft",
         });
     } catch (err) {
@@ -284,8 +285,14 @@ const purgeExam = async (req, res) => {
         );
         const deleted = result.affectedRows || 0;
 
+        // Reset exam status to draft and clear old open/close times so it correctly returns to 'Chưa mở' state
+        await sequelize.query(
+            `UPDATE exams SET status = 'draft', time_open = NULL, time_close = NULL WHERE id = ?`,
+            { replacements: [examId] }
+        );
+
         console.log(
-            `🧹 [PurgeExam] Instructor ${instructorId} purged ${deleted} submissions for exam ${examId}`
+            `🧹 [PurgeExam] Instructor ${instructorId} purged ${deleted} submissions for exam ${examId} and reset status to draft`
         );
         return res.json({ ok: true, deleted_count: deleted });
     } catch (err) {
@@ -410,8 +417,8 @@ const openExam = async (req, res) => {
         const {
             duration,
             duration_minutes,
-            openAt,
-            closeAt,
+            time_open,
+            time_close,
             max_points,
             require_face_check,
             require_student_card,
@@ -463,8 +470,8 @@ const openExam = async (req, res) => {
             )} ${pad(dt.getHours())}:${pad(dt.getMinutes())}:00`;
         };
 
-        const startDate = fmt(openAt);
-        const endDate = fmt(closeAt);
+        const startDate = fmt(time_open);
+        const endDate = fmt(time_close);
 
         await sequelize.query(
             `UPDATE exams SET 

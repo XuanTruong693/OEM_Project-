@@ -79,10 +79,12 @@ app.use(
   })
 );
 
-app.use(express.json());
+// Increase JSON limit for large base64 snapshot frame uploads (3fps x ~30s = ~100 frames x 50KB each)
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Serve uploaded verification images if *_url columns are used
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+// Serve uploaded snapshots/videos as static files
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 // ✅ Log debug chỉ khi chạy dev
 if (process.env.NODE_ENV === "development") {
@@ -104,7 +106,8 @@ app.use("/api/assign-bank", assignBankRoutes);
 app.use("/api/edit-exam", editExamRoutes);
 app.use("/api", studentExamRoutes); // Includes proctor event handler
 
-// Submission routes for instructor (results, violations, etc.)
+// Submission routes - mounted at /api (student side: snapshots, videos) AND /api/instructor (instructor side)
+app.use("/api", submissionRoutes);
 app.use("/api/instructor", submissionRoutes);
 
 // Root-level role endpoints to support production via IIS proxy

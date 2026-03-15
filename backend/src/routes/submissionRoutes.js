@@ -1,11 +1,22 @@
 const express = require("express");
 const submissionController = require("../controllers/submissionController");
+const snapshotController = require("../controllers/snapshotController");
 
 const router = express.Router();
 
 router.post(
   "/submissions/:submissionId/proctor-event",
   submissionController.postProctorEvent
+);
+
+router.post(
+  "/submissions/:submissionId/snapshots",
+  snapshotController.uploadSnapshots
+);
+
+router.post(
+  "/submissions/:submissionId/videos/merge",
+  snapshotController.mergeToVideo
 );
 
 router.get("/exams/:examId/violations", submissionController.getExamViolations);

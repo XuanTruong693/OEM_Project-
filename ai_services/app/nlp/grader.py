@@ -1,15 +1,16 @@
 """
 UniversityGrader - Advanced Grading Pipeline
 Pipeline Order:
-1. STRICT EXACT MATCH
-2. DATASET MEMORY
-3. TECHNICAL ANSWER CHECK (Code/SQL/Math)
-4. AI PRE-CHECK (for Smart Bypass decision)
-5. EARLY DIACRITIC CHECK (for long texts)
-6. LOGIC GUARDRAILS (with Smart Bypass + Context-aware)
-7. LENGTH RATIO CHECK (for partial detection)
-8. FUZZY / TYPO MATCH
-9. AI DEEP ANALYSIS (final scoring)
+1. STRICT EXACT MATCH (Raw & Simple Math)
+2. DATASET MEMORY (ML Feedback Loop)
+3. TECHNICAL ANSWER CHECK (Code/SQL)
+4. AI PRE-CHECK & EARLY DIACRITIC (Smart Bypass)
+5. LOGIC GUARDRAILS (Facts, Directional, Antonyms)
+6. LENGTH RATIO CHECK (Early Partial Detection)
+7. FUZZY TYPO MATCH (Basic string similarity)
+8. AI SEMANTIC CHUNKING DEEP ANALYSIS (Sentence-by-sentence)
+9. COVERAGE RATIO & BABBLE PENALTY (Keyword coverage & Babbling)
+10. LATE TYPO OVERRIDE (Fuzzy rescue for bad spelling)
 """
 import logging
 import numpy as np
@@ -89,6 +90,25 @@ class UniversityGrader:
             return 0.0
         intersection = kw1.intersection(kw2)
         return len(intersection) / len(kw1)  # Ratio of kw1 found in kw2
+
+    def _chunk_into_sentences(self, text: str) -> List[str]:
+        # Split text into logical chunks/sentences
+        if not text:
+            return []
+        # Split by periods, question marks, and exclamation points, keeping them attached to the chunk
+        chunks = re.split(r'(?<=[.!?])\s+', text.strip())
+        return [c.strip() for c in chunks if len(c.strip()) > 5]
+
+    def _calculate_coverage_ratio(self, student_text: str, model_text: str) -> float:
+        # Measure what percentage of core concepts in the model answer are present in the student answer
+        model_keywords = self._extract_keywords(model_text, min_len=2)
+        student_keywords = self._extract_keywords(student_text, min_len=2)
+        
+        if not model_keywords:
+            return 1.0 # Nothing to cover
+            
+        covered = model_keywords.intersection(student_keywords)
+        return len(covered) / len(model_keywords)
     
     def _contains_passive_markers(self, text: str) -> bool:
         # Check if text contains passive voice markers.
@@ -471,129 +491,129 @@ class UniversityGrader:
         if is_long_answer and diac_ratio >= 0.80:
             return self._build_result(max_points * 0.85, "Câu trả lời đúng với lỗi chính tả.", "Typo")
         
-        # STEP 5: AI DEEP ANALYSIS (Hybrid Mode)
+        # =========================================================
+        # STEP 5: AI SEMANTIC CHUNKING DEEP ANALYSIS
+        # =========================================================
         
-        # 5a. Semantic Similarity
-        emb_s = self.ai.bi_encoder.encode(s_clean, convert_to_tensor=True)
-        emb_m = self.ai.bi_encoder.encode(m_syn, convert_to_tensor=True)
-        cosine_sim = util.cos_sim(emb_s, emb_m).item()
+        model_chunks = self._chunk_into_sentences(m_syn)
+        student_chunks = self._chunk_into_sentences(s_clean)
         
-        # 5b. Logic Analysis
-        has_directional_verb = any(v in model_text.lower() for v in self.directional_verbs)
+        # Fallback if chunking yields nothing
+        if not model_chunks:
+             model_chunks = [m_syn]
+        if not student_chunks:
+             student_chunks = [s_clean]
+             
+        chunk_points = max_points / len(model_chunks)
+        total_semantic_score = 0
+        feedback_details = []
+        is_global_contradiction = False
         
-        if cosine_sim > 0.90 and not has_directional_verb:
-            logic_label = 'entailment'
-            logic_conf = 1.0
-        if cosine_sim > 0.90 and not has_directional_verb:
-            logic_label = 'entailment'
-            logic_conf = 1.0
+        for i, m_chunk in enumerate(model_chunks):
+            best_chunk_score = 0
+            best_chunk_feedback = ""
+            best_logic_label = 'neutral'
+            
+            emb_m_chunk = self.ai.bi_encoder.encode(m_chunk, convert_to_tensor=True)
+            
+            # Find best matching student chunk
+            best_s_chunk = ""
+            best_sim = -1
+            
+            for s_chunk in student_chunks:
+                emb_s_chunk = self.ai.bi_encoder.encode(s_chunk, convert_to_tensor=True)
+                sim = util.cos_sim(emb_s_chunk, emb_m_chunk).item()
+                if sim > best_sim:
+                    best_sim = sim
+                    best_s_chunk = s_chunk
+            
+            # Threshold to consider the point "addressed" at all
+            if best_sim < 0.35:
+                # Student missed this point completely
+                feedback_details.append(f"Ý {i+1}: Thiếu ý.")
+                continue
+                
+            # Perform Logic Analysis on the matched chunk pair
+            logic_label, logic_conf = self.logic_analyzer.analyze(best_s_chunk, m_chunk)
+            has_directional_verb = any(v in m_chunk.lower() for v in self.directional_verbs)
+            
+            # Reversals
+            is_reversed, verb_used = self._check_directional_logic(best_s_chunk, m_chunk)
+            
+            if is_reversed and not smart_bypass_active:
+                chunk_score = 0
+                best_chunk_feedback = f"Ý {i+1}: Sai logic hướng ('{verb_used}')."
+            elif logic_label == 'contradiction' and logic_conf > self.config.contradiction_threshold:
+                chunk_score = 0
+                best_chunk_feedback = f"Ý {i+1}: Sai lệch logic/Ngược ý."
+                is_global_contradiction = True
+            else:
+                # Acceptable point
+                chunk_score = chunk_points * min(1.0, (best_sim * 1.1)) # Give a slight boost, cap at max
+                if best_sim > 0.85:
+                    best_chunk_feedback = f"Ý {i+1}: Tốt."
+                else:
+                    best_chunk_feedback = f"Ý {i+1}: Chấp nhận được (Độ khớp: {best_sim:.2f})."
+                    
+            total_semantic_score += chunk_score
+            feedback_details.append(best_chunk_feedback)
+            
+        # =========================================================
+        # STEP 6: COVERAGE RATIO & BABBLE PENALTY
+        # =========================================================
+        coverage_ratio = self._calculate_coverage_ratio(s_clean, m_syn)
+        coverage_multiplier = 1.0
+        
+        # Relax coverage penalty only if it's a LONG text with typos, OR an incredibly high typo match
+        if (diac_ratio >= 0.65 and is_long_answer) or diac_ratio >= 0.85:
+             coverage_multiplier = 1.0
+             feedback_details.append(f"(Bỏ qua phạt từ khóa do cấu trúc giống nhau: Coverage={int(coverage_ratio*100)}%)")
         else:
-            logic_label, logic_conf = self.logic_analyzer.analyze(s_clean, m_syn)
+             if coverage_ratio < 0.35:
+                  coverage_multiplier = 0.3 # Heavy penalty for catching only 1-2 words
+             elif coverage_ratio < 0.55:
+                  coverage_multiplier = 0.5
+             elif coverage_ratio < 0.75:
+                  coverage_multiplier = 0.8
+                  
+        # Babble Penalty: Punish students who write too many extra things (Trộn lẫn / Chém gió)
+        babble_penalty = 1.0
+        if len(student_chunks) > len(model_chunks):
+            extra_chunks = len(student_chunks) - len(model_chunks)
+            # 15% penalty for each extra unmatched chunk, max 60% penalty
+            penalty = min(0.6, extra_chunks * 0.15)
+            babble_penalty = 1.0 - penalty
+            feedback_details.append(f"(Trừ {int(penalty*100)}% điểm do viết lan man/thừa ý)")
+             
+        final_score = total_semantic_score * coverage_multiplier * babble_penalty
         
-        is_global_contradiction = (logic_label == 'contradiction' and logic_conf > self.config.contradiction_threshold)
-        if is_global_contradiction and len(model_text) < 100 and cosine_sim > 0.60:
-             is_global_contradiction = False
-             logger.info(f"Contradiction overridden by Semantic Sim ({cosine_sim:.2f}) for Short Text.")
-        
-        # 5c. Proposition Matching
-        props = extract_propositions(model_text)
-        total_props = len(props)
-        
-        if total_props > 0 and cosine_sim > 0.90 and not has_directional_verb:
-            matched_props_count = total_props
-            missing_props_indices = []
-        else:
-            matched_props_count, missing_props_indices = self._hybrid_proposition_match(s_clean, props)
-        
-        prop_ratio = matched_props_count / total_props if total_props > 0 else 0.0
-        
-        # 5d. Off-topic Veto
-        if logic_label == 'neutral' and prop_ratio < 0.2 and cosine_sim < 0.5:
+        # 5d. Off-topic Veto (Post-chunking)
+        if coverage_ratio < 0.1 and final_score < (max_points * 0.2):
             return self._build_result(
-                max_points * 0.15, 
-                f"Answer appears off-topic. (Sem: {cosine_sim:.2f})", 
+                0.0, 
+                f"Câu trả lời hoàn toàn lạc đề (Độ bao phủ: {coverage_ratio:.2f}).", 
                 "Off-topic"
             )
         
-        # 5e. Rescue Logic
-        rescue_msg = ""
-        force_typo_score = False
+        # =========================================================
+        # STEP 7: BUILD FINAL RESULT
+        # =========================================================
         
-        if diac_ratio >= 0.75:
-            is_global_contradiction = False
-            rescue_msg = " (Rescued by Fuzzy Typo Check)"
-            force_typo_score = True
-        
+        final_type = "Paraphrase" if final_score >= (max_points * 0.7) else "Partial"
         if is_global_contradiction:
-            if prop_ratio >= 0.25:
-                is_global_contradiction = False
-                rescue_msg += " (Rescued: Valid Partial)"
-            elif matched_props_count >= 1 and total_props <= 2:
-                is_global_contradiction = False
-                rescue_msg += " (Rescued: Valid Partial Short)"
-        
-        if is_global_contradiction:
-            return self._build_result(
-                max_points * 0.10, 
-                f"Contradiction detected. (Sem: {cosine_sim:.2f})", 
-                "Contradiction"
-            )
-        
-        # STEP 6: TIERED SCORING
-        base_pct = (max(0, cosine_sim) * self.config.weight_semantic) + (prop_ratio * self.config.weight_propositions)
-        final_score_pct = base_pct
-        final_type = "Partial"
-        feedback = f"Semantic: {cosine_sim:.2f}, Props: {matched_props_count}/{total_props}.{rescue_msg}"
-        
-        # Paraphrase Detection
-        is_paraphrase = False
-        if logic_label == 'entailment':
-            is_paraphrase = True
-        elif prop_ratio == 1.0 and cosine_sim > 0.8:
-            is_paraphrase = True
-        elif prop_ratio >= 0.70 and cosine_sim > 0.85:
-            is_paraphrase = True
-        elif cosine_sim > 0.90 and not has_directional_verb:
-            is_paraphrase = True
-        
-        # Length Penalty for "Paraphrase" on Long Answers
-        # If text is too short, demote from Paraphrase to Partial
-        if is_long_answer and is_paraphrase and length_ratio < 0.5:
-             is_paraphrase = False
-             final_score_pct *= length_ratio * 1.5 # Heavy penalty
-             feedback += f" (Demoted: Too short {int(length_ratio*100)}%)"
-
-        if is_paraphrase:
-            final_type = "Paraphrase"
-            final_score_pct = max(final_score_pct, 0.85)
-            feedback = "Great answer! Good logic match."
-        
-        if force_typo_score:
-            final_type = "Typo"
-            final_score_pct = max(final_score_pct, 0.80)
-            feedback = f"Answer has typos but is mostly correct.{rescue_msg}"
-        
-        # Partial Scoring
-        if not is_paraphrase and not force_typo_score and matched_props_count < total_props:
-            final_type = "Partial"
-            # Proportional scoring based on matched ratio
-            if prop_ratio >= 0.5:
-                final_score_pct = 0.40 + (prop_ratio * 0.30)  # 40-70%
-            elif prop_ratio >= 0.25:
-                final_score_pct = 0.25 + (prop_ratio * 0.30)  # 25-40%
-            else:
-                final_score_pct = max(0.15, prop_ratio * 0.50)  # 15% 
+            final_type = "Contradiction"
             
-            missing_texts = [props[i] for i in missing_props_indices[:2]]
-            if missing_texts:
-                feedback = f"Bạn trả lời đúng một phần ({int(prop_ratio*100)}%). (Sem: {cosine_sim:.2f}). Thiếu ý: {'; '.join(missing_texts)}..."
-        
-        # Late Typo Override
-        if diac_ratio >= 0.85 and final_score_pct < 0.85:
-            final_score_pct = 0.85
+        # Late Typo Override (Strict for short texts)
+        if diac_ratio >= 0.85 and (final_score / max_points) < 0.85:
+            final_score = max(final_score, max_points * 0.75) # Ensure it scores at least 7.5
             final_type = "Typo"
-            feedback = "Correct answer with typos." 
-        return self._build_result(final_score_pct * max_points, feedback, final_type)
+            feedback = "Câu trả lời đúng ý nhưng có một số lỗi chính tả." 
+        else:
+            feedback = " | ".join(feedback_details)
+            if coverage_multiplier < 1.0:
+                 feedback += f" (Coverage quá thấp: {int(coverage_ratio*100)}%)."
+                 
+        return self._build_result(final_score, feedback, final_type)
 
 def calculate_score(student_text: str, model_text: str, max_points: float) -> Dict[str, Any]:
     grader = UniversityGrader()

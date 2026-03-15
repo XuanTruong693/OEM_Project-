@@ -202,6 +202,7 @@ async function startExam(req, res) {
             exam_title: ex.exam_title || "",
             instructor_name: ex.instructor_name || "",
             intent_shuffle: !!ex.intent_shuffle,
+            monitor_screen: !!sub.monitor_screen,
         });
     } catch (err) {
         console.error("startExam error:", err);

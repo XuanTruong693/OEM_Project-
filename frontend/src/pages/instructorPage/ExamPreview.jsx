@@ -14,17 +14,19 @@ export default function ExamPreview() {
 
   React.useEffect(() => {
     (async () => {
-      try {2
+      try {
+        2
         const res = await axiosClient.get(
           `/instructor/exams/${examId}/preview`
         );
         const previewData = res.data || { questions: [] };
         setData(previewData);
 
-        // Lưu thông tin exam (time_open, time_close, status)
+        // Lưu thông tin exam (time_open, time_close, status, duration_minutes)
         const examData = {
           time_open: previewData.time_open,
           time_close: previewData.time_close,
+          duration_minutes: previewData.duration_minutes,
           status: previewData.status,
         };
         console.log("📊 [ExamPreview] Exam info:", examData);
@@ -43,29 +45,24 @@ export default function ExamPreview() {
   const mcq = qs.filter((q) => q.type === "MCQ").length;
   const essay = total - mcq;
 
-  // Kiểm tra xem bài thi có đang trong quá trình không
+  // Kiểm tra xem bài thi có đang mở không
   const isInProgress = React.useMemo(() => {
-    if (!examInfo || !examInfo.time_open || !examInfo.time_close) {
-      console.log("⚠️ [ExamPreview] Missing time info:", examInfo);
-      return false;
+    if (!examInfo || examInfo.status !== 'published') {
+      return false; // Nếu chưa xuất bản thì chắc chắn chưa mở
     }
 
     const now = new Date();
-    const open = new Date(examInfo.time_open);
-    const close = new Date(examInfo.time_close);
+    const open = examInfo.time_open ? new Date(examInfo.time_open) : null;
+    const close = examInfo.time_close ? new Date(examInfo.time_close) : null;
 
-    console.log("🕐 [ExamPreview] Time check:", {
-      now: now.toISOString(),
-      open: open.toISOString(),
-      close: close.toISOString(),
-      isAfterOpen: now >= open,
-      isBeforeClose: now <= close,
-    });
+    // Nếu có cài giờ mở mà chưa tới giờ -> không tính là đang mở
+    if (open && now < open) return false;
+    
+    // Nếu có cài giờ đóng mà đã qua giờ -> không tính là đang mở (Đã đóng thi)
+    if (close && now > close) return false;
 
-    // Trong quá trình: now >= time_open && now <= time_close
-    const inProgress = now >= open && now <= close;
-    console.log(`🔍 [ExamPreview] isInProgress: ${inProgress}`);
-    return inProgress;
+    // Còn lại là đang mở (Trong khoảng thời gian, hoặc không có giới hạn thời gian mở/đóng)
+    return true;
   }, [examInfo]);
 
   const splitQA = (q) => {
@@ -256,17 +253,26 @@ export default function ExamPreview() {
             onClick={() => handleStartOpen()}
             className="px-4 py-2 rounded-lg bg-gradient-to-b from-emerald-500 to-emerald-600 text-white shadow hover:brightness-105"
           >
-            Bắt đầu mở phòng
+            {(() => {
+              // Nếu đã xuất bản và đã qua giờ đóng cửa
+              if (examInfo?.status === "published" && examInfo?.time_close && new Date() > new Date(examInfo.time_close)) {
+                return "Mở phòng lại";
+              }
+              return "Bắt đầu mở phòng";
+            })()}
           </button>
         ) : (
           <div className="flex items-center gap-2">
             <div className="px-4 py-2 rounded-lg bg-amber-50 text-amber-700 border border-amber-200">
               <span className="font-semibold">🔒 Bài thi đang diễn ra</span>
               <div className="text-xs mt-1">
-                Kết thúc:{" "}
-                {examInfo?.time_close
-                  ? new Date(examInfo.time_close).toLocaleString()
-                  : "-"}
+                {examInfo?.time_close ? (
+                  <>Kết thúc: {new Date(examInfo.time_close).toLocaleString("vi-VN")}</>
+                ) : examInfo?.duration_minutes ? (
+                  <>Thời gian làm bài: {examInfo.duration_minutes} phút</>
+                ) : (
+                  <>Không giới hạn thời gian kết thúc</>
+                )}
               </div>
             </div>
           </div>

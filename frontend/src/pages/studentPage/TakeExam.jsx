@@ -32,6 +32,10 @@ export default function TakeExam() {
   const keyPressCountsRef = useRef({}); // Track consecutive presses per key to allow 1 safe press
   const failedReentryRef = useRef({}); // Track keys where automatic fullscreen re-entry failed (first-press)
   const fullscreenExitCountsRef = useRef({ count: 0, last: 0, timeout: null });
+  const mouseOutsideCountRef = useRef(0);  // Track how many times mouse left browser
+  const mouseOutsideTimerRef = useRef(null); // Timer for sustained mouse-outside detection
+  const mouseOutsideStartRef = useRef(null); // When mouse first left the window
+  const monitorScreenConfigRef = useRef(false); // Store the admin config for cheating monitoring
 
   // ===== State =====
   const [theme, setTheme] = useState(
@@ -59,6 +63,166 @@ export default function TakeExam() {
   const [showFullscreenOverlay, setShowFullscreenOverlay] = useState(false); // Overlay bắt buộc vào lại fullscreen
   const [monitoringActive, setMonitoringActive] = useState(false); // State for inactivity hook (not ref)
   const [showBlurOverlay, setShowBlurOverlay] = useState(false); // Blur overlay for screenshot protection
+
+  // ===== AI / Real-time Events Refs =====
+  const sessionEventsRef = useRef([]); // Thu thập events cho AI
+  const aiCheckIntervalRef = useRef(null); // Interval Timer
+  const lastAIFireRef = useRef(0); // Chống spam AI
+  const AI_URL = import.meta.env.VITE_AI_SERVER_URL || "http://localhost:8000";
+
+  // ===== Snapshot & Recording Refs & State =====
+  const mediaStreamRef = useRef(null);
+  const snapshotIntervalRef = useRef(null);
+  const snapshotsRef = useRef([]);
+  const recordingRef = useRef(false);
+  const returnTimerRef = useRef(null);
+  const currentSnapshotIdRef = useRef(null); // ID for current violation frames
+  const hiddenVideoRef = useRef(null);
+  const hiddenCanvasRef = useRef(null);
+  const screenShareRequestingRef = useRef(false); // true khi dang hien dialog chia se man hinh
+
+  const [screenShared, setScreenShared] = useState(false);
+  const [screenShareError, setScreenShareError] = useState(null);
+
+  const requestScreenShare = async () => {
+    try {
+      setScreenShareError(null);
+      // === FIX BUG 1: Mute onBlur/onVisibility khi dialog dang mo ===
+      screenShareRequestingRef.current = true;
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { displaySurface: "monitor", cursor: "always" },
+        audio: false
+      });
+      screenShareRequestingRef.current = false;
+
+      // Ensure it's the entire screen if possible
+      const track = stream.getVideoTracks()[0];
+      const settings = track.getSettings();
+      if (settings.displaySurface && settings.displaySurface !== "monitor") {
+        track.stop();
+        setScreenShareError("Vui lòng chọn 'Entire Screen' (Toàn màn hình) thay vì tab/window.");
+        return;
+      }
+
+      mediaStreamRef.current = stream;
+
+      // Attach to hidden video for scraping
+      if (hiddenVideoRef.current) {
+        hiddenVideoRef.current.srcObject = stream;
+      }
+
+      setScreenShared(true);
+
+      // Listen for user stopping sharing manually via browser bar
+      track.onended = () => {
+        setScreenShared(false);
+        setScreenShareError("Bạn đã tắt chia sẻ màn hình. Vui lòng tải lại trang và bật lại để tiếp tục bài thi.");
+        // Try to penalize them if they stop it mid-exam
+        if (!submittedRef.current) {
+          penalize("screen_share_stopped", "Sinh viên tự ý tắt chia sẻ màn hình");
+        }
+      };
+    } catch (err) {
+      console.error("Screen share error:", err);
+      // === FIX BUG 1: reset flag ca khi user cancel dialog ===
+      screenShareRequestingRef.current = false;
+      setScreenShareError("Bạn phải cho phép chia sẻ 'Toàn màn hình / Entire Screen' để làm bài thi.");
+    }
+  };
+
+  // ===== Recording Control Helpers =====
+  const stopSnapshotCapture = () => {
+    if (!recordingRef.current) return;
+    recordingRef.current = false;
+    clearInterval(snapshotIntervalRef.current);
+    clearTimeout(returnTimerRef.current);
+
+    console.log(`[Recording] Stopped capturing. Total frames: ${snapshotsRef.current.length}`);
+
+    if (snapshotsRef.current.length > 0) {
+      // Background upload frames to backend
+      const framesToUpload = [...snapshotsRef.current];
+      snapshotsRef.current = [];
+      const violationId = currentSnapshotIdRef.current || `V_${Date.now()}`;
+
+      // Safe non-blocking upload
+      axiosClient.post(`/submissions/${submissionId}/snapshots`, {
+        violation_id: violationId,
+        frames: framesToUpload,
+        fps: 3
+      }).catch(err => console.error("Failed to upload snapshots", err));
+    }
+  };
+
+  const startSnapshotCapture = (snapshotId = null) => {
+    if (recordingRef.current || !mediaStreamRef.current) return;
+
+    if (snapshotId) {
+      currentSnapshotIdRef.current = snapshotId;
+    } else {
+      currentSnapshotIdRef.current = `V_${Date.now()}`;
+    }
+
+    console.log(`[Recording] Started snapshot capture (3fps) for ${currentSnapshotIdRef.current}`);
+    recordingRef.current = true;
+    snapshotsRef.current = [];
+    clearTimeout(returnTimerRef.current);
+
+    const track = mediaStreamRef.current.getVideoTracks()[0];
+
+    // === Use ImageCapture API directly from the stream track ===
+    // Bypasses <video> element throttling that causes black frames when tab is in background
+    if (!track) {
+      console.error("[Recording] No video track available in stream");
+      recordingRef.current = false;
+      return;
+    }
+    if (typeof ImageCapture === "undefined") {
+      // ImageCapture not supported (Firefox/Safari) - inform user to use Chrome
+      console.error("[Recording] ❌ ImageCapture API not supported. Please use Chrome or Edge for proctoring.");
+      flash("Trình duyệt không hỗ trợ giám sát. Vui lòng dùng Chrome hoặc Edge.", "danger", 5000);
+      recordingRef.current = false;
+      return;
+    }
+
+    const imageCapture = new ImageCapture(track);
+
+    snapshotIntervalRef.current = setInterval(async () => {
+      try {
+        const bitmap = await imageCapture.grabFrame();
+        const c = hiddenCanvasRef.current;
+        if (!c) return;
+        if (c.width !== bitmap.width || c.height !== bitmap.height) {
+          c.width = bitmap.width;
+          c.height = bitmap.height;
+        }
+        const ctx = c.getContext("2d", { willReadFrequently: true });
+        ctx.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        const frameData = c.toDataURL("image/webp", 0.6);
+        snapshotsRef.current.push(frameData);
+      } catch (err) {
+        // grabFrame can fail if track ends - ignore silently
+      }
+    }, 333); // 3 FPS
+  };
+
+
+
+  const notifyStudentReturned = () => {
+    if (!recordingRef.current) return;
+    console.log("[Recording] Student returned. Waiting 10s before stopping capture...");
+
+    // Clear any existing wait timer
+    clearTimeout(returnTimerRef.current);
+
+    // Wait 10 seconds of "good behavior" before stopping
+    returnTimerRef.current = setTimeout(() => {
+      console.log("[Recording] 10s elapsed with normal behavior. Stopping capture.");
+      stopSnapshotCapture();
+    }, 10000);
+  };
+
 
   // ===== Penalize callback for inactivity (defined early for hook) =====
   const penalizeInactivity = useCallback(async (evt, msg) => {
@@ -316,13 +480,22 @@ export default function TakeExam() {
         setRemaining(Math.max(0, durSec - passed));
 
         setExamTitle(res.data?.exam_title || `Bài thi #${examId}`);
+        monitorScreenConfigRef.current = !!res.data?.monitor_screen;
 
-        // Hiển thị thông báo bắt đầu giám sát
-        flash(
-          "📹 Hệ thống giám sát đã kích hoạt. Giữ toàn màn hình!",
-          "warn",
-          3000
-        );
+        if (res.data?.monitor_screen) {
+          // Hiển thị thông báo bắt đầu giám sát
+          flash(
+            "📹 Hệ thống giám sát đã kích hoạt. Giữ toàn màn hình!",
+            "warn",
+            3000
+          );
+        } else {
+          flash(
+            "ℹ️ Chế độ thi toàn màn hình được bật.",
+            "success",
+            3000
+          );
+        }
 
         if (document.documentElement.requestFullscreen) {
           try {
@@ -443,10 +616,25 @@ export default function TakeExam() {
 
       lastViolationTimeRef.current[evt] = now;
 
+      // Generare snapshot_id to tie frames to this specific DB log
+      const snapshotId = `V_${Date.now()}_${evt}`;
+
+      // Push to AI local cache if it's not the AI trigger itself to prevent loops
+      if (evt !== 'ai_detected_cheating') {
+        sessionEventsRef.current.push({
+          event_type: evt,
+          timestamp: now,
+          details: { message: msg, key }
+        });
+      }
+
       // Report to backend (non-blocking)
       try {
-        postProctor(evt, { message: msg, key });
+        postProctor(evt, { message: msg, key, snapshot_id: snapshotId });
       } catch (e) { }
+
+      // Trigger AI behavior evaluation and 3fps screenshot recording
+      startSnapshotCapture(snapshotId);
 
       // Update local violation count and notify student
       setViolations((v) => {
@@ -565,25 +753,78 @@ export default function TakeExam() {
           ? "Rời ứng dụng (Home/Switch App)"
           : "Rời tab / ẩn cửa sổ";
         penalize("visibility_hidden", msg);
+      } else {
+        notifyStudentReturned();
+
+        // Log duration for AI if available
+        const hideStart = lastViolationTimeRef.current["_hide_start"];
+        if (hideStart) {
+          const duration = Date.now() - hideStart;
+          sessionEventsRef.current.push({
+            event_type: "visibility_hidden_duration",
+            timestamp: Date.now(),
+            details: { duration_ms: duration }
+          });
+          delete lastViolationTimeRef.current["_hide_start"];
+        }
       }
     };
     const onBlur = () => {
+      // === FIX BUG 1: Bo qua neu dang hien dialog chia se man hinh ===
+      if (screenShareRequestingRef.current) {
+        console.log("[TakeExam] onBlur ignored - screen share dialog is open");
+        return;
+      }
       // Show blur overlay immediately to protect against screenshots
       setShowBlurOverlay(true);
 
       const msg = isMobile
         ? "Mất tiêu điểm (Blur) - Có thể do: Chụp màn hình, mở thông báo hoặc Control Center"
         : "Rời cửa sổ / Mất tiêu điểm (Blur)";
+      const blurTimestamp = Date.now();
+      lastViolationTimeRef.current["_blur_start"] = blurTimestamp;
       penalize("window_blur", msg);
     };
     const onFocus = () => {
       // Hide blur overlay when focus returns
       setShowBlurOverlay(false);
+      notifyStudentReturned();
+      const blurStart = lastViolationTimeRef.current["_blur_start"];
+      if (blurStart) {
+        const duration = Date.now() - blurStart;
+        sessionEventsRef.current.push({
+          event_type: "window_blur_duration",
+          timestamp: Date.now(),
+          details: { duration_ms: duration }
+        });
+        delete lastViolationTimeRef.current["_blur_start"];
+      }
     };
     const onKey = (e) => {
-      // Keys and combinations we want to monitor for potential cheating
-      // Added PrintScreen for detection
-      const blockKeys = ["Escape", "F11", "F3", "F4", "F5", "F12", "Tab", "PrintScreen"];
+      // === Kiem tra chup man hinh truoc tien ===
+      const SCREENSHOT_KEYS = [
+        // PrtSc don
+        { check: () => e.key === "PrintScreen" && !e.ctrlKey && !e.altKey, id: "PrtSc" },
+        // Ctrl+PrtSc (chup toan man hinh tren 1 so trinh duyet/ung dung)
+        { check: () => e.key === "PrintScreen" && e.ctrlKey, id: "Ctrl+PrtSc" },
+        // Alt+PrtSc (chup cua so hien tai tren Windows)
+        { check: () => e.key === "PrintScreen" && e.altKey, id: "Alt+PrtSc" },
+        // Ctrl+Shift+S (shortcut chup man hinh tren 1 so app)
+        { check: () => e.ctrlKey && e.shiftKey && ["s", "S"].includes(e.key), id: "Ctrl+Shift+S" },
+      ];
+
+      for (const sk of SCREENSHOT_KEYS) {
+        if (sk.check()) {
+          e.preventDefault();
+          e.stopPropagation();
+          // Danh dau su kien dac biet la screenshot_attempt (de AI phan loai rieng)
+          penalize("screenshot_attempt", `Phát hiện cố chụp màn hình: ${sk.id}`, sk.id);
+          return;
+        }
+      }
+
+      // === Cac phim chong gian lan thong thuong ===
+      const blockKeys = ["Escape", "F11", "F3", "F4", "F5", "F12", "Tab"];
       const combos = [
         {
           check: () => e.ctrlKey && ["r", "R"].includes(e.key),
@@ -698,6 +939,54 @@ export default function TakeExam() {
       e.returnValue = "";
     };
 
+    const onCopy = (e) => {
+      e.preventDefault();
+      penalize("copy", "Phát hiện sao chép nội dung");
+    };
+
+    const onPaste = (e) => {
+      e.preventDefault();
+      penalize("paste", "Phát hiện dán nội dung");
+    };
+
+    // ===== Mouse Outside Window Tracking =====
+    const MOUSE_OUTSIDE_WARN_MS = 3000;  // 3 giây rời khỏi thì cảnh báo
+    const MOUSE_OUTSIDE_PENALIZE_MS = 8000; // 8 giây rời khỏi thì tính vi phạm
+
+    const onMouseLeave = (e) => {
+      // Chỉ track khi chuột thực sự ra ngoài viewport (không phải sự kiện bình thường)
+      if (!monitoringActiveRef.current) return;
+      if (e.clientY <= 0 || e.clientX <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
+        mouseOutsideStartRef.current = Date.now();
+
+        // Warning sau 3 giây
+        mouseOutsideTimerRef.current = setTimeout(() => {
+          flash("⚠️ Chuột đang ra ngoài màn hình - Hãy tập trung vào bài thi!", "warn", 4000);
+        }, MOUSE_OUTSIDE_WARN_MS);
+      }
+    };
+
+    const onMouseEnter = () => {
+      // Chuột quay vào, xóa timer
+      if (mouseOutsideTimerRef.current) {
+        clearTimeout(mouseOutsideTimerRef.current);
+        mouseOutsideTimerRef.current = null;
+      }
+
+      const start = mouseOutsideStartRef.current;
+      if (start) {
+        const duration = Date.now() - start;
+        mouseOutsideStartRef.current = null;
+
+        // Nếu ở ngoài > 8 giây = có khả năng nhìn tài liệu / điện thoại
+        if (duration >= MOUSE_OUTSIDE_PENALIZE_MS) {
+          mouseOutsideCountRef.current += 1;
+          const secOut = Math.round(duration / 1000);
+          penalize("mouse_outside", `Chuột rời khỏi màn hình ${secOut}s (có thể nhìn thiết bị khác)`);
+        }
+      }
+    };
+
     start();
     // Kết nối tới WebSocket server để báo cáo gian lận - use SOCKET_URL from config
     const socketUrl = SOCKET_URL || window.location.origin;
@@ -733,14 +1022,67 @@ export default function TakeExam() {
     socket.on("disconnect", () => {
       console.log("❌ [Student] Disconnected from WebSocket");
     });
-    const activateMonitoring = setTimeout(() => {
-      monitoringActiveRef.current = true;
-      setMonitoringActive(true); // Also update state for inactivity hook
-      console.log("✅ [TakeExam] Monitoring activated after 2s grace period");
+
+    // ==========================================
+    // Real-time AI Behavior Analysis Interval
+    // ==========================================
+    const runAIAnalysis = async () => {
+      if (submittedRef.current || !monitoringActiveRef.current) return;
+      if (sessionEventsRef.current.length === 0) return; // No events to process
+
+      // Throttle AI call 15 seconds max
+      const now = Date.now();
+      if (now - lastAIFireRef.current < 15000) return;
+      lastAIFireRef.current = now;
+
+      // Clone events to send and clear local buffer immediately
+      const eventsToSend = [...sessionEventsRef.current];
+      sessionEventsRef.current = [];
+
       try {
-        sessionStorage.setItem("exam_monitoring_active", "1");
-      } catch { }
+        const studentId = localStorage.getItem("student_id") || "0";
+        const res = await axiosClient.post(`${AI_URL}/api/ai/detect-behavior`, {
+          student_id: parseInt(studentId),
+          exam_id: parseInt(examId),
+          events: eventsToSend,
+          window_duration_seconds: 15
+        }, {
+          baseURL: "" // Bỏ qua baseURL mặc định vì trỏ sang AI server
+        });
+
+        if (res.data && res.data.success && res.data.is_cheating) {
+          console.log("🚨 [AI] Behavior detected as cheating:", res.data);
+          // Only trigger if confidence is high enough (e.g. > 0.6)
+          if (res.data.confidence > 0.6) {
+            // Format type for DB (e.g. "Multiple Tabs" -> "ai_multiple_tabs")
+            const safeType = res.data.cheating_type
+              ? res.data.cheating_type.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()
+              : 'detected_cheating';
+            const aiEventType = `ai_${safeType}`;
+
+            // Re-use logic to snapshot and alert
+            penalize(aiEventType, `AI: Phát hiện vi phạm tổng hợp (Khả năng: ${Math.round(res.data.confidence * 100)}% - ${res.data.cheating_type})`);
+          }
+        }
+      } catch (err) {
+        console.warn("[AI] Failed to analyze behavior:", err.message);
+      }
+    };
+    const activateMonitoring = setTimeout(() => {
+      if (monitorScreenConfigRef.current) {
+        monitoringActiveRef.current = true;
+        setMonitoringActive(true); // Also update state for inactivity hook
+        console.log("✅ [TakeExam] Monitoring activated after 2s grace period");
+        try {
+          sessionStorage.setItem("exam_monitoring_active", "1");
+        } catch { }
+      } else {
+        console.log("ℹ️ [TakeExam] Monitoring disabled by instructor config");
+      }
     }, 2000);
+
+    // Bắt đầu interval gửi sự kiện cho AI phân tích
+    aiCheckIntervalRef.current = setInterval(runAIAnalysis, 15000);
 
     window.addEventListener("keydown", onKey, true);
     document.addEventListener("fullscreenchange", onFs);
@@ -749,6 +1091,10 @@ export default function TakeExam() {
     window.addEventListener("focus", onFocus); // For blur overlay protection
     window.addEventListener("contextmenu", onCtx);
     window.addEventListener("beforeunload", onBefore);
+    document.addEventListener("copy", onCopy);
+    document.addEventListener("paste", onPaste);
+    document.addEventListener("mouseleave", onMouseLeave);
+    document.addEventListener("mouseenter", onMouseEnter);
 
     const cleanup = () => {
       clearTimeout(activateMonitoring);
@@ -772,6 +1118,13 @@ export default function TakeExam() {
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("contextmenu", onCtx);
       window.removeEventListener("beforeunload", onBefore);
+      document.removeEventListener("copy", onCopy);
+      document.removeEventListener("paste", onPaste);
+      document.removeEventListener("mouseleave", onMouseLeave);
+      document.removeEventListener("mouseenter", onMouseEnter);
+      if (mouseOutsideTimerRef.current) clearTimeout(mouseOutsideTimerRef.current);
+      if (aiCheckIntervalRef.current) clearInterval(aiCheckIntervalRef.current);
+      stopSnapshotCapture();
       console.log(
         "🛑 [TakeExam] Monitoring stopped - all event listeners removed"
       );
@@ -899,6 +1252,15 @@ export default function TakeExam() {
       try {
         await document.exitFullscreen?.();
       } catch { }
+
+      // === FIX: Stop screen share stream so browser bar disappears ===
+      try {
+        if (mediaStreamRef.current) {
+          mediaStreamRef.current.getTracks().forEach(track => track.stop());
+          mediaStreamRef.current = null;
+          setScreenShared(false);
+        }
+      } catch { }
     } catch (err) {
       console.error("❌ [TakeExam] Submit error:", err);
       setShowModal(true);
@@ -929,8 +1291,47 @@ export default function TakeExam() {
   const headerGrad =
     "bg-[linear-gradient(90deg,rgba(106,163,255,.15),rgba(34,225,255,.12),rgba(138,126,255,.15))] backdrop-saturate-150 backdrop-blur-md";
 
+  if (!screenShared && !loading && !initError && !submitted) {
+    return (
+      <div className={`min-h-screen flex flex-col items-center justify-center p-4 ${shellBg}`}>
+        {/* Required hidden elements - positioned off-screen so browser keeps rendering video frames */}
+        <video ref={hiddenVideoRef} autoPlay playsInline muted style={{ position: 'fixed', left: '-9999px', top: 0, width: '1px', height: '1px' }} />
+        <canvas ref={hiddenCanvasRef} style={{ position: 'fixed', left: '-9999px', top: 0, width: '1px', height: '1px' }} />
+
+        <div className={`max-w-md w-full p-8 rounded-2xl text-center shadow-xl ${theme === 'dark' ? 'bg-[#0f172a] border border-slate-700' : 'bg-white border border-slate-200'}`}>
+          <div className="text-6xl mb-6 flex justify-center">
+            <div className="bg-blue-100 dark:bg-blue-900/40 w-24 h-24 rounded-full flex items-center justify-center">
+              <span className="animate-pulse">🖥️</span>
+            </div>
+          </div>
+          <h2 className="text-2xl font-bold mb-4 text-slate-800 dark:text-white">
+            Bắt Buộc Chia Sẻ Màn Hình
+          </h2>
+          <p className="text-slate-600 dark:text-slate-300 mb-6 text-sm">
+            Theo quy chế thi cử, bạn phải chia sẻ <strong>Toàn Màn Hình (Entire Screen)</strong> để tiếp tục vào bài thi. Nếu từ chối, bài thi sẽ không thể bắt đầu.
+          </p>
+          {screenShareError && (
+            <div className="mb-6 p-3 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-sm font-semibold rounded-lg border border-red-200 dark:border-red-800">
+              {screenShareError}
+            </div>
+          )}
+          <button
+            onClick={requestScreenShare}
+            className="w-full py-4 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white font-bold text-lg rounded-xl shadow-lg transition transform hover:scale-[1.02] active:scale-95"
+          >
+            Đồng Ý Chia Sẻ Màn Hình
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`min-h-screen flex flex-col ${shellBg} overflow-hidden`}>
+      {/* Required hidden elements - positioned off-screen so browser keeps rendering video frames */}
+      <video ref={hiddenVideoRef} autoPlay playsInline muted style={{ position: 'fixed', left: '-9999px', top: 0, width: '1px', height: '1px' }} />
+      <canvas ref={hiddenCanvasRef} style={{ position: 'fixed', left: '-9999px', top: 0, width: '1px', height: '1px' }} />
+
       {/* HEADER */}
       <header
         className={`sticky top-0 z-40 border-b ${theme === "dark" ? "border-white/10" : "border-slate-200"
@@ -1513,16 +1914,15 @@ export default function TakeExam() {
       )}
 
 
-      {/* BLUR OVERLAY - Bảo vệ khỏi chụp màn hình */}
+      {/* BLUR OVERLAY - Nhắc nhở SV quay lại - KHÔNG phủ đen honàn toàn (screen-share vẫn capture được nội dung) */}
       {showBlurOverlay && !submitted && (
         <div
-          className="fixed inset-0 z-[200] backdrop-blur-xl bg-black/80 flex items-center justify-center"
-          style={{ WebkitBackdropFilter: 'blur(20px)', backdropFilter: 'blur(20px)' }}
+          className="fixed inset-0 z-[200] flex items-center justify-center pointer-events-none"
+          style={{ background: 'rgba(0,0,0,0.15)' }}
         >
-          <div className="text-center text-white p-8">
-            <div className="text-6xl mb-4">🔒</div>
-            <h2 className="text-2xl font-bold mb-2">Nội dung đã được bảo vệ</h2>
-            <p className="text-gray-300">Vui lòng quay lại bài thi để tiếp tục</p>
+          <div className="text-center bg-black/60 rounded-2xl px-8 py-6 backdrop-blur-sm pointer-events-none">
+            <div className="text-5xl mb-3">🔒</div>
+            <h2 className="text-xl font-bold text-white">Vui lòng quay lại bài thi</h2>
           </div>
         </div>
       )}

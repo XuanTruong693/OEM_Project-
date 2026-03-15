@@ -31,23 +31,30 @@ export default function OpenExam() {
   };
 
   const getPhase = (e) => {
+    // Nếu chưa published thì coi như Chưa mở
+    if (e.status !== "published") {
+      return { label: "Chưa mở", cls: "bg-slate-100 text-slate-700" };
+    }
+
     const now = new Date();
     const open = e.time_open ? new Date(e.time_open) : null;
     const close = e.time_close ? new Date(e.time_close) : null;
-    // Chưa mở: chưa set hoặc now < time_open
-    if ((!open && !close) || (open && now < open))
+    
+    // Đã xuất bản nhưng chưa tới giờ mở
+    if (open && now < open) {
       return { label: "Chưa mở", cls: "bg-slate-100 text-slate-700" };
-    // Đã đóng: có close và now > close
-    if (close && now > close)
+    }
+    
+    // Đã xuất bản nhưng đã quá giờ đóng -> Đã đóng thi
+    if (close && now > close) {
       return { label: "Đã đóng thi", cls: "bg-rose-50 text-rose-700" };
-    // Trong quá trình: có open/close và now trong khoảng
-    if (open && close && now >= open && now <= close)
-      return {
-        label: "Trong quá trình",
-        cls: "bg-emerald-50 text-emerald-700",
-      };
-    // Fallback
-    return { label: "Chưa mở", cls: "bg-slate-100 text-slate-700" };
+    }
+    
+    // Năm trong khoảng thời gian (hoặc không giới hạn thời gian) -> Đã mở
+    return {
+      label: "Đã mở",
+      cls: "bg-emerald-50 text-emerald-700",
+    };
   };
 
   const filtered = React.useMemo(() => {
@@ -82,17 +89,16 @@ export default function OpenExam() {
                 <button
                   key={s}
                   onClick={() => setStatus(s)}
-                  className={`px-3 py-2 text-sm ${
-                    status === s
+                  className={`px-3 py-2 text-sm ${status === s
                       ? "bg-blue-600 text-white"
                       : "bg-white hover:bg-slate-50"
-                  }`}
+                    }`}
                 >
                   {s === "all"
                     ? t("all", "Tất cả", "All")
                     : s === "draft"
-                    ? "Draft"
-                    : "Published"}
+                      ? "Draft"
+                      : "Published"}
                 </button>
               ))}
             </div>
@@ -118,11 +124,10 @@ export default function OpenExam() {
                         <div className="text-xs text-slate-500 mt-0.5 flex items-center max-lg:flex-col max-lg:justify-start max-lg:items-start gap-2 max-lg:space-y-1">
                           <span>Trạng thái:</span>
                           <span
-                            className={`px-2 py-0.5 rounded ${
-                              e.status === "published"
+                            className={`px-2 py-0.5 rounded ${e.status === "published"
                                 ? "bg-emerald-50 text-emerald-700"
                                 : "bg-slate-100 text-slate-600"
-                            }`}
+                              }`}
                           >
                             {e.status || "draft"}
                           </span>

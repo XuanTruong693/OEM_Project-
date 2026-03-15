@@ -246,6 +246,7 @@ exports.batchUploadStudentCards = async (req, res) => {
             const imageBuffer = rowImages[i];
             if (!imageBuffer) {
                 errorList.push({ mssv, ten, ly_do: 'Không tìm thấy ảnh tại cột C của sinh viên này.' });
+
                 continue;
             }
 
