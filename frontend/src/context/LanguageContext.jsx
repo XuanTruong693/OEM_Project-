@@ -19,6 +19,7 @@ const translations = {
         // Sidebar
         dashboard: 'Dashboard',
         userManagement: 'Quản lý người dùng',
+        studentCards: 'Thẻ Sinh Viên', // ✅ [StudentCard]
         examManagement: 'Quản lý bài thi',
         examOverview: 'Tổng quan bài thi',
         results: 'Kết quả',
@@ -199,6 +200,7 @@ const translations = {
         // Sidebar
         dashboard: 'Dashboard',
         userManagement: 'User Management',
+        studentCards: 'Student Cards', // ✅ [StudentCard]
         examManagement: 'Exam Management',
         examOverview: 'Exam Overview',
         results: 'Results',

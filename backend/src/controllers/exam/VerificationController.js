@@ -801,12 +801,80 @@ async function uploadVerifyAssets(req, res) {
  * Cải tiến mới: Thay vì upload hình thẻ, sinh viên nhập MSSV để kiểm tra.
  */
 async function verifyStudentCardByCode(req, res) {
-    // TODO: 
-    // - Nhận student_code từ req.body
-    // - Tra cứu MSSV trong bảng student_cards (lấy thông tin, tên, card_image_blob, card_image_mimetype)
-    // - Cập nhật ảnh lấy từ student_cards vào bảng submissions (student_card_blob) để PrepareExam sử dụng
-    // - Trả về thành công + base64 image để FE hiển thị Preview
-    res.status(501).json({ ok: false, message: "Chưa triển khai logic backend" });
+    try {
+        const submissionId = req.params.id;
+        const userId = req.user.id;
+        const { student_code } = req.body;
+
+        if (!student_code) {
+            return res.status(400).json({ ok: false, message: "Vui lòng nhập Mã số Sinh viên (MSSV)" });
+        }
+
+        console.log(`[Verify Card By Code] Bắt đầu lấy ảnh thẻ cho MSSV: ${student_code}, submission: ${submissionId}`);
+
+        // 1. Kiểm tra submission tồn tại và thuộc về user
+        const [subRows] = await sequelize.query(
+            `SELECT id FROM submissions WHERE id = ? AND user_id = ? LIMIT 1`,
+            { replacements: [submissionId, userId] }
+        );
+        if (!Array.isArray(subRows) || subRows.length === 0) {
+            return res.status(404).json({ ok: false, message: "Không tìm thấy phiên thi (Submission not found)" });
+        }
+
+        // 2. Tìm thẻ sinh viên từ bảng student_cards
+        const [cardRows] = await sequelize.query(
+            `SELECT * FROM student_cards WHERE student_code = ? LIMIT 1`,
+            { replacements: [student_code] }
+        );
+
+        if (!Array.isArray(cardRows) || cardRows.length === 0) {
+            return res.status(404).json({ 
+                ok: false, 
+                message: `❌ Không tìm thấy dữ liệu thẻ sinh viên cho MSSV: ${student_code}. Vui lòng liên hệ Giảng viên hoặc Admin để được cập nhật dữ liệu thi.` 
+            });
+        }
+
+        const studentCard = cardRows[0];
+        const cardBlob = studentCard.card_image;
+        const cardMime = 'image/jpeg';
+
+        if (!cardBlob) {
+             return res.status(400).json({ 
+                ok: false, 
+                message: `❌ Dữ liệu thẻ sinh viên của MSSV ${student_code} bị thiếu ảnh. Vui lòng báo lại với Admin.` 
+            });
+        }
+
+        // 3. Sao chép ảnh thẻ đó vào bảng submissions để phục vụ Face Matching
+        const hasBlob = await hasCol("submissions", "student_card_blob");
+        if (hasBlob) {
+            await sequelize.query(
+                `UPDATE submissions SET student_card_blob = ?, student_card_mimetype = ? WHERE id = ?`,
+                { replacements: [cardBlob, cardMime, submissionId] }
+            );
+            console.log(`[Verify Card By Code] ✅ Đã lưu thẻ SV từ kho vào bộ nhớ tạm của buổi thi (Submission ${submissionId})`);
+        } else {
+             console.warn(`[Verify Card By Code] ⚠️ Không tìm thấy cột 'student_card_blob' trong bảng submissions. Bỏ qua ghi Database.`);
+        }
+
+        // 4. Trả về kết quả cho Frontend (bao gồm cả ảnh để xem trước)
+        const base64Preview = `data:${cardMime};base64,${Buffer.from(cardBlob).toString("base64")}`;
+        
+        return res.json({
+            ok: true,
+            valid: true,
+            message: `✅ Sinh viên ${studentCard.student_name} - Khớp thẻ thành công!`,
+            details: {
+                mssv: studentCard.student_code,
+                student_name: studentCard.student_name,
+            },
+            card_preview: base64Preview
+        });
+
+    } catch (err) {
+        console.error("[Verify Card By Code] Lỗi:", err);
+        return res.status(500).json({ ok: false, message: "Lỗi hệ thống khi tải ảnh thẻ: " + err.message });
+    }
 }
 
 module.exports = {

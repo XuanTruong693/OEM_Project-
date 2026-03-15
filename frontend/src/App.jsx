@@ -60,6 +60,7 @@ import ExamOverview from "./pages/adminPage/ExamOverview.jsx";
 import ResultsManagement from "./pages/adminPage/ResultsManagement.jsx";
 import SystemLogs from "./pages/adminPage/SystemLogs.jsx";
 import AdminSettings from "./pages/adminPage/AdminSettings.jsx";
+import StudentCardManagement from "./pages/adminPage/StudentCardManagement.jsx";
 
 function ProtectedRoute({ children, requiredRole }) {
   const location = useLocation();
@@ -200,6 +201,15 @@ const App = () => {
               element={
                 <ProtectedRoute requiredRole="admin">
                   <AdminSettings />
+                </ProtectedRoute>
+              }
+            />
+            {/* ✅ [StudentCard] Route mới - Quản lý Thẻ Sinh Viên */}
+            <Route
+              path="/admin/student-cards"
+              element={
+                <ProtectedRoute requiredRole="admin">
+                  <StudentCardManagement />
                 </ProtectedRoute>
               }
             />

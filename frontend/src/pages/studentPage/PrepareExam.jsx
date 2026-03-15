@@ -58,8 +58,20 @@ export default function PrepareExam() {
   const [cardVerified, setCardVerified] = useState(false);
   const [facesCompared, setFacesCompared] = useState(false);
 
+  // MSSV Lookup states
+  const [studentCode, setStudentCode] = useState("");
+  const [isSearchingCard, setIsSearchingCard] = useState(false);
+
   // Success message for final upload
   const [uploadSuccessMsg, setUploadSuccessMsg] = useState("");
+
+  // --- Tính năng nhận diện nháy mắt 3 lần ---
+  const [blinkPhase, setBlinkPhase] = useState("idle"); // 'idle' | 'detecting' | 'done'
+  const [blinkCount, setBlinkCount] = useState(0);
+  const [isDebugBlink, setIsDebugBlink] = useState(false);
+  const [leftEyePct, setLeftEyePct] = useState(0);
+  const [rightEyePct, setRightEyePct] = useState(0);
+  const [blinkFaceOk, setBlinkFaceOk] = useState(false); // Mặt đang nằm trong khung oval không
 
   const submissionId = search.get("submission_id");
   const duration = Number(
@@ -78,12 +90,35 @@ export default function PrepareExam() {
   const eyesOpenCountRef = useRef(0); // Đếm số lần mắt mở liên tiếp
   const isVerifyingRef = useRef(false); // Tránh verify nhiều lần
   const violationTimerRef = useRef(null); // Timer cho violation cleanup
-  const keyPressCountsRef = useRef({}); // Track consecutive presses per key in PrepareExam
+  const keyPressCountsRef = useRef({}); // Theo dõi số lần nhấn phím liên tiếp
+
+  // Refs cho tính năng phát hiện nháy mắt
+  const blinkIntervalRef = useRef(null);         // ID của vòng lặp setInterval
+  const blinkStateRef = useRef("open");          // Trạng thái hiện tại: 'open' | 'closed'
+  const blinkCountRef = useRef(0);               // Bản sao ref của blinkCount (tránh stale closure)
+  const blinkCanvasRef = useRef(null);           // Canvas để vẽ landmarks lên video
+
+  // ── Tính Eye Aspect Ratio (EAR)
+  const calcEAR = (eye) => {
+    const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const v1 = d(eye[1], eye[5]);
+    const v2 = d(eye[2], eye[4]);
+    const h = d(eye[0], eye[3]);
+    return h === 0 ? 0 : (v1 + v2) / (2 * h);
+  };
+  // Chuyển EAR sang % nhắm mắt (chỉ dùng hiển thị debug)
+  // Thực tế webcam: mắt mở EAR ~0.27-0.30, nhắm tịt ~0.08-0.13
+  const earToPct = (ear) => {
+    const HI = 0.28; // EAR khi mắt mở → hiển thị 0%
+    const LO = 0.12; // EAR khi mắt nhắm tịt → hiển thị 100%
+    if (ear >= HI) return 0;
+    if (ear <= LO) return 100;
+    return Math.round(100 - ((ear - LO) / (HI - LO)) * 100);
+  };
 
   const loadFaceApi = async () => {
     if (faceApiRef.current.loaded) return true;
     if (faceApiRef.current.loading) {
-      // wait until loaded
       return new Promise((resolve) => {
         const i = setInterval(() => {
           if (faceApiRef.current.loaded) {
@@ -99,6 +134,7 @@ export default function PrepareExam() {
     const modelBase =
       "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/";
     await new Promise((resolve, reject) => {
+      if (document.querySelector(`script[src="${scriptUrl}"]`)) { resolve(); return; }
       const s = document.createElement("script");
       s.src = scriptUrl;
       s.async = true;
@@ -111,11 +147,18 @@ export default function PrepareExam() {
       return false;
     }
     try {
+      // Dùng trực tiếp WebGL 
+      if (window.faceapi.tf) {
+        await window.faceapi.tf.setBackend("webgl");
+        await window.faceapi.tf.ready();
+      }
       await window.faceapi.nets.tinyFaceDetector.loadFromUri(modelBase);
       await window.faceapi.nets.faceLandmark68Net.loadFromUri(modelBase);
       faceApiRef.current.loaded = true;
+      console.log("[FaceAPI] ✅ Models loaded. Backend:", window.faceapi.tf?.getBackend?.());
       return true;
-    } catch {
+    } catch (e) {
+      console.error("[FaceAPI] Tải model thất bại:", e);
       faceApiRef.current.loading = false;
       return false;
     }
@@ -494,6 +537,71 @@ export default function PrepareExam() {
     }
   };
 
+  const base64ToBlob = (base64Data, contentType = '') => {
+    const byteCharacters = atob(base64Data);
+    const byteArrays = [];
+    for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+      const slice = byteCharacters.slice(offset, offset + 512);
+      const byteNumbers = new Array(slice.length);
+      for (let i = 0; i < slice.length; i++) {
+        byteNumbers[i] = slice.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      byteArrays.push(byteArray);
+    }
+    return new Blob(byteArrays, { type: contentType });
+  };
+
+  const verifyCardByCode = async () => {
+    if (!studentCode.trim() || !submissionId) {
+      setCardErr("Vui lòng nhập MSSV!");
+      return;
+    }
+    setIsSearchingCard(true);
+    setCardVerifyLog("⏳ Đang tìm kiếm thẻ sinh viên...");
+    setCardErr("");
+    
+    try {
+      const res = await axiosClient.post(
+        `/submissions/${submissionId}/verify-student-code`,
+        { student_code: studentCode }
+      );
+
+      if (res?.data?.ok && res.data.valid) {
+        // Tái tạo lại logic của hàm handleUpload nhưng lấy từ kết quả API Backend!
+        const b64Data = res.data.card_preview.split(',')[1];
+        const contentType = res.data.card_preview.split(';')[0].split(':')[1];
+        const blob = base64ToBlob(b64Data, contentType);
+
+        cardBlobRef.current = blob;
+        setCardPreviewUrl(res.data.card_preview);
+        await saveBlobToLocal(blob, `exam_${submissionId}_card`);
+
+        // Đánh dấu thẻ đã sẵn sàng
+        setCardUploaded(true);
+        setCardErr("");
+        
+        // Tự động PASS OCR (xác minh luôn ngay tại đây mà không chờ đợi như form OCR cũ)
+        setCardVerified(true);
+        setCardOk(true);
+        setOcrProgress(100);
+        setCardVerifyLog(`✅ Khớp mã sinh viên thành công!\n👤 Tên: ${res.data.details?.student_name}\n💳 MSSV: ${res.data.details?.mssv}`);
+
+      }
+    } catch (err) {
+      setCardVerified(false);
+      setCardUploaded(false);
+      setCardOk(false);
+      setCardPreviewUrl("");
+
+      let errorMsg = err?.response?.data?.message || err?.message || "Lỗi tìm thẻ SV";
+      setCardErr(errorMsg);
+      setCardVerifyLog(`❌ ${errorMsg}`);
+    } finally {
+      setIsSearchingCard(false);
+    }
+  };
+
   // Bật fullscreen với kiểm tra nhiều màn hình
   const enableMonitor = async () => {
     try {
@@ -617,216 +725,360 @@ export default function PrepareExam() {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
-      // Reset stable count để bắt đầu đếm lại
+      // Reset tất cả interval và trạng thái mỗi khi gọi startCamera (kể cả retry)
+      clearInterval(guideIntervalRef.current);
+      clearInterval(blinkIntervalRef.current);
       stableOkCountRef.current = 0;
+      prevFacePositionRef.current = null;
+      setBlinkPhase("detecting"); // sẽ được set lại trong startBlinkLoop
+      // Xóa ảnh khuôn mặt cũ để retry có thể chụp lại
+      setFacePreviewUrl("");
+      facePreviewBlobRef.current = null;
+      setFaceErr("");
 
-      // Warmup face detection for live guide
-      if (!("FaceDetector" in window)) {
-        await loadFaceApi();
-      }
-      // Prepare offscreen canvas for faster detection
+      await loadFaceApi();
+
+      // Chuẩn bị canvas off-screen nhỏ để nhận diện nhanh hơn
       if (!offCanvasRef.current) {
         const c = document.createElement("canvas");
         c.width = 480;
-        c.height = 360; // small size for speed
+        c.height = 360; // kích thước nhỏ để tăng tốc xử lý
         offCanvasRef.current = c;
       }
-      // Start live guidance loop
-      clearInterval(guideIntervalRef.current);
-      guideIntervalRef.current = setInterval(async () => {
-        try {
+
+      // ── BƯỚC 1: Vòng lặp phát hiện nháy mắt (adaptive baseline) ──────────
+      const startBlinkLoop = () => {
+        clearInterval(blinkIntervalRef.current); // Dừng vòng lặp cũ nếu còn
+        blinkCountRef.current = 0;
+        blinkStateRef.current = "calibrating"; // Các trạng thái: 'calibrating' | 'open' | 'closed'
+        setBlinkCount(0);
+        setBlinkPhase("detecting");
+        setLeftEyePct(0);
+        setRightEyePct(0);
+
+        // Thu thập EAR khi mắt mở trong ~40 frame đầu (~4 giây) để tính ngưỡng
+        const baselineSamples = [];
+        let baselineEAR = null; // null = chưa xong calibration
+
+        blinkIntervalRef.current = setInterval(async () => {
           const v = videoRef.current;
-          const c = offCanvasRef.current;
-          if (!v || !c) return;
-          c.width = v.videoWidth || 640;
-          c.height = v.videoHeight || 480;
-          const g = c.getContext("2d");
-          g.drawImage(v, 0, 0, c.width, c.height);
+          const canvas = blinkCanvasRef.current;
+          if (!v || v.readyState < 2 || !v.videoWidth) return;
+          if (!window.faceapi || !faceApiRef.current.loaded) return;
 
-          let ok = false;
-          let msg = "";
-          const center = { x: c.width / 2, y: c.height / 2 };
-          const needCenterTol = 0.25; // Nới lỏng: cho phép lệch 25% từ tâm
-          const needSizeMin = 0.08; // Nới lỏng: khuôn mặt tối thiểu 8% khung
-
-          if ("FaceDetector" in window) {
-            const detector = new window.FaceDetector({ fastMode: true });
-            const faces = await detector.detect(c);
-            if (faces && faces.length === 1) {
-              const box = faces[0].boundingBox;
-              const cx = box.x + box.width / 2;
-              const cy = box.y + box.height / 2;
-              const dx = Math.abs(cx - center.x) / c.width;
-              const dy = Math.abs(cy - center.y) / c.height;
-              const sizeRatio = Math.max(
-                box.width / c.width,
-                box.height / c.height
-              );
-              ok =
-                dx <= needCenterTol &&
-                dy <= needCenterTol &&
-                sizeRatio >= needSizeMin;
-              msg = ok
-                ? "Giữ nguyên 3 giây để hệ thống chụp"
-                : "Di chuyển khuôn mặt vào giữa, tiến gần hơn";
-
-              // Debug log
-              if (!ok) {
-                console.log(
-                  `[Face Guide] dx=${(dx * 100).toFixed(1)}% (max ${needCenterTol * 100
-                  }%), dy=${(dy * 100).toFixed(1)}%, size=${(
-                    sizeRatio * 100
-                  ).toFixed(1)}% (min ${needSizeMin * 100}%)`
-                );
-              }
-            } else if (faces && faces.length > 1) {
-              ok = false;
-              msg = "Phát hiện nhiều khuôn mặt - chỉ 1 người";
-            } else {
-              ok = false;
-              msg = "Không nhìn thấy rõ khuôn mặt";
-            }
-          } else if (window.faceapi && faceApiRef.current.loaded) {
-            const detections = await window.faceapi
-              .detectAllFaces(
-                c,
-                new window.faceapi.TinyFaceDetectorOptions({
-                  scoreThreshold: 0.3,
-                })
-              )
+          try {
+            const det = await window.faceapi
+              .detectSingleFace(v, new window.faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 }))
               .withFaceLandmarks();
 
-            if (detections && detections.length === 1) {
-              const det = detections[0];
-              const box = det.detection.box;
-              const landmarks = det.landmarks;
-
-              const cx = box.x + box.width / 2;
-              const cy = box.y + box.height / 2;
-              const dx = Math.abs(cx - center.x) / c.width;
-              const dy = Math.abs(cy - center.y) / c.height;
-              const sizeRatio = Math.max(
-                box.width / c.width,
-                box.height / c.height
-              );
-
-              // 1. Kiểm tra vị trí và kích thước
-              const positionOk =
-                dx <= needCenterTol &&
-                dy <= needCenterTol &&
-                sizeRatio >= needSizeMin;
-
-              // 2. Kiểm tra mắt mở 
-              const leftEye = landmarks.getLeftEye();
-              const rightEye = landmarks.getRightEye();
-              const leftEyeHeight = Math.abs(leftEye[1].y - leftEye[5].y);
-              const rightEyeHeight = Math.abs(rightEye[1].y - rightEye[5].y);
-              const eyesOpen = leftEyeHeight > 2 && rightEyeHeight > 2;
-
-              // 3. Kiểm tra nhìn thẳng
-              const nose = landmarks.getNose();
-              const jawline = landmarks.getJawOutline();
-              const faceAngle = Math.abs(
-                (nose[0].x - jawline[8].x) / box.width
-              );
-              const lookingStraight = faceAngle < 0.2;
-
-              // 4. Kiểm tra giữ im (so sánh với vị trí trước)
-              let notMoving = true;
-              if (prevFacePositionRef.current) {
-                const prev = prevFacePositionRef.current;
-                const movementX = Math.abs(cx - prev.cx) / c.width;
-                const movementY = Math.abs(cy - prev.cy) / c.height;
-                notMoving = movementX < 0.03 && movementY < 0.03;
-              }
-              prevFacePositionRef.current = { cx, cy };
-
-              // Kết hợp tất cả điều kiện
-              ok = positionOk && eyesOpen && lookingStraight && notMoving;
-
-              // Thông báo cụ thể
-              if (!positionOk) {
-                msg = "Căn giữa, tiến gần hơn";
-              } else if (!eyesOpen) {
-                msg = "Vui lòng mở mắt";
-              } else if (!lookingStraight) {
-                msg = "Nhìn thẳng vào camera";
-              } else if (!notMoving) {
-                msg = "Giữ đầu đứng yên";
-              } else {
-                msg = "Giữ nguyên 3 giây để hệ thống chụp";
-              }
-
-              // Debug log
-              if (!ok) {
-                console.log(
-                  `[Face Guide] pos=${positionOk}, eyes=${eyesOpen} (L:${leftEyeHeight.toFixed(
-                    1
-                  )}, R:${rightEyeHeight.toFixed(
-                    1
-                  )}), straight=${lookingStraight} (angle:${(
-                    faceAngle * 100
-                  ).toFixed(1)}%), still=${notMoving}`
-                );
-              } else {
-                console.log(
-                  `[Face OK] ✅ Tất cả điều kiện đạt, count=${stableOkCountRef.current}/7`
-                );
-              }
-            } else if (detections && detections.length > 1) {
-              ok = false;
-              msg = "Phát hiện nhiều khuôn mặt - chỉ 1 người";
-              prevFacePositionRef.current = null;
-            } else {
-              ok = false;
-              msg = "Không nhìn thấy rõ khuôn mặt";
-              prevFacePositionRef.current = null;
+            if (!det) {
+              setLeftEyePct(0);
+              setRightEyePct(0);
+              setBlinkFaceOk(false);
+              // Mặt khuất/rời khỏi camera → reset state để tránh đếm nháy mắt ảo
+              blinkStateRef.current = "open";
+              return;
             }
+
+            // Xóa canvas (không còn vẽ landmarks nữa)
+            if (canvas) {
+              const ctx = canvas.getContext("2d");
+              if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+
+            // Kiểm tra mặt nằm đúng vị trí: trong 25% tâm khung hình
+            const box = det.detection.box;
+            const cx = box.x + box.width / 2;
+            const cy = box.y + box.height / 2;
+            const vW = v.videoWidth || 640;
+            const vH = v.videoHeight || 480;
+            const dx = Math.abs(cx - vW / 2) / vW;
+            const dy = Math.abs(cy - vH / 2) / vH;
+            const sizeRatio = Math.max(box.width / vW, box.height / vH);
+            const faceInFrame = dx <= 0.25 && dy <= 0.25 && sizeRatio >= 0.08;
+            setBlinkFaceOk(faceInFrame);
+
+            const lm = det.landmarks;
+            const lEAR = calcEAR(lm.getLeftEye());
+            const rEAR = calcEAR(lm.getRightEye());
+            const avgEAR = (lEAR + rEAR) / 2;
+
+            // ── GIAI ĐOẠN 1: Thu thập baseline (40 mẫu đầu khi có mặt)
+            if (baselineEAR === null) {
+              baselineSamples.push(avgEAR);
+              // Hiển thị % tiến độ calibration cho người dùng
+              const calPct = Math.round((baselineSamples.length / 40) * 100);
+              setLeftEyePct(calPct);
+              setRightEyePct(calPct);
+              if (isDebugBlink) console.log(`[Nháy Mắt] Calibrating... ${baselineSamples.length}/40 EAR=${avgEAR.toFixed(4)}`);
+
+              if (baselineSamples.length >= 40) {
+                // Lấy percentile 70 làm baseline (loại bỏ giá trị thấp do chớp mắt lúc calibrate)
+                const sorted = [...baselineSamples].sort((a, b) => b - a);
+                baselineEAR = sorted[Math.floor(sorted.length * 0.3)]; // top 30%
+                blinkStateRef.current = "open";
+                console.log(`[Nháy Mắt] ✅ Baseline EAR = ${baselineEAR.toFixed(4)}`);
+              }
+              return;
+            }
+
+            // ── GIAI ĐOẠN 2: Phát hiện nháy mắt theo ngưỡng tương đối
+            // NHẮM: avgEAR giảm xuống 87% baseline (giảm 13%)
+            // MỞ LẠI: avgEAR phục hồi về 95% baseline
+            const closedThreshold = baselineEAR * 0.87;
+            const openThreshold = baselineEAR * 0.95;
+
+            // Chuyển EAR sang % để hiển thị: 0% = mở, 100% = đạt ngưỡng nhắm
+            const lPct = Math.round(Math.max(0, Math.min(100,
+              (1 - (lEAR - closedThreshold) / (baselineEAR - closedThreshold)) * 100
+            )));
+            const rPct = Math.round(Math.max(0, Math.min(100,
+              (1 - (rEAR - closedThreshold) / (baselineEAR - closedThreshold)) * 100
+            )));
+
+            setLeftEyePct(lPct);
+            setRightEyePct(rPct);
+
+            // Bảo vệ: khi mặt KHÔNG đúng vị trí, reset state machine → không đếm nháy ảo
+            if (!faceInFrame) {
+              blinkStateRef.current = "open";
+              return;
+            }
+
+            const eyesClosed = avgEAR < closedThreshold; // EAR thấp hơn ngưỡng nhắm
+            const eyesOpen = avgEAR > openThreshold;   // EAR cao hơn ngưỡng mở lại
+
+            if (isDebugBlink) {
+              console.log(`[Nháy Mắt] EAR:${avgEAR.toFixed(3)} base:${baselineEAR.toFixed(3)} T:${lPct}% P:${rPct}% state:${blinkStateRef.current}`);
+            }
+
+            if (blinkStateRef.current === "open" && eyesClosed) {
+              blinkStateRef.current = "closed"; // Mắt đang nhắm
+            } else if (blinkStateRef.current === "closed" && eyesOpen) {
+              blinkStateRef.current = "open";   // Mắt mở lại → đếm 1 lần nháy
+              blinkCountRef.current += 1;
+              setBlinkCount(blinkCountRef.current);
+              console.log(`[Nháy Mắt] ✅ Nháy mắt #${blinkCountRef.current}`);
+
+              if (blinkCountRef.current >= 3) {
+                clearInterval(blinkIntervalRef.current);
+                if (blinkCanvasRef.current) {
+                  const ctx = blinkCanvasRef.current.getContext("2d");
+                  ctx.clearRect(0, 0, blinkCanvasRef.current.width, blinkCanvasRef.current.height);
+                }
+                setBlinkPhase("done");
+                setTimeout(() => startStaticLoop(), 600);
+              }
+            }
+          } catch (e) {
+            console.error("[Blink loop error]", e);
           }
-          setFaceGuideOk(ok);
-          setFaceGuideMsg(
-            msg || (ok ? "Sẵn sàng chụp" : "Căn giữa, nhìn thẳng vào camera")
-          );
+        }, 100);
+      };
 
-          // TỰ ĐỘNG CHỤP khi giữ ổn định 1 giây (vòng xanh)
-          if (ok && !facePreviewUrl) {
-            stableOkCountRef.current += 1;
-            if (stableOkCountRef.current >= 7) {
-              const snap = document.createElement("canvas");
-              snap.width = v.videoWidth || 640;
-              snap.height = v.videoHeight || 480;
-              const sctx = snap.getContext("2d");
-              if (!sctx) return;
-              sctx.drawImage(v, 0, 0);
-              snap.toBlob(
-                async (blob) => {
-                  if (!blob) return;
-                  facePreviewBlobRef.current = blob;
-                  setFacePreviewUrl(URL.createObjectURL(blob));
-                  stableOkCountRef.current = 0;
+      // Vòng lặp hướng dẫn chụp tĩnh
+      const startStaticLoop = () => {
+        clearInterval(guideIntervalRef.current);
+        guideIntervalRef.current = setInterval(async () => {
 
-                  // Lưu vào localStorage
-                  await saveBlobToLocal(blob, `exam_${submissionId}_face`);
+          try {
+            const v = videoRef.current;
+            const c = offCanvasRef.current;
+            if (!v || !c) return;
+            c.width = v.videoWidth || 640;
+            c.height = v.videoHeight || 480;
+            const g = c.getContext("2d");
+            g.drawImage(v, 0, 0, c.width, c.height);
 
+            let ok = false;
+            let msg = "";
+            const center = { x: c.width / 2, y: c.height / 2 };
+            const needCenterTol = 0.25; // Nới lỏng: cho phép lệch 25% từ tâm
+            const needSizeMin = 0.08; // Nới lỏng: khuôn mặt tối thiểu 8% khung
+
+            if ("FaceDetector" in window) {
+              const detector = new window.FaceDetector({ fastMode: true });
+              const faces = await detector.detect(c);
+              if (faces && faces.length === 1) {
+                const box = faces[0].boundingBox;
+                const cx = box.x + box.width / 2;
+                const cy = box.y + box.height / 2;
+                const dx = Math.abs(cx - center.x) / c.width;
+                const dy = Math.abs(cy - center.y) / c.height;
+                const sizeRatio = Math.max(
+                  box.width / c.width,
+                  box.height / c.height
+                );
+                ok =
+                  dx <= needCenterTol &&
+                  dy <= needCenterTol &&
+                  sizeRatio >= needSizeMin;
+                msg = ok
+                  ? "Giữ nguyên 3 giây để hệ thống chụp"
+                  : "Di chuyển khuôn mặt vào giữa, tiến gần hơn";
+
+                // Debug log
+                if (!ok) {
                   console.log(
-                    "[Auto Capture] ✅ Đã chụp và lưu"
+                    `[Face Guide] dx=${(dx * 100).toFixed(1)}% (max ${needCenterTol * 100
+                    }%), dy=${(dy * 100).toFixed(1)}%, size=${(
+                      sizeRatio * 100
+                    ).toFixed(1)}% (min ${needSizeMin * 100}%)`
                   );
-                  // Dừng camera sau khi chụp
-                  try {
-                    streamRef.current?.getTracks()?.forEach((t) => t.stop());
-                  } catch { }
-                  clearInterval(guideIntervalRef.current);
-                },
-                "image/jpeg",
-                0.9
-              );
+                }
+              } else if (faces && faces.length > 1) {
+                ok = false;
+                msg = "Phát hiện nhiều khuôn mặt - chỉ 1 người";
+              } else {
+                ok = false;
+                msg = "Không nhìn thấy rõ khuôn mặt";
+              }
+            } else if (window.faceapi && faceApiRef.current.loaded) {
+              const detections = await window.faceapi
+                .detectAllFaces(
+                  c,
+                  new window.faceapi.TinyFaceDetectorOptions({
+                    scoreThreshold: 0.3,
+                  })
+                )
+                .withFaceLandmarks();
+
+              if (detections && detections.length === 1) {
+                const det = detections[0];
+                const box = det.detection.box;
+                const landmarks = det.landmarks;
+
+                const cx = box.x + box.width / 2;
+                const cy = box.y + box.height / 2;
+                const dx = Math.abs(cx - center.x) / c.width;
+                const dy = Math.abs(cy - center.y) / c.height;
+                const sizeRatio = Math.max(
+                  box.width / c.width,
+                  box.height / c.height
+                );
+
+                // 1. Kiểm tra vị trí và kích thước
+                const positionOk =
+                  dx <= needCenterTol &&
+                  dy <= needCenterTol &&
+                  sizeRatio >= needSizeMin;
+
+                // 2. Kiểm tra mắt mở 
+                const leftEye = landmarks.getLeftEye();
+                const rightEye = landmarks.getRightEye();
+                const leftEyeHeight = Math.abs(leftEye[1].y - leftEye[5].y);
+                const rightEyeHeight = Math.abs(rightEye[1].y - rightEye[5].y);
+                const eyesOpen = leftEyeHeight > 2 && rightEyeHeight > 2;
+
+                // 3. Kiểm tra nhìn thẳng
+                const nose = landmarks.getNose();
+                const jawline = landmarks.getJawOutline();
+                const faceAngle = Math.abs(
+                  (nose[0].x - jawline[8].x) / box.width
+                );
+                const lookingStraight = faceAngle < 0.2;
+
+                // 4. Kiểm tra giữ im — nới lỏng từ 0.03 lên 0.06 để dễ đạt hơn
+                let notMoving = true;
+                if (prevFacePositionRef.current) {
+                  const prev = prevFacePositionRef.current;
+                  const movementX = Math.abs(cx - prev.cx) / c.width;
+                  const movementY = Math.abs(cy - prev.cy) / c.height;
+                  notMoving = movementX < 0.06 && movementY < 0.06;
+                }
+                prevFacePositionRef.current = { cx, cy };
+
+                // Kết hợp tất cả điều kiện
+                ok = positionOk && eyesOpen && lookingStraight && notMoving;
+
+                // Thông báo cụ thể
+                if (!positionOk) {
+                  msg = "Căn giữa, tiến gần hơn";
+                } else if (!eyesOpen) {
+                  msg = "Vui lòng mở mắt";
+                } else if (!lookingStraight) {
+                  msg = "Nhìn thẳng vào camera";
+                } else if (!notMoving) {
+                  msg = "Giữ đầu đứng yên";
+                } else {
+                  msg = "Giữ nguyên 3 giây để hệ thống chụp";
+                }
+
+                // Debug log
+                if (!ok) {
+                  console.log(
+                    `[Face Guide] pos=${positionOk}, eyes=${eyesOpen} (L:${leftEyeHeight.toFixed(
+                      1
+                    )}, R:${rightEyeHeight.toFixed(
+                      1
+                    )}), straight=${lookingStraight} (angle:${(
+                      faceAngle * 100
+                    ).toFixed(1)}%), still=${notMoving}`
+                  );
+                } else {
+                  console.log(
+                    `[Face OK] ✅ Tất cả điều kiện đạt, count=${stableOkCountRef.current}/7`
+                  );
+                }
+              } else if (detections && detections.length > 1) {
+                ok = false;
+                msg = "Phát hiện nhiều khuôn mặt - chỉ 1 người";
+                prevFacePositionRef.current = null;
+              } else {
+                ok = false;
+                msg = "Không nhìn thấy rõ khuôn mặt";
+                prevFacePositionRef.current = null;
+              }
             }
-          } else if (!ok) {
-            stableOkCountRef.current = 0;
-            prevFacePositionRef.current = null;
-          }
-        } catch { }
-      }, 450);
+            setFaceGuideOk(ok);
+            setFaceGuideMsg(
+              msg || (ok ? "Sẵn sàng chụp" : "Căn giữa, nhìn thẳng vào camera")
+            );
+
+            // TỰ ĐỘNG CHỤP khi giữ ổn định 3 giây (vòng xanh)
+            if (ok && !facePreviewUrl) {
+              stableOkCountRef.current += 1;
+              if (stableOkCountRef.current >= 7) {
+                stableOkCountRef.current = 0; // Ngăn chặn việc kích hoạt lại trước khi quá trình xử lý dữ liệu hoàn tất
+                clearInterval(guideIntervalRef.current); // stop interval immediately
+                const snap = document.createElement("canvas");
+                snap.width = v.videoWidth || 640;
+                snap.height = v.videoHeight || 480;
+                const sctx = snap.getContext("2d");
+                if (!sctx) return;
+                sctx.drawImage(v, 0, 0);
+                snap.toBlob(
+                  async (blob) => {
+                    if (!blob) return;
+                    facePreviewBlobRef.current = blob;
+                    setFacePreviewUrl(URL.createObjectURL(blob));
+
+                    // Lưu vào localStorage
+                    await saveBlobToLocal(blob, `exam_${submissionId}_face`);
+
+                    console.log(
+                      "[Auto Capture] ✅ Đã chụp và lưu"
+                    );
+                    // Dừng camera sau khi chụp
+                    try {
+                      streamRef.current?.getTracks()?.forEach((t) => t.stop());
+                    } catch { }
+                  },
+                  "image/jpeg",
+                  0.9
+                );
+              }
+            } else if (!ok) {
+              // Chỉ reset khi không nhìn thấy mặt, không reset vì angle/still nhỏ
+              if (!positionOk) stableOkCountRef.current = 0;
+            }
+          } catch { }
+        }, 450);
+      }; // end startStaticLoop
+
+      // Kick off the blink verification first
+      startBlinkLoop();
+
     } catch (err) {
       console.error("[Camera] Lỗi bật camera:", err);
 
@@ -1277,40 +1529,35 @@ export default function PrepareExam() {
           // Không reset preview khuôn mặt, chỉ reset trạng thái xác minh
           setFaceVerified(false);
           setFaceUploaded(false);
-          // Giữ lại preview và blob
-          resetMessage = "Vui lòng chụp lại ảnh khuôn mặt";
+          setFacePreviewUrl("");
+          resetMessage = "Vui lòng bật lại camera để chụp lại ảnh khuôn mặt";
         } else {
-          // Độ tương đồng thấp - chỉ reset trạng thái xác minh, giữ lại preview
-          setCardVerified(false);
-          setCardUploaded(false);
-          setCardOk(false);
-          // Giữ lại preview và blob
+          // Độ tương đồng thấp — CHỈ reset khuôn mặt, GIỮ thẻ SV nguyên
           setFaceVerified(false);
           setFaceUploaded(false);
-          // Giữ lại preview và blob
-          resetMessage = "Vui lòng chụp lại ảnh thẻ sinh viên và ảnh khuôn mặt";
+          setFacePreviewUrl("");
+          // cardUploaded, cardVerified, cardOk vẫn giữ — không cần upload lại thẻ
+          resetMessage = "Vui lòng bật lại camera để chụp lại ảnh khuôn mặt";
         }
 
-        setFaceErr(`Độ tương đồng giữa 2 khuôn mặt: ${confidence}% > 50%`);
+        setFaceErr(`Độ tương đồng giữa 2 khuôn mặt: ${confidence}% < ${threshold}%`);
         setCompareLog(
           `Khuôn mặt không khớp (độ tương đồng: ${confidence}%, yêu cầu ≥${threshold}%). ${resetMessage}`
         );
         console.error("[Compare] ❌ Fail", { confidence, resetMessage });
       }
     } catch (err) {
-      // LỖI - KHÔNG LƯU VÀO DB, chỉ reset trạng thái xác minh, giữ lại preview
+      // Chỉ reset trạng thái khuôn mặt — GIỮ NGUYÊN thẻ SV
       setFacesCompared(false);
       setFaceOk(false);
-      setCardVerified(false);
-      setCardUploaded(false);
-      setCardOk(false);
       setFaceVerified(false);
       setFaceUploaded(false);
-      // Giữ lại preview và blob
+      setFacePreviewUrl("");
+      // Giữ lại cardUploaded, cardVerified, cardOk — không cần upload lại thẻ
       const errorMsg =
         err?.response?.data?.message || err?.message || "Lỗi so sánh khuôn mặt";
       setFaceErr(errorMsg);
-      setCompareLog(`${errorMsg}. Vui lòng thử lại`);
+      setCompareLog(`${errorMsg}. Vui lòng bật lại camera để thử lại`);
       console.error("[Compare] ❌ Error:", errorMsg);
     } finally {
       setIsComparing(false);
@@ -1526,24 +1773,32 @@ export default function PrepareExam() {
                 </span>
               </div>
 
-              {/* Upload button */}
+              {/* Upload button BỊ ẨN, CHUYỂN THÀNH FORM MỚI */}
               {!cardUploaded && (
-                <label
-                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer border transition
-                  ${theme === "dark"
-                      ? "bg-white/5 border-white/10 text-slate-100 hover:border-blue-300/40"
-                      : "bg-white border-slate-200 text-slate-800 hover:border-blue-300"
-                    }`}
-                >
+                <div className="flex flex-col gap-2">
                   <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => allowCard && handleUpload(e, "card")}
-                    disabled={!allowCard}
+                    type="text"
+                    value={studentCode}
+                    onChange={(e) => setStudentCode(e.target.value)}
+                    placeholder="Nhập MSSV của bạn (Ví dụ: 21110001)"
+                    disabled={!allowCard || isSearchingCard}
+                    className={`px-3 py-2 rounded-lg border w-full focus:outline-none focus:ring-2 focus:ring-blue-500
+                    ${theme === "dark"
+                        ? "bg-white/5 border-white/10 text-slate-100 placeholder-slate-500"
+                        : "bg-white border-slate-300 text-slate-800 placeholder-slate-400"
+                      }`}
                   />
-                  <span>📤 Tải ảnh thẻ SV</span>
-                </label>
+                  <button
+                    onClick={verifyCardByCode}
+                    disabled={!allowCard || !studentCode.trim() || isSearchingCard}
+                    className="px-3 py-2 rounded-lg text-white font-semibold shadow transition hover:brightness-105 disabled:opacity-60 flex justify-center items-center gap-2"
+                    style={{
+                      background: "linear-gradient(180deg,#6aa3ff,#5b82ff)",
+                    }}
+                  >
+                    {isSearchingCard ? "⏳ Đang tìm mã..." : "🔎 Tìm Thẻ Sinh Viên"}
+                  </button>
+                </div>
               )}
 
               {/* Preview ảnh */}
@@ -1557,7 +1812,8 @@ export default function PrepareExam() {
                 </div>
               )}
 
-              {/* Verify button */}
+              {/* Verify button - ĐÃ BỊ ẨN VÌ KHÔNG AI GỌI TỚI HÀM NÀY NỮA DO NÓ TỰ ĐỘNG VERIFY TRONG CARD_UPLOADED KÈM KHỚP MSSV LUÔN */}
+              {/* Giữ lại hàm render OCR progress cũ cho mục đích backup */}
               {cardUploaded && !cardVerified && (
                 <div className="mt-3">
                   <button
@@ -1619,27 +1875,23 @@ export default function PrepareExam() {
                 </div>
               )}
 
-              {/* Nút upload lại nếu fail */}
-              {cardUploaded && !cardOk && cardVerifyLog && (
+              {/* Nút nhập lại nếu bị lỗi hoặc muốn reset - THAY CHO UPLOAD LẠI */}
+              {(cardUploaded || cardErr) && (
                 <div className="mt-3">
-                  <label
-                    className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer border transition bg-amber-500 hover:bg-amber-600 text-white font-semibold shadow`}
-                  >
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
+                  <button
+                    onClick={() => {
                         setCardUploaded(false);
                         setCardVerified(false);
                         setCardOk(false);
                         setCardVerifyLog("");
                         setCardErr("");
-                        handleUpload(e, "card");
-                      }}
-                    />
-                    <span>🔄 Upload lại ảnh thẻ SV</span>
-                  </label>
+                        setStudentCode("");
+                        setCardPreviewUrl("");
+                    }}
+                    className={`inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg cursor-pointer border transition bg-amber-500 hover:bg-amber-600 text-white font-semibold shadow w-full`}
+                  >
+                    <span>🔄 Đổi MSSV hoặc Nhập lại</span>
+                  </button>
                 </div>
               )}
 
@@ -1648,8 +1900,7 @@ export default function PrepareExam() {
                   className={`${theme === "dark" ? "text-slate-400" : "text-slate-500"
                     } text-xs mt-2`}
                 >
-                  Yêu cầu: "Thẻ sinh viên", "Đại học", domain .edu.vn, MSSV 8-11
-                  số
+                  Yêu cầu: Nhập đúng MSSV như Giảng viên / Admin đã cung cấp.
                 </p>
               )}
             </div>
@@ -1711,7 +1962,7 @@ export default function PrepareExam() {
                       } bg-black/20`}
                   >
                     <div
-                      className="bg-black/20"
+                      className="bg-black/20 relative"
                       style={{ aspectRatio: "4 / 3" }}
                     >
                       <video
@@ -1721,40 +1972,85 @@ export default function PrepareExam() {
                         webkit-playsinline="true"
                         muted
                       />
-                    </div>
-                    <div className="absolute inset-0 pointer-events-none grid place-items-center">
-                      {/* Vòng tròn hướng dẫn cố định (nền) */}
-                      <div
-                        className="absolute rounded-full border-4 border-dashed transition-all"
-                        style={{
-                          width: "60%",
-                          height: "75%",
-                          borderColor: "rgba(255, 255, 255, 0.3)",
-                          top: "50%",
-                          left: "50%",
-                          transform: "translate(-50%, -50%)",
-                        }}
-                      />
-                      {/* Vòng tròn phát hiện khuôn mặt (thay đổi màu) */}
-                      <div
-                        className={`rounded-full border-4 transition-all duration-300`}
-                        style={{
-                          width: "60%",
-                          height: "75%",
-                          borderColor: faceGuideOk
-                            ? "rgba(16, 185, 129, 0.8)"
-                            : "rgba(239, 68, 68, 0.7)",
-                          boxShadow: faceGuideOk
-                            ? "0 0 20px rgba(16, 185, 129, 0.5)"
-                            : "none",
-                        }}
+                      {/* Overlay canvas for debug landmarks */}
+                      <canvas
+                        ref={blinkCanvasRef}
+                        className="absolute inset-0 w-full h-full pointer-events-none z-10"
+                        style={{ objectFit: "cover" }}
                       />
                     </div>
-                    <div className="absolute left-1/2 -translate-x-1/2 bottom-3 text-xs font-medium px-3 py-1.5 rounded-lg bg-black/60 text-white backdrop-blur-sm">
-                      {faceGuideMsg}
-                    </div>
+
+                    {/* Giai đoạn nháy mắt — HUD hiện số lần */}
+                    {blinkPhase === "detecting" && (
+                      <>
+                        <div className="absolute inset-0 pointer-events-none flex items-end justify-center pb-3 z-20">
+                          <div className="bg-black/75 backdrop-blur-sm text-white px-4 py-2.5 rounded-xl shadow-xl border border-white/10 text-center">
+                            <p className="font-bold text-base text-emerald-400 mb-0.5">👀 Nháy mắt: <span className="tabular-nums">{blinkCount}/3</span></p>
+                            <p className="text-xs text-slate-300">Nhắm hẳn rồi mở to mắt để đếm 1 lần</p>
+                            {isDebugBlink && (
+                              <div className="mt-1.5 text-xs font-mono text-yellow-300 bg-black/40 rounded-md px-2 py-1">
+                                Trái: <b>{leftEyePct}%</b> &nbsp;|&nbsp; Phải: <b>{rightEyePct}%</b>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {/* Viền oval đổi màu theo vị trí mặt (xanh = đúng vị trí, đỏ = chưa vào khung) */}
+                        <div className="absolute inset-0 pointer-events-none grid place-items-center">
+                          <div
+                            className="rounded-full border-4 border-dashed transition-all duration-300"
+                            style={{
+                              width: "60%", height: "75%",
+                              borderColor: blinkFaceOk
+                                ? "rgba(16, 185, 129, 0.8)"   // xanh lá — mặt đúng vị trí
+                                : "rgba(239, 68, 68, 0.7)",   // đỏ — chưa vào khung
+                              boxShadow: blinkFaceOk ? "0 0 16px rgba(16,185,129,0.35)" : "none",
+                            }}
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {/* Static capture phase — show colored oval + guide text */}
+                    {blinkPhase === "done" && (
+                      <>
+                        <div className="absolute inset-0 pointer-events-none grid place-items-center">
+                          <div
+                            className="absolute rounded-full border-4 border-dashed transition-all"
+                            style={{
+                              width: "60%", height: "75%",
+                              borderColor: "rgba(255, 255, 255, 0.3)",
+                              top: "50%", left: "50%",
+                              transform: "translate(-50%, -50%)",
+                            }}
+                          />
+                          <div
+                            className="rounded-full border-4 transition-all duration-300"
+                            style={{
+                              width: "60%", height: "75%",
+                              borderColor: faceGuideOk ? "rgba(16, 185, 129, 0.8)" : "rgba(239, 68, 68, 0.7)",
+                              boxShadow: faceGuideOk ? "0 0 20px rgba(16, 185, 129, 0.5)" : "none",
+                            }}
+                          />
+                        </div>
+                        <div className="absolute left-1/2 -translate-x-1/2 bottom-3 text-xs font-medium px-3 py-1.5 rounded-lg bg-black/60 text-white backdrop-blur-sm z-20">
+                          {faceGuideMsg}
+                        </div>
+                      </>
+                    )}
+
+                    {/* Idle — just show dashed oval before camera starts */}
+                    {blinkPhase === "idle" && (
+                      <div className="absolute inset-0 pointer-events-none grid place-items-center">
+                        <div
+                          className="rounded-full border-4 border-dashed"
+                          style={{ width: "60%", height: "75%", borderColor: "rgba(255,255,255,0.25)" }}
+                        />
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
+
+                  {/* Buttons row */}
+                  <div className="mt-3 flex flex-wrap gap-2 items-center">
                     <button
                       className="px-3 py-2 rounded-lg text-white font-medium shadow transition hover:brightness-105 disabled:opacity-60"
                       style={{
@@ -1774,6 +2070,19 @@ export default function PrepareExam() {
                       >
                         ⚙️ Hướng dẫn cấp quyền
                       </button>
+                    )}
+
+                    {/* Nút bật/tắt chế độ xem % — chỉ hiện khi đang ở bước nháy mắt */}
+                    {(blinkPhase === "detecting" || blinkPhase === "idle") && (
+                      <label className="ml-auto flex items-center gap-1.5 cursor-pointer select-none text-xs bg-slate-900/80 text-slate-300 px-2.5 py-2 rounded-lg border border-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={isDebugBlink}
+                          onChange={(e) => setIsDebugBlink(e.target.checked)}
+                          className="w-3.5 h-3.5 rounded border-slate-600 text-emerald-500"
+                        />
+                        Xem % mắt
+                      </label>
                     )}
                   </div>
 

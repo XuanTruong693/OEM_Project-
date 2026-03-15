@@ -138,10 +138,22 @@ app.get("/", (req, res) => {
 const PORT = process.env.PORT || 5000;
 
 // ✅ Kết nối và đồng bộ DB
+// ✅ [StudentCard] Import model để sync bảng student_cards
+const StudentCard = require('./models/StudentCard');
+
 sequelize
   .authenticate()
-  .then(() => {
+  .then(async () => {
     console.log("✅ DB connected successfully");
+
+    // ✅ [StudentCard] Tạo/cập nhật bảng student_cards tự động khi server khởi động
+    try {
+      await StudentCard.sync({ alter: true });
+      console.log('✅ [StudentCard] Bảng student_cards đã được đồng bộ.');
+    } catch (syncErr) {
+      console.error('❌ [StudentCard] Lỗi sync bảng student_cards:', syncErr.message);
+    }
+
     if (process.env.NODE_ENV !== "test") {
       // ✅ Tạo HTTP server và khởi tạo Socket.IO
       const httpServer = http.createServer(app);

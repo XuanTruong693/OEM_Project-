@@ -3,6 +3,7 @@
 // ================================
 const dns = require('dns').promises;
 
+require('dns').setServers(['8.8.8.8', '8.8.4.4']);
 /**
  * Kiem tra ten mien email co ton tai thuc su khong (kiem tra MX record)
  * @param {string} email - Dia chi email can kiem tra

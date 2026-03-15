@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Home, Users, BookOpen, FileText, Award,
-    Database, Settings, LogOut, Shield
+    Database, Settings, LogOut, Shield, CreditCard
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -13,6 +13,8 @@ const AdminSidebar = ({ activeTab, onTabChange }) => {
     const navItems = [
         { icon: Home, labelKey: 'dashboard', path: '/admin-dashboard', tab: 'dashboard' },
         { icon: Users, labelKey: 'userManagement', path: '/admin/users', tab: 'users' },
+        // ✅ [StudentCard] Menu mới - Quản lý Thẻ Sinh Viên
+        { icon: CreditCard, labelKey: 'studentCards', path: '/admin/student-cards', tab: 'student-cards' },
         { icon: BookOpen, labelKey: 'examManagement', path: '/admin/exams', tab: 'exams' },
         { icon: FileText, labelKey: 'examOverview', path: '/admin/exam-overview', tab: 'exam-overview' },
         { icon: Award, labelKey: 'results', path: '/admin/results', tab: 'results' },
