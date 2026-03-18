@@ -172,12 +172,12 @@ export default function ExamSettings() {
     duration_minutes: 60,
     time_open: "",
     time_close: "",
-    max_points: "",
     max_attempts: 0,
     require_face_check: false,
     require_student_card: false,
     monitor_screen: false,
     intent_shuffle: false,
+    grading_mode: "general",
   });
   const [submitting, setSubmitting] = React.useState(false);
   const [room, setRoom] = React.useState("");
@@ -235,17 +235,6 @@ export default function ExamSettings() {
       setErr("Thời lượng phải là số dương (lớn hơn 0)");
       return false;
     }
-    // Kiểm tra max_points bắt buộc
-    if (!form.max_points || form.max_points === "") {
-      setErr("Vui lòng nhập tổng điểm (bắt buộc)");
-      return false;
-    }
-    // Kiểm tra max_points từ 1-10
-    const points = Number(form.max_points);
-    if (points < 1 || points > 10) {
-      setErr("Tổng điểm phải từ 1 đến 10");
-      return false;
-    }
     return true;
   };
 
@@ -256,10 +245,12 @@ export default function ExamSettings() {
     try {
       const payload = {
         ...form,
-        max_points: form.max_points ? Number(form.max_points) : null,
+        max_points: 10,
         max_attempts: form.max_attempts ? Number(form.max_attempts) : 0,
         duration: Number(form.duration),
         duration_minutes: Number(form.duration_minutes),
+        intent_shuffle: form.intent_shuffle ? 1 : 0,
+        grading_mode: form.grading_mode || "general",
       };
       const toISO = (s) => new Date(s).toISOString();
       payload.time_open = toISO(form.time_open);
@@ -343,17 +334,6 @@ export default function ExamSettings() {
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <Label>Tổng điểm (max_points) *</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={10}
-                    required
-                    value={form.max_points}
-                    onChange={(e) => onChange("max_points", e.target.value)}
-                  />
-                </div>
-                <div className="md:col-span-2">
                   <Label>Số lần thi tối đa (0 = không giới hạn)</Label>
                   <Input
                     type="number"
@@ -361,6 +341,21 @@ export default function ExamSettings() {
                     value={form.max_attempts}
                     onChange={(e) => onChange("max_attempts", e.target.value)}
                   />
+                </div>
+                <div className="md:col-span-2">
+                  <Label>Mô hình chấm điểm AI</Label>
+                  <select
+                    className="w-full mt-1 border border-slate-300 rounded-xl p-2 bg-white transition focus:outline-none focus:ring-2 focus:ring-blue-300 hover:border-blue-300"
+                    value={form.grading_mode}
+                    onChange={(e) => onChange("grading_mode", e.target.value)}
+                  >
+                    <option value="general">Linh hoạt - Triết học, Pháp luật, Xã hội (General Mode)</option>
+                    <option value="technical">Khắt khe - Lập trình, Toán học, Logic (Technical Mode)</option>
+                  </select>
+                  <p className="mt-1 text-xs text-slate-500">
+                    * General: AI chấm linh hoạt hơn, cho điểm nếu đúng ý (hiểu từ đồng nghĩa/đảo ngữ). <br/>
+                    * Technical: AI chấm khắt khe theo cấu trúc ngữ pháp hàm/code, yêu cầu nộp đúng framework.
+                  </p>
                 </div>
               </div>
             </SectionCard>
@@ -454,7 +449,7 @@ export default function ExamSettings() {
                 <ul className="mt-1 text-sm text-slate-600 list-disc list-inside space-y-1">
                   <li>Đặt khung giờ đủ dài để sinh viên vào phòng.</li>
                   <li>Sử dụng theo dõi màn hình cho các kỳ thi quan trọng.</li>
-                  <li>Kiểm tra kỹ thời lượng và điểm tối đa trước khi mở.</li>
+                  <li>Kiểm tra kỹ thời lượng trước khi mở.</li>
                 </ul>
               </div>
             </div>

@@ -169,9 +169,13 @@ export default function StudentExamDetail() {
                     (p) => p.question_id === a.question_id
                   )?.score
                 }
-                onChange={(e) =>
-                  handleApprovePerQuestion(a.question_id, e.target.value)
-                }
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const updated = scores.perQuestion.map((p) =>
+                    p.question_id === a.question_id ? { ...p, score: val } : p
+                  );
+                  setScores({ ...scores, perQuestion: updated });
+                }}
               />
             ) : (
               a.score

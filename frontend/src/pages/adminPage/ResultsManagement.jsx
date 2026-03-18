@@ -158,12 +158,12 @@ const ResultsManagement = () => {
     };
 
     return (
-        <div className="flex min-h-screen bg-gray-900">
+        <div className="flex flex-col md:flex-row min-h-screen bg-gray-900">
             <AdminSidebar activeTab="results" />
 
-            <main className="flex-1 p-8 overflow-y-auto">
+            <main className="flex-1 p-4 pt-20 md:p-8 overflow-y-auto">
                 {/* Header */}
-                <div className="flex justify-between items-center mb-8">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-0 mb-8">
                     <div>
                         <h1 className="text-3xl font-semibold text-white">{t('results')}</h1>
                         <p className="text-gray-300 mt-1">{t('results')}</p>
@@ -180,7 +180,7 @@ const ResultsManagement = () => {
                 )}
 
                 {/* Filters */}
-                <div className="flex gap-4 mb-6">
+                <div className="flex flex-col md:flex-row gap-4 mb-6">
                     <select
                         value={examFilter}
                         onChange={(e) => { setExamFilter(e.target.value); setPage(1); }}
@@ -194,7 +194,7 @@ const ResultsManagement = () => {
                 </div>
 
                 {/* Stats */}
-                <div className="grid grid-cols-4 gap-4 mb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                     <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
                         <p className="text-gray-300 text-sm">{t('totalResults')}</p>
                         <p className="text-2xl font-bold text-white">{total}</p>
@@ -224,8 +224,9 @@ const ResultsManagement = () => {
 
                 {/* Results Table */}
                 <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
-                    <table className="w-full">
-                        <thead className="bg-gray-700/50">
+                    <div className="overflow-x-auto">
+                        <table className="w-full min-w-[800px]">
+                            <thead className="bg-gray-700/50">
                             <tr>
                                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('student')}</th>
                                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('exam')}</th>
@@ -312,14 +313,15 @@ const ResultsManagement = () => {
                             )}
                         </tbody>
                     </table>
+                    </div>
 
                     {/* Pagination */}
                     {totalPages > 1 && (
-                        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-700">
-                            <span className="text-sm text-gray-300">
+                        <div className="flex flex-col md:flex-row items-center justify-between gap-4 px-6 py-4 border-t border-gray-700">
+                            <span className="text-sm text-gray-300 text-center md:text-left">
                                 Hiển thị {(page - 1) * limit + 1} - {Math.min(page * limit, total)} trong tổng số {total} kết quả
                             </span>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-center gap-2">
                                 <button
                                     onClick={() => setPage(p => Math.max(1, p - 1))}
                                     disabled={page === 1}
@@ -361,7 +363,7 @@ const ResultsManagement = () => {
                                 </div>
 
                                 {/* 3 Cột điểm có thể sửa: MCQ, Tự luận, Tổng */}
-                                <div className="grid grid-cols-3 gap-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                     <div className="bg-gray-700/50 p-3 rounded-lg">
                                         <p className="text-gray-300 text-xs mb-2 text-center">Điểm MCQ</p>
                                         <input

@@ -1,6 +1,6 @@
 """
 code_analyzer.py
-Specialized analysis module for Code/Math/SQL answers.
+Specialized analysis module for Code/Math/SQL/OOP answers.
 
 Implements divide-and-conquer grading strategy:
 1. Detect answer type (code, math, SQL, text)
@@ -8,7 +8,7 @@ Implements divide-and-conquer grading strategy:
 3. Return grading result or None to let main grader handle
 
 Supports:
-- Python code (functions, algorithms)
+- Python code (functions, algorithms, OOP classes)
 - SQL queries
 - Mathematical expressions
 """
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 class CodeAnalyzer:
     def __init__(self):
-        # CODE PATTERNS (Python, JavaScript, Java, C)
+        # CODE PATTERNS (Python, JavaScript, Java, C++, OOP)
         self.code_indicators = [
             # Python
             r"\bdef\s+\w+\s*\(",
@@ -31,11 +31,15 @@ class CodeAnalyzer:
             r"\bfor\s+\w+\s+in\b",
             r"\bif\s+.+:",
             r"\bwhile\s+.+:",
-            r"\bclass\s+\w+",
             r"\bimport\s+\w+",
             r"\bfrom\s+\w+\s+import",
             r"\blambda\s+",
             r"\bprint\s*\(",
+            # Python OOP
+            r"\bclass\s+\w+",
+            r"def\s+__init__\s*\(",
+            r"\bself\.\w+",
+            r"super\(\)\.",
             # JavaScript
             r"\bfunction\s+\w+\s*\(",
             r"\bconst\s+\w+\s*=",
@@ -43,9 +47,12 @@ class CodeAnalyzer:
             r"\bvar\s+\w+\s*=",
             r"=>\s*{",
             r"console\.log\s*\(",
-            # Java/C
+            # Java/C++/OOP
             r"\bpublic\s+(static\s+)?void\b",
             r"\bprivate\s+\w+\b",
+            r"\bprotected\s+\w+\b",
+            r"\bclass\s+\w+\s+(extends|implements|:)\s+\w+",
+            r"\bnew\s+\w+\s*\(",
             r"\bint\s+\w+\s*=",
             r"\bString\s+\w+\s*=",
             r"System\.out\.print",
@@ -81,7 +88,7 @@ class CodeAnalyzer:
             r"\d+\s*km/h\b|\d+\s*m/s\b",   # speed units
         ]
         
-        # FUNCTION TYPE PATTERNS
+        # FUNCTION / OOP TYPE PATTERNS
         self.function_patterns = {
             "factorial": {
                 "names": ["giai_thua", "factorial", "tinh_giai_thua", "giaithua"],
@@ -91,55 +98,52 @@ class CodeAnalyzer:
                     r"result\s*\*=\s*\w+",  # result *= i
                     r"result\s*=\s*result\s*\*\s*\w+", # result = result * i
                 ],
-                "anti_patterns": [
-                    r"\+=",  # Sum pattern (unless unrelated)
-                ]
+                "anti_patterns": [r"\+="]
             },
             "sum": {
                 "names": ["tong", "sum", "tinh_tong", "tinhtong", "total"],
-                "patterns": [
-                    r"\+=",
-                    r"total\s*\+",
-                    r"sum\s*\(",
-                    r"sum\s*=\s*sum\s*\+",
-                ],
-                "anti_patterns": [
-                    r"\*=",  # Factorial pattern
-                    r"n\s*-\s*1\s*\)",  # Recursion pattern
-                ]
+                "patterns": [r"\+=", r"total\s*\+", r"sum\s*\(", r"sum\s*=\s*sum\s*\+"],
+                "anti_patterns": [r"\*=", r"n\s*-\s*1\s*\)"]
             },
             "fibonacci": {
                 "names": ["fibo", "fibonacci", "fib"],
-                "patterns": [
-                    r"n\s*-\s*1.*n\s*-\s*2",
-                    r"\w+\s*\(\s*n\s*-\s*1\s*\)\s*\+\s*\w+\s*\(\s*n\s*-\s*2\s*\)",
-                ],
+                "patterns": [r"n\s*-\s*1.*n\s*-\s*2", r"\w+\s*\(\s*n\s*-\s*1\s*\)\s*\+\s*\w+\s*\(\s*n\s*-\s*2\s*\)"],
                 "anti_patterns": []
             },
             "prime": {
                 "names": ["prime", "so_nguyen_to", "nguyen_to", "is_prime"],
-                "patterns": [
-                    r"n\s*%\s*\w+\s*==\s*0",
-                    r"for\s+\w+\s+in\s+range\s*\(\s*2\s*,",
-                ],
+                "patterns": [r"n\s*%\s*\w+\s*==\s*0", r"for\s+\w+\s+in\s+range\s*\(\s*2\s*,"],
                 "anti_patterns": []
             },
             "sort": {
                 "names": ["sort", "sap_xep", "sapxep", "bubble", "quick", "merge"],
-                "patterns": [
-                    r"\.sort\s*\(",
-                    r"sorted\s*\(",
-                    r"swap",
-                    r"\[\s*\w+\s*\]\s*,\s*\[\s*\w+\s*\]",
-                ],
+                "patterns": [r"\.sort\s*\(", r"sorted\s*\(", r"swap", r"\[\s*\w+\s*\]\s*,\s*\[\s*\w+\s*\]"],
                 "anti_patterns": []
             },
             "search": {
                 "names": ["search", "tim_kiem", "timkiem", "binary", "linear"],
+                "patterns": [r"mid\s*=", r"low\s*=.*high\s*=", r"if\s+\w+\s*==\s*target"],
+                "anti_patterns": []
+            },
+            # [OOP] Patterns Nhận diện đặc thù Hướng Đối Tượng
+            "oop_class": {
+                "names": ["class", "lop_doi_tuong", "hinh_chu_nhat", "sinh_vien", "animal", "person", "vehicle"],
                 "patterns": [
-                    r"mid\s*=",
-                    r"low\s*=.*high\s*=",
-                    r"if\s+\w+\s*==\s*target",
+                    r"\bclass\s+\w+",
+                    r"def\s+__init__",
+                    r"self\.\w+\s*=",
+                    r"\bpublic\s+class",
+                ],
+                "anti_patterns": []
+            },
+            "oop_inheritance": {
+                "names": ["ke_thua", "extends", "inheritance"],
+                "patterns": [
+                    r"\bclass\s+\w+\s*\(\s*\w+\s*\):", # Python class Child(Parent):
+                    r"class\s+\w+\s+extends\s+\w+",    # Java/JS extends
+                    r"class\s+\w+\s*:\s*(public|private|protected)\s+\w+", # C++ inheritance
+                    r"super\(\)\.__init__",
+                    r"super\(\)\.",
                 ],
                 "anti_patterns": []
             }
@@ -148,7 +152,6 @@ class CodeAnalyzer:
         # CRITICAL LOGIC ERROR PATTERNS
         self.logic_errors = [
             {
-                # Only match if preceded by function call-like syntax or return
                 "pattern": r"(?:\w+\s*\(|return\s+.*)\s*n\s*\+\s*1\s*\)",
                 "context": "factorial",
                 "type": "infinite_recursion",
@@ -201,7 +204,7 @@ class CodeAnalyzer:
         
         # Check code patterns
         code_score = sum(1 for p in self.code_indicators if re.search(p, text))
-        if code_score >= 2:
+        if code_score >= 2 or re.search(r"def __init__|\bclass\s+\w+", text): # Ưu tiên bắt OOP
             return "code"
         
         # Check math patterns
@@ -219,11 +222,11 @@ class CodeAnalyzer:
     # CODE ANALYSIS METHODS
     
     def detect_function_type(self, code: str) -> str:
-        """Detect what algorithm/function the code implements."""
+        """Detect what algorithm/function/OOP concept the code implements."""
         code_lower = code.lower()
         
-        # 1. Check function name first
-        func_match = re.search(r"def\s+(\w+)", code_lower)
+        # 1. Check function/class name first
+        func_match = re.search(r"(?:def|class)\s+(\w+)", code_lower)
         if func_match:
             func_name = func_match.group(1)
             for func_type, info in self.function_patterns.items():
@@ -257,8 +260,10 @@ class CodeAnalyzer:
         # Type mismatch check
         if model_type != "unknown" and student_type != "unknown":
             if model_type != student_type:
-                logger.info(f"Function type mismatch: model={model_type}, student={student_type}")
-                return True, f"Code giải quyết bài toán khác: yêu cầu {model_type}, sinh viên làm {student_type}"
+                # Tránh phạt nhầm khi OOP class và OOP inheritance có thể trộn lẫn
+                if not (model_type.startswith("oop_") and student_type.startswith("oop_")):
+                    logger.info(f"Function type mismatch: model={model_type}, student={student_type}")
+                    return True, f"Code giải quyết bài toán khác: yêu cầu {model_type}, sinh viên làm {student_type}"
         
         # Check for specific logic errors matching the context
         for error in self.logic_errors:
@@ -272,13 +277,17 @@ class CodeAnalyzer:
         return False, ""
     
     def extract_code_structure(self, code: str) -> Dict[str, List[str]]:
-        # Extract structural elements from code.
+        """Extract structural elements from code, bao gồm cả yếu tố OOP."""
         structure = {
-            "functions": re.findall(r"def\s+(\w+)\s*\(", code),
+            "classes": re.findall(r"class\s+(\w+)", code),
+            "inheritance": re.findall(r"class\s+\w+\s*\(\s*(\w+)\s*\):", code), # Python
+            "constructors": re.findall(r"def\s+(__init__)", code),
+            "functions": re.findall(r"def\s+([a-zA-Z0-9_]+)(?!\s*__)", code), # Trừ __init__
             "returns": re.findall(r"return\s+(.+?)(?:\n|$)", code),
             "conditions": re.findall(r"if\s+(.+?):", code),
             "loops": re.findall(r"for\s+(.+?):", code) + re.findall(r"while\s+(.+?):", code),
-            "variables": re.findall(r"(\w+)\s*=\s*", code),
+            "attributes": re.findall(r"self\.(\w+)\s*=", code), # OOP Attributes
+            "variables": re.findall(r"([a-zA-Z0-9_]+)\s*=\s*(?!self)", code), # Normal vars
         }
         return structure
     
@@ -292,6 +301,7 @@ class CodeAnalyzer:
         strict_similarity = 0.0
         weight_count = 0
         
+        # Gia trọng điểm cho OOP components
         for key in m_struct:
             m_set = set(m_struct[key])
             s_set = set(s_struct[key])
@@ -301,15 +311,16 @@ class CodeAnalyzer:
                     similarity = len(m_set & s_set) / len(m_set | s_set)
                 else:
                     similarity = 0.0
-                strict_similarity += similarity
-                weight_count += 1
+                
+                weight = 2.0 if key in ["classes", "inheritance", "attributes"] else 1.0
+                strict_similarity += similarity * weight
+                weight_count += weight
         
         strict_score = strict_similarity / weight_count if weight_count > 0 else 0.5
         
         # 2. Skeleton Match (For Obfuscation / Variable Renaming)
-        # Extracts just the keywords sequence to see if algorithm structure is identical
         def get_skeleton(code):
-            return re.findall(r"\b(def|class|if|elif|else|for|while|try|except|return|yield|break|continue)\b", code)
+            return re.findall(r"\b(class|def|if|elif|else|for|while|try|except|return|yield|break|continue|super|self)\b", code)
             
         m_skeleton = get_skeleton(model)
         s_skeleton = get_skeleton(student)
@@ -322,7 +333,8 @@ class CodeAnalyzer:
             skeleton_score = matcher.ratio()
             
         logger.info(f"Structure Check: strict={strict_score:.2f}, skeleton={skeleton_score:.2f}")
-        return max(strict_score, skeleton_score)
+        # Kết hợp điểm thay vì lấy max để đảm bảo cấu trúc tổng quát phải đi kèm với thành phần đúng
+        return (strict_score * 0.6) + (skeleton_score * 0.4)
     
     # SQL ANALYSIS METHODS
     
@@ -343,26 +355,20 @@ class CodeAnalyzer:
         m_elements = self.extract_sql_elements(model)
         s_elements = self.extract_sql_elements(student)
         
-        # Helper to normalize SQL values (remove aliases like 't1.', 's.', and 'AS alias')
         def normalize_sql_val(text):
             if not text: return ""
             text = text.lower().strip()
-            # Remove table aliases (e.g., "s.name" -> "name")
             text = re.sub(r'\b\w+\.', '', text)
-            # Remove AS aliases (e.g., "count(*) as total" -> "count(*)")
             text = re.sub(r'\s+as\s+\w+', '', text)
-            # Normalize spaces
             text = re.sub(r'\s+', ' ', text)
             return text
 
-        # Check table name
         m_table = m_elements.get("from_table", "").lower()
         s_table = s_elements.get("from_table", "").lower()
         
         if m_table and s_table and m_table != s_table:
             return 0.1, f"Sai tên bảng: yêu cầu '{m_table}', sinh viên dùng '{s_table}'"
         
-        # Compare elements
         match_count = 0
         total_count = 0
         
@@ -370,11 +376,9 @@ class CodeAnalyzer:
             if m_elements.get(key):
                 total_count += 1
                 if key in s_elements:
-                    # Normalize and compare
                     m_val = normalize_sql_val(m_elements[key])
                     s_val = normalize_sql_val(s_elements.get(key, ""))
                     
-                    # Split by comma for lists (select, group by)
                     m_parts = set(x.strip() for x in m_val.split(','))
                     s_parts = set(x.strip() for x in s_val.split(','))
                     
@@ -387,79 +391,53 @@ class CodeAnalyzer:
     # MATH ANALYSIS METHODS
     
     def normalize_math_expression(self, expr: str) -> str:
-        #Normalize math expression for comparison.
-        # Remove whitespace
         expr = re.sub(r'\s+', '', expr)
-        # Normalize common variations
         expr = expr.replace('×', '*').replace('÷', '/')
         expr = expr.replace('^', '**')
         return expr.lower()
     
     def compare_math_answers(self, model: str, student: str) -> Tuple[float, str]:
-        """
-        Compare math answers, handling different notations.
-        Handles cases like:
-        - Student: "1 + 7 = 8" vs Model: "8"
-        - Student: "= 8" vs Model: "8"
-        - Student: "8 ạ" vs Model: "8"
-        Returns (similarity_score, feedback).
-        """
         m_norm = self.normalize_math_expression(model)
         s_norm = self.normalize_math_expression(student)
         
-        # Exact normalized match
         if m_norm == s_norm:
             return 1.0, "Đáp án chính xác"
         
-        # NEW: Extract final result from expressions like "1+7=8" -> "8"
         def extract_result(expr: str) -> str:
-            """Extract the result part after '=' sign"""
             if '=' in expr:
-                # Get the part after the last '='
                 result = expr.split('=')[-1].strip()
-                # Remove any trailing non-numeric characters (like 'ạ', 'nhé', etc.)
                 result = re.sub(r'[^0-9.\-]+$', '', result)
                 return result
             return expr
         
-        # NEW: Clean Vietnamese filler from end
         def clean_filler(expr: str) -> str:
-            """Remove Vietnamese fillers from the expression"""
             fillers = ['ạ', 'nhé', 'nha', 'ha', 'vậy', 'thế', 'đó']
             for filler in fillers:
                 expr = re.sub(rf'\s*{filler}\s*$', '', expr, flags=re.IGNORECASE)
             return expr.strip()
         
-        # Clean student answer
         s_cleaned = clean_filler(s_norm)
         m_cleaned = clean_filler(m_norm)
         
-        # Check if cleaned versions match
         if s_cleaned == m_cleaned:
             return 1.0, "Đáp án chính xác"
         
-        # Extract result from student if they wrote full expression
         s_result = extract_result(s_cleaned)
         m_result = extract_result(m_cleaned)
         
-        # Compare just the results
         if s_result == m_result:
             return 1.0, "Đáp án đúng (viết đầy đủ phép tính)"
         
-        # Extract all numeric values
         m_nums = set(re.findall(r'-?\d+\.?\d*', m_result))
         s_nums = set(re.findall(r'-?\d+\.?\d*', s_result))
         
         if m_nums and s_nums:
-            # Check if main answer values match
             if m_nums == s_nums:
                 return 0.98, "Giá trị đúng, cách viết khác"
             
-            # Check if the result number appears in student answer
             if m_nums.issubset(s_nums) or s_nums.issubset(m_nums):
                 return 0.95, "Đáp án đúng"
             
-            # Partial match
             common = m_nums & s_nums
             if common:
                 ratio = len(common) / len(m_nums)
@@ -474,11 +452,9 @@ class CodeAnalyzer:
         
         logger.info(f"CodeAnalyzer: model_type={model_type}, student_type={student_type}")
         
-        # If model is not technical, let main grader handle
         if model_type == "text":
             return None
         
-        # Type mismatch: student gave text answer for code question
         if model_type != "text" and student_type == "text":
             return {
                 "score": max_points * 0.1,
@@ -488,7 +464,6 @@ class CodeAnalyzer:
         
         # CODE GRADING
         if model_type == "code":
-            # Check for logic errors
             has_error, error_msg = self.check_logic_errors(model_text, student_text)
             if has_error:
                 return {
@@ -497,23 +472,19 @@ class CodeAnalyzer:
                     "explanation": error_msg
                 }
             
-            # Check function type match
             model_func = self.detect_function_type(model_text)
             student_func = self.detect_function_type(student_text)
             
             if model_func != "unknown" and student_func != "unknown":
-                if model_func != student_func:
+                # Cho phép overlap giữa các bài OOP
+                if model_func != student_func and not (model_func.startswith("oop_") and student_func.startswith("oop_")):
                     return {
                         "score": max_points * 0.15,
                         "type": "Wrong Algorithm",
-                        "explanation": f"Yêu cầu thuật toán {model_func}, sinh viên làm {student_func}"
+                        "explanation": f"Yêu cầu {model_func}, sinh viên làm {student_func}"
                     }
             
-            # Compare structure
             struct_sim = self.compare_code_structure(model_text, student_text)
-            
-            # Allow different structures if function type is identified and matches
-            # e.g. Recursive vs Iterative factorial
             is_same_algo = (model_func != "unknown" and student_func != "unknown" and model_func == student_func)
             
             if struct_sim < 0.3 and not is_same_algo:
@@ -523,17 +494,13 @@ class CodeAnalyzer:
                     "explanation": f"Cấu trúc code khác biệt nhiều (similarity: {struct_sim:.0%})"
                 }
             elif is_same_algo and struct_sim < 0.3:
-                # Same algorithm but different structure -> Paraphrase/Implementation variation
                 logger.info(f"Code structure differs ({struct_sim:.2f}) but algorithm matches ({model_func}). Allowing.")
             
-            # Code Length/Complexity Check for Partial Detection
-            # If student code is much shorter than model (lines of code), it's likely partial
             m_lines = len([l for l in model_text.splitlines() if l.strip()])
             s_lines = len([l for l in student_text.splitlines() if l.strip()])
             
             logger.info(f"Code Length Check: student={s_lines}, model={m_lines}, ratio={s_lines/m_lines if m_lines else 0:.2f}")
 
-            # Detect incomplete code / placeholder comments
             placeholder_patterns = [
                 r"#.*đệ quy", r"#.*viết tiếp", r"#.*TODO", r"#.*... ",
                 r"//.*TODO", r"/\*.*TODO"
@@ -553,18 +520,18 @@ class CodeAnalyzer:
                     "explanation": f"Code quá ngắn so với đáp án ({s_lines}/{m_lines} dòng)."
                 }
 
-            # If checks passed, return valid code score
-            # Bonus for high structure similarity
-            final_score_ratio = max(0.9, struct_sim) if struct_sim > 0.6 else 0.85
+            # Nâng hệ số thưởng cho những bài Code/OOP có cấu trúc tốt
+            final_score_ratio = max(0.9, struct_sim * 1.2) if struct_sim > 0.5 else 0.75
+            final_score_ratio = min(1.0, final_score_ratio) # Cap at 100%
+            
             return {
                 "score": max_points * final_score_ratio,
                 "type": "Code Match",
-                "explanation": f"Code hợp lệ (Structure: {struct_sim:.2f})"
+                "explanation": f"Code hợp lệ (Structure Match: {struct_sim:.2f})"
             }
         
         # SQL GRADING
         if model_type == "sql":
-            # Type mismatch
             if student_type != "sql":
                 return {
                     "score": max_points * 0.1,
@@ -602,11 +569,8 @@ class CodeAnalyzer:
                 "explanation": feedback
             }
         
-        # Default: let main grader handle
         return None
 
-
 def analyze_technical_answer(model: str, student: str, max_points: float) -> Optional[Dict[str, Any]]:
-    #Analyze technical answer and return grading result.
     analyzer = CodeAnalyzer()
     return analyzer.grade(model, student, max_points)

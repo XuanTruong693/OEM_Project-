@@ -243,12 +243,7 @@ exports.batchUploadStudentCards = async (req, res) => {
                 continue;
             }
 
-            const imageBuffer = rowImages[i];
-            if (!imageBuffer) {
-                errorList.push({ mssv, ten, ly_do: 'Không tìm thấy ảnh tại cột C của sinh viên này.' });
-
-                continue;
-            }
+            const imageBuffer = rowImages[i] || null;
 
             try {
                 const [record, created] = await StudentCard.findOrCreate({
@@ -261,13 +256,19 @@ exports.batchUploadStudentCards = async (req, res) => {
                 });
 
                 if (!created) {
-                    await record.update({
-                        student_name: ten,
-                        card_image: imageBuffer,
-                    });
+                    const updateData = { student_name: ten };
+                    // Chỉ ghi đè ảnh nếu file Excel có ảnh mới
+                    if (imageBuffer) {
+                        updateData.card_image = imageBuffer;
+                    }
+                    await record.update(updateData);
                 }
 
-                successList.push({ mssv, ten, action: created ? 'đã thêm' : 'đã cập nhật' });
+                successList.push({
+                    mssv, ten,
+                    action: created ? 'đã thêm' : 'đã cập nhật',
+                    hasImage: !!imageBuffer,
+                });
             } catch (innerErr) {
                 console.error(`❌ [batch] Lỗi xử lý SV ${mssv}:`, innerErr.message);
                 errorList.push({ mssv, ten, ly_do: `Lỗi DB: ${innerErr.message}` });
@@ -286,5 +287,95 @@ exports.batchUploadStudentCards = async (req, res) => {
     } catch (err) {
         console.error('❌ [batchUploadStudentCards]', err);
         return res.status(500).json({ success: false, message: 'Lỗi server khi upload file Excel: ' + err.message });
+    }
+};
+
+/**
+ * 7. GET /api/admin/student-cards/no-image
+ * Lấy danh sách SV chưa có ảnh thẻ (card_image IS NULL)
+ */
+exports.getStudentCardsWithoutImage = async (req, res) => {
+    try {
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.max(1, parseInt(req.query.limit) || 20);
+        const search = (req.query.search || '').trim();
+        const offset = (page - 1) * limit;
+
+        const where = { card_image: null };
+        if (search) {
+            where[Op.or] = [
+                { student_name: { [Op.like]: `%${search}%` } },
+                { student_code: { [Op.like]: `%${search}%` } },
+            ];
+        }
+
+        const { count, rows } = await StudentCard.findAndCountAll({
+            where,
+            attributes: ['id', 'student_code', 'student_name', 'created_at', 'updated_at'],
+            order: [['created_at', 'DESC']],
+            limit,
+            offset,
+        });
+
+        return res.json({
+            success: true,
+            data: rows,
+            totalItems: count,
+            totalPages: Math.ceil(count / limit),
+            currentPage: page,
+        });
+    } catch (err) {
+        console.error('❌ [getStudentCardsWithoutImage]', err);
+        return res.status(500).json({ success: false, message: 'Lỗi server khi lấy danh sách SV chưa có ảnh.' });
+    }
+};
+
+/**
+ * 8. POST /api/admin/student-cards/batch-update-images
+ * Cập nhật ảnh hàng loạt cho các SV đã có trong DB
+ * Body: multipart/form-data với các file có field name = student_code
+ */
+exports.batchUpdateCardImages = async (req, res) => {
+    try {
+        const files = req.files;
+        if (!files || files.length === 0) {
+            return res.status(400).json({ success: false, message: 'Không có file ảnh nào được gửi lên.' });
+        }
+
+        const successList = [];
+        const errorList = [];
+
+        for (const file of files) {
+            const studentCode = file.fieldname; // field name = student_code
+            try {
+                const card = await StudentCard.findOne({ where: { student_code: studentCode } });
+                if (!card) {
+                    errorList.push({ student_code: studentCode, ly_do: 'Không tìm thấy SV với MSSV này.' });
+                    continue;
+                }
+
+                await card.update({ card_image: file.buffer });
+                successList.push({
+                    student_code: studentCode,
+                    student_name: card.student_name,
+                    action: 'đã cập nhật ảnh',
+                });
+            } catch (innerErr) {
+                console.error(`❌ [batchUpdateImages] Lỗi SV ${studentCode}:`, innerErr.message);
+                errorList.push({ student_code: studentCode, ly_do: `Lỗi DB: ${innerErr.message}` });
+            }
+        }
+
+        return res.json({
+            success: true,
+            total: files.length,
+            successCount: successList.length,
+            errorCount: errorList.length,
+            successList,
+            errorList,
+        });
+    } catch (err) {
+        console.error('❌ [batchUpdateCardImages]', err);
+        return res.status(500).json({ success: false, message: 'Lỗi server khi cập nhật ảnh hàng loạt.' });
     }
 };

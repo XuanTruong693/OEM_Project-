@@ -101,12 +101,12 @@ const ExamOverview = () => {
     };
 
     return (
-        <div className="flex min-h-screen bg-gray-900">
+        <div className="flex flex-col md:flex-row min-h-screen bg-gray-900">
             <AdminSidebar activeTab="exam-overview" />
 
-            <main className="flex-1 p-8 overflow-y-auto">
+            <main className="flex-1 p-4 pt-20 md:p-8 overflow-y-auto">
                 {/* Header */}
-                <div className="flex justify-between items-center mb-8">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-0 mb-8">
                     <div>
                         <h1 className="text-3xl font-semibold text-white">{t('examOverviewTitle')}</h1>
                         <p className="text-gray-300 mt-1">{t('examOverviewDesc')}</p>
@@ -128,7 +128,7 @@ const ExamOverview = () => {
                 </div>
 
                 {/* Stats */}
-                <div className="grid grid-cols-4 gap-4 mb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                     <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
                         <div className="flex items-center gap-3">
                             <BookOpen className="text-blue-400" size={24} />
@@ -276,7 +276,7 @@ const ExamOverview = () => {
 
                             <div className="p-6 overflow-y-auto flex-1">
                                 {/* Exam Info */}
-                                <div className="grid grid-cols-4 gap-4 mb-6">
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
                                     <div className="bg-gray-700/50 p-4 rounded-lg">
                                         <p className="text-xs text-gray-300 uppercase mb-1">Thời gian mở</p>
                                         <p className="text-white text-sm">{formatDateTime(selectedExam.time_open)}</p>

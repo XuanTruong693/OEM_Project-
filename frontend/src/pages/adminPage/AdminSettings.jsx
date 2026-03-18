@@ -201,9 +201,9 @@ const AdminSettings = () => {
 
     if (loading) {
         return (
-            <div className="flex min-h-screen bg-gray-900">
+            <div className="flex flex-col md:flex-row min-h-screen bg-gray-900">
                 <AdminSidebar activeTab="settings" />
-                <main className="flex-1 p-8 flex items-center justify-center">
+                <main className="flex-1 p-4 pt-20 md:p-8 flex items-center justify-center">
                     <div className="text-gray-300">{t('loading')}</div>
                 </main>
             </div>
@@ -211,12 +211,12 @@ const AdminSettings = () => {
     }
 
     return (
-        <div className="flex min-h-screen bg-gray-900">
+        <div className="flex flex-col md:flex-row min-h-screen bg-gray-900">
             <AdminSidebar activeTab="settings" />
 
-            <main className="flex-1 p-8 overflow-y-auto">
+            <main className="flex-1 p-4 pt-20 md:p-8 overflow-y-auto">
                 {/* Header */}
-                <div className="flex justify-between items-center mb-8">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-0 mb-8">
                     <div>
                         <h1 className="text-3xl font-semibold text-white">{t('settingsTitle')}</h1>
                         <p className="text-gray-300 mt-1">{t('settingsDesc')}</p>
@@ -243,7 +243,7 @@ const AdminSettings = () => {
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-sm text-gray-300 mb-3">{t('theme')}</label>
-                                <div className="flex gap-4">
+                                <div className="flex flex-col sm:flex-row gap-4">
                                     <button
                                         onClick={() => handleUpdatePreferences({ theme: 'dark' })}
                                         className={`flex-1 flex items-center justify-center gap-3 px-4 py-4 rounded-lg border-2 transition-all ${preferences.theme === 'dark'
@@ -326,7 +326,7 @@ const AdminSettings = () => {
                                 </button>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm text-gray-300 mb-2">{t('backupTime')}</label>
                                     <DatePicker

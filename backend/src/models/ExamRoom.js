@@ -40,6 +40,11 @@ const Exam = sequelize.define(
       allowNull: false,
       defaultValue: "draft",
     },
+    grading_mode: {
+      type: DataTypes.ENUM("general", "technical"),
+      allowNull: false,
+      defaultValue: "general",
+    },
   },
   {
     tableName: "exams",

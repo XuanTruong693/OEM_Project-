@@ -330,8 +330,8 @@ const cloneExam = async (req, res) => {
         const src = own[0];
         const [ins] = await sequelize.query(
             `INSERT INTO exams (instructor_id, title, duration, duration_minutes, max_points, require_face_check, 
-  require_student_card, monitor_screen, max_attempts, status, created_at, updated_at)
-             VALUES (?, CONCAT(?, ' (copy)'), ?, ?, ?, ?, ?, ?, ?, 'draft', NOW(), NOW())`,
+  require_student_card, monitor_screen, max_attempts, intent_shuffle, status, created_at, updated_at)
+             VALUES (?, CONCAT(?, ' (copy)'), ?, ?, ?, ?, ?, ?, ?, ?, 'draft', NOW(), NOW())`,
             {
                 replacements: [
                     instructorId,
@@ -343,6 +343,7 @@ const cloneExam = async (req, res) => {
                     src.require_student_card ? 1 : 0,
                     src.monitor_screen ? 1 : 0,
                     src.max_attempts || 0,
+                    src.intent_shuffle ? 1 : 0,
                 ],
                 transaction,
             }
@@ -424,6 +425,8 @@ const openExam = async (req, res) => {
             require_student_card,
             monitor_screen,
             max_attempts,
+            intent_shuffle,
+            grading_mode,
         } = req.body;
         const instructorId = req.user.id;
         if (!Number.isFinite(examId))
@@ -485,7 +488,9 @@ const openExam = async (req, res) => {
              require_face_check = ?,
              require_student_card = ?,
              monitor_screen = ?,
-             max_attempts = ?
+             max_attempts = ?,
+             intent_shuffle = ?,
+             grading_mode = ?
            WHERE id = ?`,
             {
                 replacements: [
@@ -499,6 +504,8 @@ const openExam = async (req, res) => {
                     require_student_card ? 1 : 0,
                     monitor_screen ? 1 : 0,
                     max_attempts ? Number(max_attempts) : 0,
+                    intent_shuffle ? 1 : 0,
+                    grading_mode || 'general',
                     examId,
                 ],
             }

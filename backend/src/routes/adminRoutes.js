@@ -10,6 +10,7 @@ const multer = require('multer');
 
 // Admin controllers
 const studentCardController = require('../controllers/admin/studentCardController');
+const aiLogsController = require('../controllers/admin/aiLogsController');
 
 // Admin models
 const {
@@ -21,6 +22,7 @@ const {
 
 // Services
 const backupService = require('../services/backupService');
+const { getQueueStatus, retryAllFailed } = require('../services/AIService');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -33,6 +35,8 @@ router.use(activityLoggerMiddleware);
 // ============================================================================
 
 router.get('/student-cards', verifyToken, verifyRole('admin'), studentCardController.getStudentCards);
+router.get('/student-cards/no-image', verifyToken, verifyRole('admin'), studentCardController.getStudentCardsWithoutImage);
+router.post('/student-cards/batch-update-images', verifyToken, verifyRole('admin'), upload.any(), studentCardController.batchUpdateCardImages);
 router.get('/student-cards/:id', verifyToken, verifyRole('admin'), studentCardController.getStudentCardById);
 router.post('/student-cards', verifyToken, verifyRole('admin'), upload.fields([{ name: 'card_image', maxCount: 1 }]), studentCardController.createStudentCard);
 router.put('/student-cards/:id', verifyToken, verifyRole('admin'), upload.fields([{ name: 'card_image', maxCount: 1 }]), studentCardController.updateStudentCard);
@@ -764,6 +768,14 @@ router.delete('/results/:submissionId', verifyToken, verifyRole('admin'), async 
 });
 
 // ============================================================================
+// AI GRADING LOGS APIs
+// ============================================================================
+
+router.get('/ai-grading-logs', verifyToken, verifyRole('admin'), aiLogsController.getAIGradingLogs);
+router.get('/ai-grading-logs/:submissionId', verifyToken, verifyRole('admin'), aiLogsController.getAIGradingLogDetail);
+router.post('/ai-grading-logs/:submissionId/retry', verifyToken, verifyRole('admin'), aiLogsController.retryAIGrading);
+
+// ============================================================================
 // BACKUP & RESTORE APIs
 // ============================================================================
 
@@ -1102,6 +1114,63 @@ router.get('/profile', verifyToken, verifyRole('admin'), async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Lỗi server khi lấy profile'
+    });
+  }
+});
+
+// ============================================================================
+// AI GRADING QUEUE MONITORING
+// ============================================================================
+
+/**
+ * GET /api/admin/ai/queue-status
+ * Get AI grading queue status for monitoring
+ */
+router.get('/ai/queue-status', verifyToken, verifyRole('admin'), async (req, res) => {
+  try {
+    const status = await getQueueStatus();
+    console.log(`[Admin] 📊 AI Queue Status requested:`, {
+      active: status.active,
+      maxConcurrent: status.maxConcurrent,
+      inFlightCount: status.inFlight?.length || 0
+    });
+
+    res.json({
+      success: true,
+      data: status,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error fetching queue status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Không thể lấy trạng thái hàng đợi',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/admin/ai/retry-failed
+ * Retry all failed AI grading submissions
+ */
+router.post('/ai/retry-failed', verifyToken, verifyRole('admin'), async (req, res) => {
+  try {
+    const count = await retryAllFailed();
+    console.log(`[Admin] 🔄 Retried ${count} failed submissions`);
+
+    res.json({
+      success: true,
+      message: `Đã đưa lại ${count} bài thi vào hàng đợi`,
+      retryCount: count,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error retrying failed submissions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Không thể thử lại các bài thi',
+      error: error.message
     });
   }
 });

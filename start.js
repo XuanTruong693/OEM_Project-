@@ -62,7 +62,7 @@ const backendProc = startProcess(
 );
 
 // Frontend is served by Cloudflare Pages - no local server needed
-console.log(`${colors.blue}[Frontend]${colors.reset} Served by Cloudflare Pages (https://oem.io.vn)`);
+console.log(`${colors.blue}[Frontend]${colors.reset} Served by Cloudflare Pages (https://oes.io.vn)`);
 
 // Start AI Service with venv Python
 const pythonPath = path.join(ROOT_DIR, 'ai_services', '.venv', 'Scripts', 'python.exe');
@@ -101,9 +101,9 @@ console.log('  AI:       http://localhost:8000');
 console.log('  Tunnel:   Cloudflare Tunnel (oem-local)');
 console.log('----------------------------------------');
 console.log('  🌐 Public URLs (via Cloudflare):');
-console.log('  Frontend: https://oem.io.vn');
-console.log('  API:      https://api.oem.io.vn');
-console.log('  AI:       https://ai.oem.io.vn');
+console.log('  Frontend: https://oes.io.vn');
+console.log('  API:      https://api.oes.io.vn');
+console.log('  AI:       https://ai.oes.io.vn');
 console.log('========================================');
 console.log('💡 Tip: Wait for "AI Model Loaded" message before testing AI grading');
 console.log('========================================\n');

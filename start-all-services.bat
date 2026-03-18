@@ -19,7 +19,7 @@ echo All services started!
 echo.
 echo Backend:     http://localhost:5000
 echo AI Service:  http://localhost:8000
-echo Frontend:    https://www.oem.io.vn (via IIS)
+echo Frontend:    https://www.oes.io.vn (via IIS)
 echo ========================================
 echo.
 echo Press any key to exit this window...

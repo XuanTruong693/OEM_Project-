@@ -4,6 +4,25 @@ const { gradeSubmission } = require("../../services/AIService");
 // Import hasColumn helper from RoomController
 const { hasColumn } = require("./RoomController");
 
+// --- Helper Functions for Shuffling ---
+function seededRandom(seed) {
+    return function() {
+        let t = seed += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+function shuffleArray(array, rng) {
+    const arr = [...array];
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
 // Controller Methods
 async function startExam(req, res) {
     try {
@@ -162,7 +181,7 @@ async function startExam(req, res) {
             });
         }
 
-        const enriched = questions.map((q) =>
+        let enriched = questions.map((q) =>
             q.type === "MCQ" ? { ...q, options: optionsByQ[q.question_id] || [] } : q
         );
         let exSel = "SELECT e.title AS exam_title, u.full_name AS instructor_name, e.intent_shuffle,";
@@ -175,6 +194,21 @@ async function startExam(req, res) {
             replacements: [sub.exam_id],
         });
         const ex = Array.isArray(exRows) ? exRows[0] : exRows || {};
+
+        if (ex.intent_shuffle) {
+            const numSubmissionId = Number(submissionId);
+            const rngMCQ = seededRandom(numSubmissionId);
+            const rngEssay = seededRandom(numSubmissionId + 1000);
+
+            const mcqList = enriched.filter(q => q.type === "MCQ");
+            const essayList = enriched.filter(q => q.type !== "MCQ");
+
+            const shuffledMCQ = shuffleArray(mcqList, rngMCQ);
+            const shuffledEssay = shuffleArray(essayList, rngEssay);
+
+            enriched = [...shuffledMCQ, ...shuffledEssay];
+        }
+
         const [tRows] = await sequelize.query(`SELECT NOW() AS server_now`);
         const nowRow = Array.isArray(tRows) ? tRows[0] : tRows;
         // fetch started_at after update
@@ -355,11 +389,28 @@ async function submitExam(req, res) {
 
         // fetch submission & exam
         const [subRows] = await sequelize.query(
-            `SELECT s.id, s.exam_id FROM submissions s WHERE s.id = ? AND s.user_id = ? LIMIT 1`,
+            `SELECT s.id, s.exam_id, s.submitted_at FROM submissions s WHERE s.id = ? AND s.user_id = ? LIMIT 1`,
             { replacements: [submissionId, userId] }
         );
         const sub = Array.isArray(subRows) ? subRows[0] : subRows;
         if (!sub) return res.status(404).json({ message: "Submission not found" });
+
+        // ── DEDUP GUARD: Only allow one submission ──
+        if (sub.submitted_at) {
+            console.log(`[submitExam] ⚡ Submission ${submissionId} already submitted at ${sub.submitted_at}, returning cached result`);
+            const [cachedRows] = await sequelize.query(
+                `SELECT total_score, ai_score, suggested_total_score, status FROM submissions WHERE id = ?`,
+                { replacements: [submissionId] }
+            );
+            const cached = Array.isArray(cachedRows) ? cachedRows[0] : cachedRows;
+            return res.json({
+                status: cached?.status || "graded",
+                total_score: cached?.total_score || 0,
+                ai_score: cached?.ai_score || null,
+                suggested_total_score: cached?.suggested_total_score || 0,
+                duplicate: true
+            });
+        }
 
         // grade MCQ locally
         const [mcqRows] = await sequelize.query(
@@ -384,17 +435,33 @@ async function submitExam(req, res) {
             }
         });
 
-        await sequelize.query(
-            `UPDATE submissions SET total_score = ?, suggested_total_score = total_score + COALESCE(ai_score,0), status='graded', submitted_at = NOW() WHERE id = ?`,
+        // ── ATOMIC CLAIM: Only update if not yet submitted ──
+        const [updateResult] = await sequelize.query(
+            `UPDATE submissions SET total_score = ?, suggested_total_score = total_score + COALESCE(ai_score,0), status='graded', submitted_at = NOW() WHERE id = ? AND submitted_at IS NULL`,
             { replacements: [totalScore, submissionId] }
         );
 
-        // ✅ Trigger AI Grading for Essays (Fire & Forget)
-        try {
-            gradeSubmission(submissionId);
-        } catch (e) {
-            console.warn("⚠️ [submitExam] Failed to queue AI grading:", e.message);
+        if (updateResult.affectedRows === 0) {
+            console.log(`[submitExam] ⚡ Submission ${submissionId} already claimed by another request, returning result`);
+            const [cachedRows] = await sequelize.query(
+                `SELECT total_score, ai_score, suggested_total_score, status FROM submissions WHERE id = ?`,
+                { replacements: [submissionId] }
+            );
+            const cached = Array.isArray(cachedRows) ? cachedRows[0] : cachedRows;
+            return res.json({
+                status: cached?.status || "graded",
+                total_score: cached?.total_score || 0,
+                ai_score: cached?.ai_score || null,
+                suggested_total_score: cached?.suggested_total_score || 0,
+                duplicate: true
+            });
         }
+
+        // ✅ Trigger AI Grading for Essays (Fire & Forget)
+        // NOTE: gradeSubmission() has built-in deduplication — safe to call multiple times
+        gradeSubmission(submissionId).catch(e => {
+            console.warn("⚠️ [submitExam] Failed to queue AI grading:", e.message);
+        });
 
         // Try stored procedure if exists
         try {

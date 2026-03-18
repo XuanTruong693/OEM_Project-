@@ -29,10 +29,10 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:4000",
         "http://127.0.0.1:4000",
-        "http://www.oem.io.vn",
-        "https://www.oem.io.vn",
-        "http://oem.io.vn",
-        "https://oem.io.vn",
+        "http://www.oes.io.vn",
+        "https://www.oes.io.vn",
+        "http://oes.io.vn",
+        "https://oes.io.vn",
         "http://localhost:5000",
     ],
     allow_credentials=True,
@@ -233,7 +233,8 @@ def grade_answer(request: GradeRequest):
         result = calculate_score(
             request.student_answer,
             request.model_answer,
-            request.max_points
+            request.max_points,
+            request.grading_mode
         )
         return result
     except Exception as e:

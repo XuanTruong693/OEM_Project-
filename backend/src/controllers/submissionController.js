@@ -1,5 +1,6 @@
 const { pool } = require("../config/db");
 const { broadcastCheatingEvent } = require("../services/socketService");
+const axios = require("axios");
 
 const CHEATING_TYPES = {
   blocked_key: "high",
@@ -322,7 +323,7 @@ exports.approveStudentScores = async (req, res) => {
   try {
     const examId = parseInt(req.params.examId, 10);
     const studentId = parseInt(req.params.studentId, 10);
-    const { total_score, ai_score, student_name, mcq_score } = req.body || {};
+    const { total_score, ai_score, student_name, mcq_score, per_question_scores } = req.body || {};
 
     if (!Number.isFinite(examId) || !Number.isFinite(studentId))
       return res.status(400).json({ message: "invalid ids" });
@@ -337,7 +338,52 @@ exports.approveStudentScores = async (req, res) => {
     const conn = await pool.getConnection();
 
     try {
-      // Try calling SP first
+      // 1. Nếu giảng viên sửa từng câu hỏi, lưu lại và push qua AI learning (bất đồng bộ)
+      if (per_question_scores && Array.isArray(per_question_scores)) {
+        for (const p of per_question_scores) {
+          const qid = p.question_id;
+          const newScore = p.score;
+          
+          const [qRows] = await conn.query(
+            `SELECT sa.answer_text, q.model_answer, q.points, sa.score as old_score, q.type, sa.submission_id
+             FROM student_answers sa
+             JOIN exam_questions q ON sa.question_id = q.id
+             JOIN submissions sub ON sa.submission_id = sub.id
+             WHERE sa.question_id = ? AND sub.user_id = ? AND sub.exam_id = ? LIMIT 1`,
+            [qid, studentId, examId]
+          );
+          
+          if (qRows.length > 0) {
+            const qInfo = qRows[0];
+            await conn.query(
+              `UPDATE student_answers SET score = ? WHERE question_id = ? AND submission_id = ?`,
+              [newScore, qid, qInfo.submission_id]
+            );
+            
+            // Gửi dữ liệu training cho AI
+            if (qInfo.type === 'Essay') {
+               try {
+                   const aiUrl = process.env.AI_SERVICE_URL || "http://127.0.0.1:8000";
+                   // Async fire-And-forget (Không block luồng save điểm)
+                   axios.post(`${aiUrl}/learn/from-correction`, {
+                       student_answer: qInfo.answer_text,
+                       model_answer: qInfo.model_answer,
+                       old_score: parseFloat(qInfo.old_score || 0),
+                       new_score: parseFloat(newScore),
+                       max_points: parseFloat(qInfo.points),
+                       feedback: "Sửa bài bởi giảng viên"
+                   }, { timeout: 3000 }).then(() => {
+                       console.log(`[AI Learning] ✅ Sent correction to AI for QID ${qid}`);
+                   }).catch(e => {
+                       console.log(`[AI Learning] ⚠️ Error sending correction to AI:`, e.message);
+                   });
+               } catch (e) {}
+            }
+          }
+        }
+      }
+
+      // 2. Try calling SP first to update total score
       await conn.query(
         `CALL sp_update_student_exam_record(?, ?, ?, ?, ?);`,
         [examId, studentId, student_name || null, mcq, ai]
@@ -397,19 +443,30 @@ exports.getExamResults = async (req, res) => {
     const conn = await pool.getConnection();
     const [rows] = await conn.query(
       `
-      SELECT s.id AS submission_id, u.id AS student_id, u.full_name AS student_name,
-             s.total_score AS mcq_score, s.total_score, s.ai_score, s.suggested_total_score,
-             s.started_at, s.submitted_at,
-             TIMESTAMPDIFF(MINUTE, s.started_at, s.submitted_at) AS duration_minutes,
-             s.cheating_count,
-             (CASE WHEN s.face_image_blob IS NOT NULL THEN 1 ELSE 0 END) AS has_face_image,
-             (CASE WHEN s.student_card_blob IS NOT NULL THEN 1 ELSE 0 END) AS has_student_card,
-             s.status,
-             s.instructor_confirmed
-      FROM submissions s
-      JOIN users u ON s.user_id = u.id
-      WHERE s.exam_id = ?
-      ORDER BY s.submitted_at DESC
+      WITH RankedSubmissions AS (
+        SELECT s.id AS submission_id, u.id AS student_id, u.full_name AS student_name,
+               s.total_score AS mcq_score, s.total_score, s.ai_score, s.suggested_total_score,
+               s.started_at, s.submitted_at,
+               TIMESTAMPDIFF(MINUTE, s.started_at, s.submitted_at) AS duration_minutes,
+               s.cheating_count,
+               (CASE WHEN s.face_image_blob IS NOT NULL THEN 1 ELSE 0 END) AS has_face_image,
+               (CASE WHEN s.student_card_blob IS NOT NULL THEN 1 ELSE 0 END) AS has_student_card,
+               s.status,
+               s.instructor_confirmed,
+               ROW_NUMBER() OVER(
+                 PARTITION BY s.user_id 
+                 ORDER BY COALESCE(s.total_score, s.suggested_total_score, 0) DESC, s.id DESC
+               ) as rn
+        FROM submissions s
+        JOIN users u ON s.user_id = u.id
+        WHERE s.exam_id = ?
+      )
+      SELECT submission_id, student_id, student_name, mcq_score, total_score, ai_score, 
+             suggested_total_score, started_at, submitted_at, duration_minutes, 
+             cheating_count, has_face_image, has_student_card, status, instructor_confirmed
+      FROM RankedSubmissions 
+      WHERE rn = 1
+      ORDER BY submitted_at DESC
     `,
       [examId]
     );

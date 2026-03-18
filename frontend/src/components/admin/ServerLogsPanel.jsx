@@ -105,7 +105,7 @@ const ServerLogsPanel = ({ fullWidth = false }) => {
     return (
         <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-4 py-2 bg-gray-800 border-b border-gray-700">
                 <div className="flex items-center gap-2">
                     <Terminal size={16} className="text-green-400" />
                     <span className="text-white text-sm font-medium">Server Logs</span>

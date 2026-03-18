@@ -60,7 +60,9 @@ import ExamOverview from "./pages/adminPage/ExamOverview.jsx";
 import ResultsManagement from "./pages/adminPage/ResultsManagement.jsx";
 import SystemLogs from "./pages/adminPage/SystemLogs.jsx";
 import AdminSettings from "./pages/adminPage/AdminSettings.jsx";
+import AIGradingMonitor from "./pages/adminPage/AIGradingMonitor.jsx";
 import StudentCardManagement from "./pages/adminPage/StudentCardManagement.jsx";
+import UpdateStudentCardPhotos from "./pages/adminPage/UpdateStudentCardPhotos.jsx";
 
 function ProtectedRoute({ children, requiredRole }) {
   const location = useLocation();
@@ -204,6 +206,15 @@ const App = () => {
                 </ProtectedRoute>
               }
             />
+            {/* AI Grading Monitor */}
+            <Route
+              path="/admin/ai-grading-monitor"
+              element={
+                <ProtectedRoute requiredRole="admin">
+                  <AIGradingMonitor />
+                </ProtectedRoute>
+              }
+            />
             {/* ✅ [StudentCard] Route mới - Quản lý Thẻ Sinh Viên */}
             <Route
               path="/admin/student-cards"
@@ -212,6 +223,14 @@ const App = () => {
                   <StudentCardManagement />
                 </ProtectedRoute>
               }
+            />
+            <Route
+                path="/admin/student-cards/update-photos"
+                element={
+                    <ProtectedRoute requiredRole="admin">
+                        <UpdateStudentCardPhotos />
+                    </ProtectedRoute>
+                }
             />
             <Route path="/role" element={<RolePage />} />
             <Route path="/login" element={<LoginPage />} />

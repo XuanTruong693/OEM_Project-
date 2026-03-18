@@ -167,12 +167,12 @@ const ExamManagement = () => {
     };
 
     return (
-        <div className="flex min-h-screen bg-gray-900">
+        <div className="flex flex-col md:flex-row min-h-screen bg-gray-900">
             <AdminSidebar activeTab="exams" />
 
-            <main className="flex-1 p-8 overflow-y-auto">
+            <main className="flex-1 p-4 pt-20 md:p-8 overflow-y-auto">
                 {/* Header */}
-                <div className="flex justify-between items-center mb-8">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-0 mb-8">
                     <div>
                         <h1 className="text-3xl font-semibold text-white">{t('examManagement')}</h1>
                         <p className="text-gray-300 mt-1">{t('examManagement')}</p>
@@ -189,8 +189,8 @@ const ExamManagement = () => {
                 )}
 
                 {/* Filters */}
-                <div className="flex gap-4 mb-6">
-                    <div className="relative flex-1 max-w-md">
+                <div className="flex flex-col md:flex-row gap-4 mb-6">
+                    <div className="relative flex-1 w-full md:max-w-md">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" size={18} />
                         <input
                             type="text"
@@ -215,8 +215,9 @@ const ExamManagement = () => {
 
                 {/* Exams Table */}
                 <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
-                    <table className="w-full">
-                        <thead className="bg-gray-700/50">
+                    <div className="overflow-x-auto">
+                        <table className="w-full min-w-[800px]">
+                            <thead className="bg-gray-700/50">
                             <tr>
                                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('exam')}</th>
                                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('instructor')}</th>
@@ -313,6 +314,7 @@ const ExamManagement = () => {
                             )}
                         </tbody>
                     </table>
+                    </div>
 
                     {/* Pagination */}
                     {totalPages > 1 && (
@@ -357,7 +359,7 @@ const ExamManagement = () => {
                                     <p className="text-gray-300">Giảng viên: {selectedExam.instructor_name || 'N/A'}</p>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div className="bg-gray-700/50 p-4 rounded-lg">
                                         <p className="text-xs text-gray-300 uppercase mb-1">Thời gian mở</p>
                                         <p className="text-white">{formatDateTime(selectedExam.time_open)}</p>

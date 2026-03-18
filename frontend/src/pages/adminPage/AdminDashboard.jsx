@@ -122,12 +122,12 @@ const AdminDashboard = () => {
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-900">
+    <div className="flex flex-col md:flex-row min-h-screen bg-gray-900">
       {/* Sidebar */}
       <AdminSidebar activeTab="dashboard" />
 
       {/* Main Content */}
-      <main className="flex-1 p-8 overflow-y-auto">
+      <main className="flex-1 p-4 pt-20 md:p-8 overflow-y-auto">
         <div className="mb-8">
           <h1 className="text-3xl font-semibold text-white">{t('dashboard')}</h1>
         </div>

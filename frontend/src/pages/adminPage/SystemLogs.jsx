@@ -8,10 +8,10 @@ const SystemLogs = () => {
     const { t } = useLanguage();
 
     return (
-        <div className="flex min-h-screen bg-gray-900">
+        <div className="flex flex-col md:flex-row min-h-screen bg-gray-900">
             <AdminSidebar />
 
-            <main className="flex-1 p-8">
+            <main className="flex-1 p-4 pt-20 md:p-8">
                 {/* Header */}
                 <div className="mb-6">
                     <h1 className="text-3xl font-bold text-white">{t('systemLogs')}</h1>

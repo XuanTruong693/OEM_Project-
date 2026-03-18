@@ -154,12 +154,12 @@ const UserManagement = () => {
     };
 
     return (
-        <div className="flex min-h-screen bg-gray-900">
+        <div className="flex flex-col md:flex-row min-h-screen bg-gray-900">
             <AdminSidebar activeTab="users" />
 
-            <main className="flex-1 p-8 overflow-y-auto">
+            <main className="flex-1 p-4 pt-20 md:p-8 overflow-y-auto">
                 {/* Header */}
-                <div className="flex justify-between items-center mb-8">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-0 mb-8">
                     <div>
                         <h1 className="text-3xl font-semibold text-white">{t('userManagement')}</h1>
                         <p className="text-gray-300 mt-1">{t('userManagement')}</p>
@@ -176,8 +176,8 @@ const UserManagement = () => {
                 )}
 
                 {/* Filters */}
-                <div className="flex gap-4 mb-6">
-                    <div className="relative flex-1 max-w-md">
+                <div className="flex flex-col md:flex-row gap-4 mb-6">
+                    <div className="relative flex-1 w-full md:max-w-md">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" size={18} />
                         <input
                             type="text"
@@ -202,8 +202,9 @@ const UserManagement = () => {
 
                 {/* Users Table */}
                 <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
-                    <table className="w-full">
-                        <thead className="bg-gray-700/50">
+                    <div className="overflow-x-auto">
+                        <table className="w-full min-w-[800px]">
+                            <thead className="bg-gray-700/50">
                             <tr>
                                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">ID</th>
                                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('fullName')}</th>
@@ -279,6 +280,7 @@ const UserManagement = () => {
                             )}
                         </tbody>
                     </table>
+                    </div>
 
                     {/* Pagination */}
                     {totalPages > 1 && (
@@ -328,7 +330,7 @@ const UserManagement = () => {
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
                                         <label className="text-xs text-gray-300 uppercase">Role</label>
                                         <p className="text-white mt-1">{selectedUser.role}</p>
@@ -400,7 +402,7 @@ const UserManagement = () => {
                                         <p className="text-xs text-yellow-400 mt-1">Không thể thay đổi role của Admin</p>
                                     )}
                                 </div>
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm text-gray-300 mb-1">Số điện thoại</label>
                                         <input

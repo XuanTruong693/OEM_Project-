@@ -56,10 +56,10 @@ const app = express();
 const allowedOrigins = [
   "http://localhost:4000",
   "http://127.0.0.1:4000",
-  "http://oem.io.vn",
-  "http://www.oem.io.vn",
-  "https://oem.io.vn",
-  "https://www.oem.io.vn"
+  "http://oes.io.vn",
+  "http://www.oes.io.vn",
+  "https://oes.io.vn",
+  "https://www.oes.io.vn"
 ];
 
 // Trust Cloudflare proxy for correct client IP and secure cookies

@@ -6,15 +6,6 @@ import io from "socket.io-client";
 import { useInactivityMonitor } from "../../hooks/useInactivityMonitor";
 
 export default function TakeExam() {
-  // PRNG helper
-  const mulberry32 = (a) => {
-    return () => {
-      let t = (a += 0x6d2b79f5);
-      t = Math.imul(t ^ (t >>> 15), t | 1);
-      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-  };
   const { examId } = useParams();
   const [search] = useSearchParams();
   const navigate = useNavigate();
@@ -398,74 +389,6 @@ export default function TakeExam() {
         });
         let finalQuestions = merged;
 
-        // Xử lý random (shuffle) câu hỏi nếu instructor bật
-        if (res.data?.intent_shuffle) {
-          console.log(
-            "🔀 [TakeExam] intent_shuffle is ON -> Shuffling questions (grouped by type)..."
-          );
-
-          // Seed: submissionId XOR started_at để tạo sự ngẫu nhiên tốt hơn
-          const baseId = parseInt(submissionId, 10) || 9999;
-          const timeComponent = res.data?.started_at
-            ? Math.floor(new Date(res.data.started_at).getTime() / 1000)
-            : Math.floor(Date.now() / 1000);
-          // XOR để tạo seed đa dạng hơn
-          const seed = (baseId * 31) ^ timeComponent;
-
-          console.log(
-            `🎲 [TakeExam] Shuffle seed: ${seed} (submissionId=${baseId}, time=${timeComponent})`
-          );
-
-          // 1. Group by type to keep sections separated (e.g. MCQ section, Essay section)
-          const typesParam = [...new Set(finalQuestions.map(q => q.type))];
-          const groups = finalQuestions.reduce((acc, q) => {
-            (acc[q.type] ||= []).push(q);
-            return acc;
-          }, {});
-
-          let shuffledAll = [];
-
-          typesParam.forEach((type, typeIdx) => {
-            const list = groups[type];
-            const originalIds = list.map(q => q.question_id);
-            console.log(`📌 [Shuffle] Type "${type}": ${list.length} questions BEFORE:`, originalIds);
-
-            if (list.length <= 1) {
-              // Chỉ 1 câu hỏi, không cần shuffle
-              shuffledAll.push(...list);
-              console.log(`⏭️ [Shuffle] Type "${type}": Only 1 question, skipping shuffle`);
-              return;
-            }
-
-            // Unique seed per type
-            const typeSeed = seed + (typeIdx + 1) * 1337;
-            const rng = mulberry32(typeSeed);
-
-            const shuffled = [...list];
-
-            // Fisher-Yates shuffle
-            for (let i = shuffled.length - 1; i > 0; i--) {
-              const j = Math.floor(rng() * (i + 1));
-              [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-            }
-
-            // Đảm bảo có sự thay đổi: nếu shuffle ra giống hoàn toàn thì swap phần tử đầu và cuối
-            const shuffledIds = shuffled.map(q => q.question_id);
-            const isSameOrder = originalIds.every((id, idx) => id === shuffledIds[idx]);
-
-            if (isSameOrder && shuffled.length >= 2) {
-              console.log(`⚠️ [Shuffle] Same order detected, forcing swap...`);
-              [shuffled[0], shuffled[shuffled.length - 1]] = [shuffled[shuffled.length - 1], shuffled[0]];
-            }
-
-            const finalIds = shuffled.map(q => q.question_id);
-            console.log(`✅ [Shuffle] Type "${type}": ${shuffled.length} questions AFTER:`, finalIds);
-            shuffledAll.push(...shuffled);
-          });
-
-          finalQuestions = shuffledAll;
-        }
-
         setQuestions(finalQuestions);
         setDuration(res.data?.duration_minutes || duration);
 
@@ -619,13 +542,16 @@ export default function TakeExam() {
       // Generare snapshot_id to tie frames to this specific DB log
       const snapshotId = `V_${Date.now()}_${evt}`;
 
-      // Push to AI local cache if it's not the AI trigger itself to prevent loops
+      // Push to AI local cache (Debounced to prevent spam for the same action)
       if (evt !== 'ai_detected_cheating') {
-        sessionEventsRef.current.push({
-          event_type: evt,
-          timestamp: now,
-          details: { message: msg, key }
-        });
+        const lastSimilarEvent = sessionEventsRef.current.find(e => e.event_type === evt);
+        if (!lastSimilarEvent || now - lastSimilarEvent.timestamp > 2000) {
+          sessionEventsRef.current.push({
+            event_type: evt,
+            timestamp: now,
+            details: { message: msg, key }
+          });
+        }
       }
 
       // Report to backend (non-blocking)
@@ -749,6 +675,7 @@ export default function TakeExam() {
     };
     const onVis = () => {
       if (document.hidden) {
+        lastViolationTimeRef.current["_hide_start"] = Date.now();
         const msg = isMobile
           ? "Rời ứng dụng (Home/Switch App)"
           : "Rời tab / ẩn cửa sổ";
@@ -775,20 +702,22 @@ export default function TakeExam() {
         console.log("[TakeExam] onBlur ignored - screen share dialog is open");
         return;
       }
-      // Show blur overlay immediately to protect against screenshots
-      setShowBlurOverlay(true);
 
-      const msg = isMobile
-        ? "Mất tiêu điểm (Blur) - Có thể do: Chụp màn hình, mở thông báo hoặc Control Center"
-        : "Rời cửa sổ / Mất tiêu điểm (Blur)";
       const blurTimestamp = Date.now();
       lastViolationTimeRef.current["_blur_start"] = blurTimestamp;
+
+      // Show blur overlay only if they actually stay blurred
+      setShowBlurOverlay(true);
+      const msg = isMobile
+        ? "Mất tiêu điểm (Blur) - Có thể do: Mở thông báo hoặc ứng dụng khác"
+        : "Rời cửa sổ / Mất tiêu điểm (Blur)";
       penalize("window_blur", msg);
     };
     const onFocus = () => {
       // Hide blur overlay when focus returns
       setShowBlurOverlay(false);
       notifyStudentReturned();
+
       const blurStart = lastViolationTimeRef.current["_blur_start"];
       if (blurStart) {
         const duration = Date.now() - blurStart;
@@ -950,24 +879,40 @@ export default function TakeExam() {
     };
 
     // ===== Mouse Outside Window Tracking =====
-    const MOUSE_OUTSIDE_WARN_MS = 3000;  // 3 giây rời khỏi thì cảnh báo
-    const MOUSE_OUTSIDE_PENALIZE_MS = 8000; // 8 giây rời khỏi thì tính vi phạm
+    const MOUSE_OUTSIDE_WARN_MS = 2500;  // 2.5 giây rời khỏi thì hiện Toast cảnh báo nhẹ
+    const MOUSE_OUTSIDE_PENALIZE_MS = 4000; // 4 giây rời khỏi thì AI trừng phạt
 
     const onMouseLeave = (e) => {
-      // Chỉ track khi chuột thực sự ra ngoài viewport (không phải sự kiện bình thường)
       if (!monitoringActiveRef.current) return;
-      if (e.clientY <= 0 || e.clientX <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
-        mouseOutsideStartRef.current = Date.now();
 
-        // Warning sau 3 giây
-        mouseOutsideTimerRef.current = setTimeout(() => {
-          flash("⚠️ Chuột đang ra ngoài màn hình - Hãy tập trung vào bài thi!", "warn", 4000);
-        }, MOUSE_OUTSIDE_WARN_MS);
+      const isTopEdge = e.clientY <= 15;
+      const isBottomEdge = e.clientY >= window.innerHeight - 25;
+      const xPos = e.clientX;
+      const isCenter = xPos > window.innerWidth * 0.15 && xPos < window.innerWidth * 0.85;
+
+      // BỎ QUA HOÀN TOÀN: NẾU là mép trên/dưới ở vùng trung tâm (Nơi thả thanh Stop Sharing)
+      if ((isTopEdge || isBottomEdge) && isCenter) {
+        console.log("ℹ️ [TakeExam] Chuột vào vùng Deadzone StopSharing. An toàn.");
+        return; // Không đếm giờ phạt 
+      }
+
+      // Nếu chuột thực sự đi ra khỏi khung duyệt web (sang viền trái/phải hoặc đỉnh mà ko phải vùng an toàn)
+      if (e.clientY <= 3 || e.clientX <= 3 || e.clientX >= window.innerWidth - 3 || e.clientY >= window.innerHeight - 3) {
+        if (!mouseOutsideStartRef.current) {
+          mouseOutsideStartRef.current = Date.now();
+        }
+
+        // Báo warning sau 3s
+        if (!mouseOutsideTimerRef.current) {
+          mouseOutsideTimerRef.current = setTimeout(() => {
+            flash("⚠️ Chuột đang nằm ngoài khung bài thi! Đừng click bất cứ gì ngoài bài thi.", "warn", 3000);
+          }, MOUSE_OUTSIDE_WARN_MS);
+        }
       }
     };
 
     const onMouseEnter = () => {
-      // Chuột quay vào, xóa timer
+      // Chuột quay vào, an toàn -> xóa mảng đếm giờ
       if (mouseOutsideTimerRef.current) {
         clearTimeout(mouseOutsideTimerRef.current);
         mouseOutsideTimerRef.current = null;
@@ -1072,14 +1017,14 @@ export default function TakeExam() {
       if (monitorScreenConfigRef.current) {
         monitoringActiveRef.current = true;
         setMonitoringActive(true); // Also update state for inactivity hook
-        console.log("✅ [TakeExam] Monitoring activated after 2s grace period");
+        console.log("✅ [TakeExam] Monitoring activated after 10s grace period");
         try {
           sessionStorage.setItem("exam_monitoring_active", "1");
         } catch { }
       } else {
         console.log("ℹ️ [TakeExam] Monitoring disabled by instructor config");
       }
-    }, 2000);
+    }, 10000); // 10s grace period
 
     // Bắt đầu interval gửi sự kiện cho AI phân tích
     aiCheckIntervalRef.current = setInterval(runAIAnalysis, 15000);
@@ -1291,7 +1236,7 @@ export default function TakeExam() {
   const headerGrad =
     "bg-[linear-gradient(90deg,rgba(106,163,255,.15),rgba(34,225,255,.12),rgba(138,126,255,.15))] backdrop-saturate-150 backdrop-blur-md";
 
-  if (!screenShared && !loading && !initError && !submitted) {
+  if (monitorScreenConfigRef.current && !screenShared && !loading && !initError && !submitted) {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center p-4 ${shellBg}`}>
         {/* Required hidden elements - positioned off-screen so browser keeps rendering video frames */}

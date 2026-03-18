@@ -60,6 +60,10 @@ CREATE TABLE exams (
         'published',
         'archived'
     ) DEFAULT 'draft',
+    grading_mode ENUM(
+        'general',
+        'technical'
+    ) NOT NULL DEFAULT 'general',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_exams_room_code (exam_room_code),

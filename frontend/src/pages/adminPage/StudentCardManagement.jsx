@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Search, Upload, FileSpreadsheet, Eye, Edit2, Trash2,
     X, Save, Check, AlertTriangle, ChevronLeft, ChevronRight,
-    CreditCard, Image, FileText
+    CreditCard, Image, FileText, Camera
 } from 'lucide-react';
 import axiosClient from '../../api/axiosClient';
 import AdminSidebar from '../../components/admin/AdminSidebar';
@@ -31,6 +32,7 @@ const readExcelFile = async (file) => {
 
 // Component chính
 const StudentCardManagement = () => {
+    const navigate = useNavigate();
     // --- State: danh sách & phân trang ---
     const [cards, setCards] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -273,10 +275,10 @@ const StudentCardManagement = () => {
 
     // Render
     return (
-        <div className="flex min-h-screen bg-gray-900">
+        <div className="flex flex-col md:flex-row min-h-screen bg-gray-900">
             <AdminSidebar activeTab="student-cards" />
 
-            <main className="flex-1 p-8 overflow-y-auto">
+            <main className="flex-1 p-4 pt-20 md:p-8 overflow-y-auto">
 
                 {/* Toast */}
                 {message.text && (
@@ -288,7 +290,7 @@ const StudentCardManagement = () => {
                 )}
 
                 {/* Header */}
-                <div className="flex justify-between items-center mb-8">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-0 mb-8">
                     <div>
                         <h1 className="text-3xl font-semibold text-white flex items-center gap-3">
                             <CreditCard size={30} className="text-blue-400" />
@@ -296,7 +298,14 @@ const StudentCardManagement = () => {
                         </h1>
                         <p className="text-gray-400 mt-1">Quản lý kho ảnh thẻ sinh viên dùng để đối chiếu khi thi</p>
                     </div>
-                    <div className="flex gap-3">
+                    <div className="flex flex-col sm:flex-row w-full md:w-auto gap-3">
+                        <button
+                            onClick={() => navigate('/admin/student-cards/update-photos')}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors font-medium"
+                        >
+                            <Camera size={18} />
+                            Cập nhật ảnh thẻ
+                        </button>
                         <button
                             onClick={handleOpenCreate}
                             className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
@@ -316,7 +325,7 @@ const StudentCardManagement = () => {
 
                 {/* Tìm kiếm */}
                 <div className="mb-6">
-                    <div className="relative max-w-md">
+                    <div className="relative w-full md:max-w-md">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                         <input
                             type="text"
@@ -330,8 +339,9 @@ const StudentCardManagement = () => {
 
                 {/* Bảng danh sách */}
                 <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
-                    <table className="w-full">
-                        <thead className="bg-gray-700/50">
+                    <div className="overflow-x-auto">
+                        <table className="w-full min-w-[800px]">
+                            <thead className="bg-gray-700/50">
                             <tr>
                                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">#ID</th>
                                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">MSSV</th>
@@ -403,6 +413,7 @@ const StudentCardManagement = () => {
                             )}
                         </tbody>
                     </table>
+                    </div>
 
                     {/* Phân trang */}
                     {totalPages > 1 && (
@@ -460,7 +471,7 @@ const StudentCardManagement = () => {
                                     )}
                                 </div>
                                 {/* Thông tin */}
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
                                         <label className="text-xs text-gray-400 uppercase">MSSV</label>
                                         <p className="text-white mt-1 font-medium">{selectedCard.student_code}</p>
@@ -679,7 +690,7 @@ const StudentCardManagement = () => {
                                 {/* === BƯỚC 2: Kết quả === */}
                                 {batchStep >= 2 && batchResult && (
                                     <div>
-                                        <div className="grid grid-cols-3 gap-4 mb-5">
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
                                             <div className="bg-gray-700 rounded-lg p-4 text-center">
                                                 <div className="text-2xl font-bold text-white">{batchResult.total}</div>
                                                 <div className="text-xs text-gray-400 mt-1">Tổng</div>

@@ -110,9 +110,9 @@ npm start
 ```
 | Service | URL |
 |---------|-----|
-| Frontend | https://oem.io.vn |
-| Backend | https://api.oem.io.vn |
-| AI Service | https://ai.oem.io.vn |
+| Frontend | https://oes.io.vn |
+| Backend | https://api.oes.io.vn |
+| AI Service | https://ai.oes.io.vn |
 
 ### Chạy riêng từng phần:
 
