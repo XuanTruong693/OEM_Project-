@@ -3,6 +3,10 @@ const { Op } = require('sequelize');
 const sequelize = require('../../config/db');
 const exceljs = require('exceljs');
 
+// Regex: chỉ cho phép chữ cái (bao gồm Unicode / tiếng Việt) và khoảng trắng
+const VALID_NAME_REGEX = /^[\p{L}\s]+$/u;
+const isValidStudentName = (name) => VALID_NAME_REGEX.test(name);
+
 /**
  * 1. GET /api/admin/student-cards
  * Lấy danh sách thẻ SV (phân trang + tìm kiếm)
@@ -86,10 +90,12 @@ exports.createStudentCard = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Thiếu MSSV hoặc Tên sinh viên.' });
         }
 
-        const imageFile = req.files && req.files['card_image'] && req.files['card_image'][0];
-        if (!imageFile) {
-            return res.status(400).json({ success: false, message: 'Thiếu file ảnh thẻ.' });
+        if (!isValidStudentName(student_name.trim())) {
+            return res.status(400).json({ success: false, message: 'Tên sinh viên chỉ được chứa chữ cái và khoảng trắng (không có số hoặc ký tự đặc biệt).' });
         }
+
+        const imageFile = req.files && req.files['card_image'] && req.files['card_image'][0];
+        // Ảnh thẻ không còn bắt buộc khi tạo mới
 
         // Check trùng MSSV
         const existing = await StudentCard.findOne({ where: { student_code: student_code.trim() } });
@@ -103,7 +109,7 @@ exports.createStudentCard = async (req, res) => {
         await StudentCard.create({
             student_code: student_code.trim(),
             student_name: student_name.trim(),
-            card_image: imageFile.buffer,
+            card_image: imageFile ? imageFile.buffer : null,
         });
 
         return res.status(201).json({ success: true, message: 'Thêm thẻ sinh viên thành công!' });
@@ -146,6 +152,9 @@ exports.updateStudentCard = async (req, res) => {
         }
 
         if (student_name && student_name.trim()) {
+            if (!isValidStudentName(student_name.trim())) {
+                return res.status(400).json({ success: false, message: 'Tên sinh viên chỉ được chứa chữ cái và khoảng trắng (không có số hoặc ký tự đặc biệt).' });
+            }
             updateData.student_name = student_name.trim();
         }
 
@@ -234,6 +243,11 @@ exports.batchUploadStudentCards = async (req, res) => {
 
             if (!mssv || !ten) {
                 errorList.push({ mssv, ten, ly_do: 'Thiếu MSSV hoặc Tên trong Excel.' });
+                continue;
+            }
+
+            if (!isValidStudentName(ten)) {
+                errorList.push({ mssv, ten, ly_do: 'Tên SV chỉ được chứa chữ cái và khoảng trắng (không có số/ký tự đặc biệt).' });
                 continue;
             }
 

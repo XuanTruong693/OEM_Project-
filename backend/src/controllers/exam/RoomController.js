@@ -82,16 +82,28 @@ async function verifyRoom(req, res) {
 
             // Nếu max_attempts > 0, kiểm tra số lần đã thi
             if (maxAttempts > 0) {
-                // Using SubmissionRepository
-                const currentAttempts = await SubmissionRepository.countAttempts(exam.id, userId);
+                // CHO PHÉP NẾU CÓ BÀI THI ĐANG DỞ HOẶC PENDING (Chưa bắt đầu thi)
+                const [activeSub] = await sequelize.query(
+                    `SELECT id FROM submissions WHERE exam_id = ? AND user_id = ? AND status IN ('pending', 'in_progress') LIMIT 1`,
+                    { replacements: [exam.id, userId] }
+                );
 
-                if (currentAttempts >= maxAttempts) {
-                    return res.status(403).json({
-                        message: `Bạn đã hết lượt thi. Số lần thi tối đa: ${maxAttempts}`,
-                        max_attempts: maxAttempts,
-                        current_attempts: currentAttempts,
-                        reason: "max_attempts_exceeded"
-                    });
+                if (!Array.isArray(activeSub) || activeSub.length === 0) {
+                    // đếm số bài thi ĐÃ NỘP/CHẤM
+                    const [consumedRows] = await sequelize.query(
+                        `SELECT COUNT(*) as attempt_count FROM submissions WHERE exam_id = ? AND user_id = ? AND status NOT IN ('pending', 'in_progress')`,
+                        { replacements: [exam.id, userId] }
+                    );
+                    const currentAttempts = consumedRows[0]?.attempt_count || 0;
+
+                    if (currentAttempts >= maxAttempts) {
+                        return res.status(403).json({
+                            message: `Bạn đã hết lượt thi. Số lần thi tối đa: ${maxAttempts}`,
+                            max_attempts: maxAttempts,
+                            current_attempts: currentAttempts,
+                            reason: "max_attempts_exceeded"
+                        });
+                    }
                 }
             }
         }
@@ -200,32 +212,70 @@ async function joinExam(req, res) {
         const { exam_id, room_code } = claims;
 
         // Validate exam still valid
-        const [rows] = await sequelize.query(
-            `SELECT id, exam_room_code, status, duration, max_attempts
-       FROM exams
-       WHERE id = ? AND exam_room_code = ? AND status = 'published'`,
-            { replacements: [exam_id, room_code] }
-        );
+        let exQ = `SELECT id, exam_room_code, status, duration, max_attempts`;
+        let hasTC = false;
+        try { hasTC = await hasColumn("exams", "time_close"); } catch (e) {}
+        if (hasTC) exQ += `, time_close`;
+        exQ += ` FROM exams WHERE id = ? AND exam_room_code = ? AND status = 'published'`;
+
+        const [rows] = await sequelize.query(exQ, { replacements: [exam_id, room_code] });
         const exam = Array.isArray(rows) ? rows[0] : rows;
         if (!exam) return res.status(404).json({ message: "Exam not available" });
 
+        if (exam.time_close && new Date().getTime() > new Date(exam.time_close).getTime()) {
+            return res.status(403).json({ message: "Đã hết giờ làm bài" });
+        }
+
         // Kiểm tra lại số lần thi (phòng bypass)
         const maxAttempts = exam.max_attempts || 0;
-        if (maxAttempts > 0) {
-            const [attemptCount] = await sequelize.query(
-                `SELECT COUNT(*) as attempt_count FROM submissions WHERE exam_id = ? AND user_id = ?`,
+        let submissionId;
+        let nextAttempt;
+
+        const [existing] = await sequelize.query(
+            `SELECT id, attempt_no FROM submissions 
+             WHERE exam_id = ? AND user_id = ? AND status IN ('pending', 'in_progress') ORDER BY id DESC LIMIT 1`,
+            { replacements: [exam_id, userId] }
+        );
+
+        if (Array.isArray(existing) && existing.length > 0) {
+            submissionId = existing[0].id;
+            nextAttempt = existing[0].attempt_no;
+            console.log(`✅ [joinExam] Reusing active submission ${submissionId} for user ${userId}, exam ${exam_id}, attempt ${nextAttempt}`);
+        } else {
+            if (maxAttempts > 0) {
+                const [attemptCount] = await sequelize.query(
+                    `SELECT COUNT(*) as attempt_count FROM submissions WHERE exam_id = ? AND user_id = ? AND status NOT IN ('pending', 'in_progress')`,
+                    { replacements: [exam_id, userId] }
+                );
+                const currentAttempts = attemptCount[0]?.attempt_count || 0;
+
+                if (currentAttempts >= maxAttempts) {
+                    return res.status(403).json({
+                        message: `Bạn đã hết lượt thi. Số lần thi tối đa: ${maxAttempts}`,
+                        max_attempts: maxAttempts,
+                        current_attempts: currentAttempts,
+                        reason: "max_attempts_exceeded"
+                    });
+                }
+            }
+
+            const [maxAttempt] = await sequelize.query(
+                `SELECT COALESCE(MAX(attempt_no), 0) AS max_attempt FROM submissions WHERE exam_id = ? AND user_id = ?`,
                 { replacements: [exam_id, userId] }
             );
-            const currentAttempts = attemptCount[0]?.attempt_count || 0;
 
-            if (currentAttempts >= maxAttempts) {
-                return res.status(403).json({
-                    message: `Bạn đã hết lượt thi. Số lần thi tối đa: ${maxAttempts}`,
-                    max_attempts: maxAttempts,
-                    current_attempts: currentAttempts,
-                    reason: "max_attempts_exceeded"
-                });
-            }
+            nextAttempt = (maxAttempt[0]?.max_attempt || 0) + 1;
+
+            const [ins] = await sequelize.query(
+                `INSERT INTO submissions (exam_id, user_id, status, attempt_no, submitted_at, cheating_count) 
+                 VALUES (?, ?, 'pending', ?, NULL, 0)`,
+                { replacements: [exam_id, userId, nextAttempt] }
+            );
+            submissionId = ins?.insertId || ins;
+
+            console.log(
+                `✅ [joinExam] Created new submission ${submissionId} for user ${userId}, exam ${exam_id}, attempt ${nextAttempt}`
+            );
         }
 
         // Record verified room (if table exists)
@@ -236,27 +286,6 @@ async function joinExam(req, res) {
                 { replacements: [userId, room_code] }
             );
         } catch (e) { }
-
-        const [maxAttempt] = await sequelize.query(
-            `SELECT COALESCE(MAX(attempt_no), 0) AS max_attempt 
-       FROM submissions 
-       WHERE exam_id = ? AND user_id = ?`,
-            { replacements: [exam_id, userId] }
-        );
-
-        const nextAttempt = (maxAttempt[0]?.max_attempt || 0) + 1;
-
-        // Tạo submission mới cho lần thi này
-        const [ins] = await sequelize.query(
-            `INSERT INTO submissions (exam_id, user_id, status, attempt_no, submitted_at, cheating_count) 
-       VALUES (?, ?, 'pending', ?, NULL, 0)`,
-            { replacements: [exam_id, userId, nextAttempt] }
-        );
-        const submissionId = ins?.insertId || ins;
-
-        console.log(
-            `✅ [joinExam] Created new submission ${submissionId} for user ${userId}, exam ${exam_id}, attempt ${nextAttempt}`
-        );
 
         // load flags from exams if available
         let flags = { face: false, card: false, monitor: false };

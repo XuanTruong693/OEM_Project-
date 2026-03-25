@@ -203,9 +203,9 @@ class UniversityGrader:
     # MODEL 1: ĐẠI CƯƠNG (GENERAL PIPELINE)
     # =========================================================================
     def _grade_general_model(self, student_text: str, model_text: str, s_clean: str, m_syn: str, s_norm: str, m_norm: str, max_points: float, is_long_answer: bool) -> Dict[str, Any]:
-        if self._is_word_salad(student_text, model_text): return self._build_result(0.0, "Phát hiện nhồi từ vô nghĩa (Word Salad).", "Syntax Error")
         is_rev, verb = self._check_directional_logic(student_text, model_text)
         if is_rev: return self._build_result(max_points * 0.20, f"Đảo ngược logic ('{verb}').", "Logic Reversal")
+        if self._is_word_salad(student_text, model_text): return self._build_result(0.0, "Phát hiện nhồi từ vô nghĩa (Word Salad).", "Syntax Error")
         if self._check_antonym_contradiction(s_clean, model_text): return self._build_result(max_points * 0.05, "Sai lệch bản chất cốt lõi.", "Contradiction")
 
         length_ratio = len(s_clean) / len(model_text) if len(model_text) > 0 else 0
@@ -297,10 +297,17 @@ class UniversityGrader:
     # MODEL 2: KỸ THUẬT (TECHNICAL PIPELINE)
     # =========================================================================
     def _grade_technical_model(self, student_text: str, model_text: str, s_clean: str, m_syn: str, s_norm: str, m_norm: str, max_points: float, is_long_answer: bool) -> Dict[str, Any]:
-        is_code_snippet = bool(re.search(r'(def |{|}|;|=>|->|#|//|\(\)|__)', student_text))
-        if is_code_snippet:
+        strong_code = r"(def\s+__init__|\bclass\s+\w+|public\s+class|\bvoid\s+\w+|#include|<iostream>|std::)"
+        generic_code = r"([{}();]|\breturn\b|=>|->|//|/\*.*\*/)"
+        
+        is_model_code = bool(re.search(strong_code, model_text)) or len(re.findall(generic_code, model_text)) >= 2
+        is_student_code = bool(re.search(strong_code, student_text)) or len(re.findall(generic_code, student_text)) >= 2
+        
+        if is_model_code or is_student_code:
             tech_result = self.code_analyzer.grade(model_text, student_text, max_points)
-            if tech_result: return self._build_result(tech_result['score'], tech_result['explanation'], tech_result['type'])
+            if tech_result:
+                # Nếu code_analyzer trả về điểm (kể cả 0), return
+                return self._build_result(tech_result["score"], tech_result["explanation"], tech_result["type"])
             
         s_code, m_code = student_text.replace(" ", "").rstrip(":"), model_text.replace(" ", "").rstrip(":")
         try:
@@ -308,9 +315,13 @@ class UniversityGrader:
                 return self._build_result(max_points, "Biểu thức code tương đương logic.", "AST Match")
         except SyntaxError: pass 
 
-        if self._is_word_salad(student_text, model_text): return self._build_result(0.0, "Nhồi từ vô nghĩa.", "Syntax Error")
         is_rev, verb = self._check_directional_logic(student_text, model_text)
         if is_rev: return self._build_result(max_points * 0.20, f"Đảo ngược logic OOP/Code ('{verb}').", "Logic Reversal")
+        
+        if not (is_model_code or is_student_code):
+            if self._is_word_salad(student_text, model_text): 
+                return self._build_result(0.0, "Nhồi từ vô nghĩa.", "Syntax Error")
+                
         if self._check_antonym_contradiction(s_clean, model_text): return self._build_result(max_points * 0.05, "Sai bản chất thuật ngữ.", "Contradiction")
 
         length_ratio = len(s_clean) / len(model_text) if len(model_text) > 0 else 0
@@ -340,7 +351,7 @@ class UniversityGrader:
             # Bật NLI để nhận diện sinh viên giải thích đúng bản chất dù khác từ
             logic_label, logic_conf = self.logic_analyzer.analyze(best_s_chunk, m_chunk)
             
-            if is_code_snippet:
+            if (is_model_code or is_student_code):
                 best_sim = min(1.0, best_sim * 1.5) # Thưởng nóng Code Snippet
                 
             if logic_label == 'entailment' and logic_conf > 0.50:
@@ -350,7 +361,8 @@ class UniversityGrader:
             chunk_kws_cov = len(idea["keywords"].intersection(student_kws)) / len(idea["keywords"]) if idea["keywords"] else 1.0
             
             # Ép điểm nếu thiếu Thuật ngữ chuyên ngành, NẾU KHÔNG hiểu bản chất
-            if chunk_kws_cov < 0.50 and not is_code_snippet and logic_label != 'entailment':
+            is_any_code = is_model_code or is_student_code
+            if chunk_kws_cov < 0.50 and not is_any_code and logic_label != 'entailment':
                 best_sim = min(best_sim, 0.65)
             
             if best_sim < 0.40:
@@ -358,9 +370,13 @@ class UniversityGrader:
                 continue
 
             if best_sim >= 0.85:
-                total_score += chunk_max_points; feedback_details.append(f"Ý {i+1}: Tốt." if not is_code_snippet else f"Ý {i+1}: Tốt (Code).")
-            elif best_sim >= 0.60:
-                total_score += chunk_max_points * best_sim; feedback_details.append(f"Ý {i+1}: Khá.")
+                total_score += chunk_max_points; feedback_details.append(f"Ý {i+1}: Tốt." if not is_any_code else f"Ý {i+1}: Tốt (Code).")
+            elif best_sim >= 0.55:
+                # Boost cho các câu trả lời diễn đạt theo ý hiểu (IT Paraphrase)
+                boost_factor = 1.2 if chunk_kws_cov >= 0.50 else 1.0
+                best_sim_boosted = min(1.0, best_sim * boost_factor)
+                total_score += chunk_max_points * best_sim_boosted
+                feedback_details.append(f"Ý {i+1}: Khá." if chunk_kws_cov >= 0.50 else f"Ý {i+1}: Thiếu thuật ngữ.")
             else:
                 total_score += chunk_max_points * (best_sim * 0.5); feedback_details.append(f"Ý {i+1}: Lập luận yếu.")
 
@@ -368,7 +384,7 @@ class UniversityGrader:
         base_ratio = total_score / max_points if max_points > 0 else 0
         coverage_multiplier = 1.0
         
-        if not is_code_snippet:
+        if not is_model_code:
             if is_fully_entailed or base_ratio >= 0.80:
                 coverage_multiplier = 1.0
                 feedback_details.append(f"(Hiểu đúng bản chất)")
@@ -385,7 +401,7 @@ class UniversityGrader:
             
         final_score = total_score * coverage_multiplier * babble_penalty
 
-        if self._is_number_mismatch(student_text, model_text) and not is_code_snippet:
+        if self._is_number_mismatch(student_text, model_text) and not (is_model_code or is_student_code):
             final_score = min(final_score, max_points * 0.50)
             feedback_details.append("(Sai thông số/số liệu cốt lõi)")
 
@@ -395,7 +411,7 @@ class UniversityGrader:
             return self._build_result(final_score, "Đúng ý nhưng sai lỗi chính tả.", "Typo")
 
         feedback = " | ".join(feedback_details)
-        if coverage_multiplier < 1.0 and not is_code_snippet: feedback += f" (Coverage thấp: {int(coverage_ratio*100)}%)"
+        if coverage_multiplier < 1.0 and not is_model_code: feedback += f" (Coverage thấp: {int(coverage_ratio*100)}%)"
         return self._build_result(final_score, feedback, "Technical Model")
 
     # =========================================================================
@@ -404,6 +420,11 @@ class UniversityGrader:
     def grade(self, student_text: str, model_text: str, max_points: float, grading_mode: str = "general") -> Dict[str, Any]:
         if not student_text or not model_text: return self._build_result(0.0, "Missing input text.", "None")
         
+        if grading_mode != "technical":
+            if self.code_analyzer.is_technical_answer(model_text) or self.code_analyzer.is_technical_answer(student_text):
+                grading_mode = "technical"
+                logger.info("[Auto-Route] 🔀 Upgraded to technical mode based on content")
+
         s_norm = self._standardize_text(student_text, grading_mode)
         m_norm = self._standardize_text(model_text, grading_mode)
         

@@ -204,7 +204,11 @@ class CodeAnalyzer:
         
         # Check code patterns
         code_score = sum(1 for p in self.code_indicators if re.search(p, text))
-        if code_score >= 2 or re.search(r"def __init__|\bclass\s+\w+", text): # Ưu tiên bắt OOP
+        
+        strong_code_indicators = r"(def\s+__init__|\bclass\s+\w+|public\s+class|\bvoid\s+\w+|#include|<iostream>|std::)"
+        generic_code_syntax = r"([{}();]|\breturn\b|=>|->|//|/\*.*\*/)"
+        
+        if code_score >= 1 or re.search(strong_code_indicators, text) or len(re.findall(generic_code_syntax, text)) >= 2:
             return "code"
         
         # Check math patterns
@@ -226,8 +230,8 @@ class CodeAnalyzer:
         code_lower = code.lower()
         
         # 1. Check function/class name first
-        func_match = re.search(r"(?:def|class)\s+(\w+)", code_lower)
-        if func_match:
+        func_matches = re.finditer(r"(?:^|\s)(?:def|class|void|int|float|double|bool|string|char|public|private)\s+(\w+)\s*\(?", code_lower)
+        for func_match in func_matches:
             func_name = func_match.group(1)
             for func_type, info in self.function_patterns.items():
                 if any(name in func_name for name in info["names"]):
@@ -277,64 +281,186 @@ class CodeAnalyzer:
         return False, ""
     
     def extract_code_structure(self, code: str) -> Dict[str, List[str]]:
-        """Extract structural elements from code, bao gồm cả yếu tố OOP."""
+        """Extract structural elements from code (Multi-language)."""
+        code_no_comments = re.sub(r'//.*', '', code)
+        code_no_comments = re.sub(r'/\*.*?\*/', '', code_no_comments, flags=re.DOTALL)
+        
         structure = {
-            "classes": re.findall(r"class\s+(\w+)", code),
-            "inheritance": re.findall(r"class\s+\w+\s*\(\s*(\w+)\s*\):", code), # Python
-            "constructors": re.findall(r"def\s+(__init__)", code),
-            "functions": re.findall(r"def\s+([a-zA-Z0-9_]+)(?!\s*__)", code), # Trừ __init__
-            "returns": re.findall(r"return\s+(.+?)(?:\n|$)", code),
-            "conditions": re.findall(r"if\s+(.+?):", code),
-            "loops": re.findall(r"for\s+(.+?):", code) + re.findall(r"while\s+(.+?):", code),
-            "attributes": re.findall(r"self\.(\w+)\s*=", code), # OOP Attributes
-            "variables": re.findall(r"([a-zA-Z0-9_]+)\s*=\s*(?!self)", code), # Normal vars
+            "classes": re.findall(r"(?:class|struct|interface)\s+(\w+)", code_no_comments),
+            "inheritance": re.findall(r"class\s+\w+\s*(?:\(|:\s*(?:public|private|protected)\s+|extends\s+|implements\s+)(\w+)", code_no_comments),
+            "constructors": re.findall(r"def\s+(__init__)|(?:^|[\s{}])([A-Z][a-zA-Z0-9_]*)\s*\([^)]*\)\s*(?:{|:)", code_no_comments),
+            "functions": re.findall(r"(?:def|void|int|float|double|bool|string|char|auto)\s+([a-zA-Z0-9_]+)\s*\(", code_no_comments),
+            "main": re.findall(r"(?:int|void|def)\s+main\s*\(", code_no_comments),
+            "returns": re.findall(r"return\s+([^;\n]+)", code_no_comments),
+            "conditions": re.findall(r"if\s*\(([^)]+)\)|if\s+([^:]+):", code_no_comments),
+            "loops": re.findall(r"for\s*\(([^)]+)\)|for\s+([^:]+):", code_no_comments) + re.findall(r"while\s*\(([^)]+)\)|while\s+([^:]+):", code_no_comments),
+            "attributes": re.findall(r"self\.(\w+)\s*=|this->(\w+)\s*=", code_no_comments),
+            "variables": re.findall(r"([a-zA-Z0-9_]+)\s*=\s*(?!self|this)", code_no_comments),
+            "memory": re.findall(r"(?:new\s+|malloc|calloc)", code_no_comments),
+            "pointers": re.findall(r"(\w+)\s*\*", code_no_comments),
+            "access_modifiers": re.findall(r"\b(private|public|protected|__\w+)\b", code_no_comments),
+            "objects": re.findall(r"(?:[A-Z][a-zA-Z0-9_]*\s+[a-zA-Z_]\w*\s*;|[A-Z][a-zA-Z0-9_]*\s*\*\s*[a-zA-Z_]\w*\s*=\s*new)", code_no_comments),
+            "method_calls": re.findall(r"(?:\w+\.\w+\(|\w+->\w+\()", code_no_comments),
+            "io_operations": re.findall(r"\b(cin|cout|scanf|printf|print|input)\b", code_no_comments),
+            "operators": re.findall(r"(\+|-|\*|/|%|&&|\|\||==|!=|>=|<=)", code_no_comments)
         }
+        
+        for key in structure:
+            cleaned = []
+            for item in structure[key]:
+                if isinstance(item, tuple):
+                    cleaned.extend([i.strip() for i in item if i and i.strip() != "def"])
+                elif isinstance(item, str) and item.strip():
+                    cleaned.append(item.strip())
+            structure[key] = cleaned
+            
+        structure["functions"] = [f for f in structure["functions"] if f not in structure["classes"] and f not in structure["constructors"] and f != "main"]
+        
         return structure
     
-    def compare_code_structure(self, model: str, student: str) -> float:
-        # Compare structural similarity of two code snippets.
-        # Uses both exact element matching and skeleton/token matching (for obfuscation).
-        # 1. Exact Element Match (Strict)
+    def compare_code_structure(self, model: str, student: str) -> Tuple[float, List[str]]:
+        # Compare structural similarity of two code snippets using the 6-Tier Code Rubric.
         m_struct = self.extract_code_structure(model)
         s_struct = self.extract_code_structure(student)
+        penalties = []
         
+        # Nhóm 1: Lỗi Cú pháp (Syntax)
+        s_no_comments = re.sub(r'//.*', '', student)
+        s_no_comments = re.sub(r'/\*.*?\*/', '', s_no_comments, flags=re.DOTALL)
+        if abs((s_no_comments.count('{') + s_no_comments.count('(')) - (s_no_comments.count('}') + s_no_comments.count(')'))) > 1:
+            penalties.append("Lỗi Syntax: Thiếu/Thừa ngoặc đóng mở {} () (Lỗi biên dịch)")
+            return 0.1, penalties
+            
+        if "#include" in model and "#include" not in student:
+            penalties.append("Lỗi Syntax: Thiếu khai báo thư viện gốc (VD: #include)")
+
+        # 1. Exact Element Match (Strict)
         strict_similarity = 0.0
         weight_count = 0
         
-        # Gia trọng điểm cho OOP components
         for key in m_struct:
             m_set = set(m_struct[key])
             s_set = set(s_struct[key])
-            
             if m_set or s_set:
-                if m_set and s_set:
-                    similarity = len(m_set & s_set) / len(m_set | s_set)
+                if m_set:
+                    quantity_score = min(1.0, len(s_set) / len(m_set))
+                    name_score = len(m_set & s_set) / len(m_set | s_set) if s_set else 0.0
+                    similarity = (quantity_score * 0.9) + (name_score * 0.1)
                 else:
-                    similarity = 0.0
+                    similarity = 1.0 # Tránh phạt oan khi model không có mà student có
                 
-                weight = 2.0 if key in ["classes", "inheritance", "attributes"] else 1.0
+                weight = 2.0 if key in ["classes", "inheritance", "attributes", "pointers", "memory", "constructors", "main", "objects", "method_calls"] else 1.0
                 strict_similarity += similarity * weight
                 weight_count += weight
         
-        strict_score = strict_similarity / weight_count if weight_count > 0 else 0.5
+        strict_score = strict_similarity / weight_count if weight_count > 0 else 0.2
         
         # 2. Skeleton Match (For Obfuscation / Variable Renaming)
+        import difflib
         def get_skeleton(code):
-            return re.findall(r"\b(class|def|if|elif|else|for|while|try|except|return|yield|break|continue|super|self)\b", code)
+            return re.findall(r"\b(class|struct|interface|public|private|protected|virtual|override|new|delete|malloc|free|def|void|int|float|double|bool|string|char|if|elif|else|for|while|try|except|catch|return|yield|break|continue|super|self|this)\b", code)
             
         m_skeleton = get_skeleton(model)
         s_skeleton = get_skeleton(student)
         
         skeleton_score = 0.0
-        if not m_skeleton and not s_skeleton:
-            skeleton_score = 1.0
-        elif m_skeleton and s_skeleton:
+        if m_skeleton and s_skeleton:
             matcher = difflib.SequenceMatcher(None, m_skeleton, s_skeleton)
             skeleton_score = matcher.ratio()
             
-        logger.info(f"Structure Check: strict={strict_score:.2f}, skeleton={skeleton_score:.2f}")
-        # Kết hợp điểm thay vì lấy max để đảm bảo cấu trúc tổng quát phải đi kèm với thành phần đúng
-        return (strict_score * 0.6) + (skeleton_score * 0.4)
+        # 3. Generic Token Match (For C/C++/Java & Snippets)
+        def basic_normalize(c):
+            c = re.sub(r'//.*', '', c)
+            c = re.sub(r'/\*.*?\*/', '', c, flags=re.DOTALL)
+            c = re.sub(r'\b(public|private|protected|virtual|abstract|static|inline|final)\b', '', c)
+            return re.sub(r'\s+', '', c)
+            
+        m_norm = basic_normalize(model)
+        s_norm = basic_normalize(student)
+        
+        token_score = 0.0
+        if m_norm and s_norm:
+            matcher = difflib.SequenceMatcher(None, m_norm, s_norm)
+            token_score = matcher.ratio()
+            matches = sum(triple.size for triple in matcher.get_matching_blocks())
+            containment = matches / len(s_norm) if len(s_norm) > 0 else 0
+            len_ratio = len(s_norm) / len(m_norm) if len(m_norm) > 0 else 1
+            if containment > 0.6 and len_ratio < 0.8:
+                boosted_score = containment * min(1.0, len_ratio * 2.0)
+                token_score = max(token_score, boosted_score)
+            if m_norm == s_norm: token_score = 1.0
+            
+        logger.info(f"Structure Check: strict={strict_score:.2f}, skeleton={skeleton_score:.2f}, token={token_score:.2f}")
+        
+        if len(model.splitlines()) <= 3 and weight_count == 0:
+            return token_score, penalties
+            
+        struct_sim = max(token_score * 0.85, (strict_score * 0.6) + (skeleton_score * 0.4))
+        
+        # Nhóm 2: Lỗi OOP
+        oop_penalty = False
+        if m_struct.get("classes") and not s_struct.get("classes"):
+            penalties.append("Lỗi OOP: Không tạo Class hướng đối tượng")
+            oop_penalty = True
+        
+        if m_struct.get("objects") and not s_struct.get("objects") and not oop_penalty and len(m_struct.get("classes", [])) > 0:
+            penalties.append("Lỗi OOP: Không dùng khởi tạo và gọi Object")
+            oop_penalty = True
+            
+        if m_struct.get("method_calls") and not s_struct.get("method_calls") and not oop_penalty:
+            penalties.append("Lỗi OOP: Không gọi phương thức (method) thông qua Object")
+            oop_penalty = True
+
+        if m_struct.get("access_modifiers") and not s_struct.get("access_modifiers") and not oop_penalty:
+            penalties.append("Lỗi OOP: Thiếu tính Đóng gói (không có private/public)")
+
+        if oop_penalty:
+            struct_sim *= 0.4  # Core penalty for breaking OOP rules
+
+        # Nhóm 3: Sai yêu cầu đề (Constraints)
+        if m_struct.get("functions") and s_struct.get("functions"):
+            if len(s_struct["functions"]) < len(m_struct["functions"]) * 0.5:
+                struct_sim *= 0.6
+                penalties.append("Lỗi Yêu cầu: Thiếu quá nhiều hàm yêu cầu (như đề yêu cầu 2 hàm, sinh viên gộp 1 hàm)")
+
+        if m_struct.get("io_operations") and not s_struct.get("io_operations"):
+            struct_sim *= 0.8
+            penalties.append("Lỗi Yêu cầu: Không có mã chức năng Nhập/Xuất dữ liệu (cin/cout/printf/scanf)")
+
+        # Nhóm 4: Lỗi Logic
+        if m_struct.get("returns") and s_struct.get("returns"):
+            def get_literals(ret_list):
+                cleaned = [re.sub(r'[\s;]+|//.*|/\*.*', '', r) for r in ret_list]
+                return sorted([r for r in cleaned if re.match(r'^-?\d+$|^(true|false|null|nullptr)$', r, re.IGNORECASE)])
+            m_lits = get_literals(m_struct["returns"])
+            s_lits = get_literals(s_struct["returns"])
+            if m_lits and s_lits and m_lits != s_lits:
+                struct_sim -= 0.15
+                penalties.append("Lỗi Logic: Trả về sai Output Base (sai giá trị Return)")
+
+        if m_struct.get("operators") and s_struct.get("operators"):
+            m_ops = set(m_struct["operators"])
+            s_ops = set(s_struct["operators"])
+            if m_ops and not m_ops.issubset(s_ops):
+                if len(m_ops) > 0 and len(m_ops & s_ops) / len(m_ops) <= 0.5:
+                    struct_sim -= 0.15
+                    penalties.append("Lỗi Logic: Sai lệch các phép tính cốt lõi (sử dụng toán tử không đúng)")
+
+        # Nhóm 5: Lỗi nửa đúng nửa sai (Dead code)
+        if s_struct.get("classes") and not s_struct.get("objects") and m_struct.get("objects"):
+            penalties.append("Lỗi Partial: Khai báo Class/Hàm nhưng không hề gọi chạy xử lý (Dead code)")
+            struct_sim *= 0.7
+
+        # Nhóm 6: Lỗi Code Style / Trình bày
+        s_lines = student.splitlines()
+        s_lines_clean = [l for l in s_lines if l.strip()]
+        if len(s_lines_clean) > 0:
+            avg_line_len = sum(len(l) for l in s_lines_clean) / len(s_lines_clean)
+            if avg_line_len > 100 and len(s_lines_clean) <= 4 and len(m_struct.get("functions", [])) > 0:
+                struct_sim *= 0.95
+                penalties.append("Lỗi Code Style: Code rối, dài dòng trên một hàng, khó đọc")
+
+        return max(0.0, struct_sim), list(set(penalties))
     
     # SQL ANALYSIS METHODS
     
@@ -484,50 +610,60 @@ class CodeAnalyzer:
                         "explanation": f"Yêu cầu {model_func}, sinh viên làm {student_func}"
                     }
             
-            struct_sim = self.compare_code_structure(model_text, student_text)
+            struct_sim, penalties = self.compare_code_structure(model_text, student_text)
             is_same_algo = (model_func != "unknown" and student_func != "unknown" and model_func == student_func)
             
-            if struct_sim < 0.3 and not is_same_algo:
-                return {
-                    "score": max_points * 0.25,
-                    "type": "Structure Mismatch",
-                    "explanation": f"Cấu trúc code khác biệt nhiều (similarity: {struct_sim:.0%})"
-                }
+            if struct_sim < 0.45 and not is_same_algo:
+                val = 0.0 if struct_sim < 0.25 else struct_sim * 0.5
+                penalties.append(f"Lỗi Tổng quan: Cú pháp/Cấu trúc sai lệch quá nhiều so với đáp án (Similarity: {struct_sim:.0%})")
+                struct_sim = val
             elif is_same_algo and struct_sim < 0.3:
                 logger.info(f"Code structure differs ({struct_sim:.2f}) but algorithm matches ({model_func}). Allowing.")
             
-            m_lines = len([l for l in model_text.splitlines() if l.strip()])
-            s_lines = len([l for l in student_text.splitlines() if l.strip()])
+            def strip_comments_and_blank_lines(c):
+                no_cmt = re.sub(r'//.*', '', c)
+                no_cmt = re.sub(r'/\*.*?\*/', '', no_cmt, flags=re.DOTALL)
+                return "\n".join([line for line in no_cmt.splitlines() if line.strip()])
+
+            m_clean = strip_comments_and_blank_lines(model_text)
+            s_clean = strip_comments_and_blank_lines(student_text)
+            
+            m_lines = len(m_clean.splitlines())
+            s_lines = len(s_clean.splitlines())
             
             logger.info(f"Code Length Check: student={s_lines}, model={m_lines}, ratio={s_lines/m_lines if m_lines else 0:.2f}")
 
             placeholder_patterns = [
-                r"#.*đệ quy", r"#.*viết tiếp", r"#.*TODO", r"#.*... ",
-                r"//.*TODO", r"/\*.*TODO"
+                r"#.*đệ quy", r"#.*viết tiếp", r"#.*\bTODO\b", r"#.*\.{3}",
+                r"//.*\bTODO\b", r"/\*.*\bTODO\b"
             ]
             for p in placeholder_patterns:
-                if re.search(p, student_text, re.IGNORECASE):
-                    return {
-                        "score": max_points * 0.4,
-                        "type": "Partial Code",
-                        "explanation": "Code chưa hoàn thiện (chứa comment placeholder)."
-                    }
+                if re.search(p, student_text, re.IGNORECASE) and (s_lines / m_lines) < 0.5:
+                    penalties.append("Lỗi Nửa chừng: Code chưa hoàn thiện (chứa comment placeholder và quá ngắn)")
+                    struct_sim *= 0.4
 
             if m_lines > 2 and s_lines / m_lines < 0.4:
-                 return {
-                    "score": max_points * 0.4,
-                    "type": "Partial Code",
-                    "explanation": f"Code quá ngắn so với đáp án ({s_lines}/{m_lines} dòng)."
-                }
+                 val = 0.0 if struct_sim < 0.3 else 0.4 * struct_sim
+                 penalties.append(f"Lỗi Độ Dài Bất Thường: Code nộp quá nguyên thủy hoặc thiếu nhiều function so với đáp án ({s_lines}/{m_lines} dòng)")
+                 struct_sim = val
 
-            # Nâng hệ số thưởng cho những bài Code/OOP có cấu trúc tốt
-            final_score_ratio = max(0.9, struct_sim * 1.2) if struct_sim > 0.5 else 0.75
-            final_score_ratio = min(1.0, final_score_ratio) # Cap at 100%
-            
+            # Áp dụng Hình thức phạt nặng nếu sai cấu trúc (Đặc biệt với lỗi OOP/Code style)
+            if struct_sim > 0.8:
+                final_score_ratio = min(1.0, struct_sim * 1.25)
+            elif struct_sim >= 0.5:
+                final_score_ratio = struct_sim * 0.8
+            else:
+                final_score_ratio = struct_sim * 0.3
+                
+            if struct_sim < 1.0 and penalties:
+                explanation = "Các lỗi vi phạm (AI Rubric):\n- " + "\n- ".join(penalties) + f"\n(Code Match: {struct_sim:.2f} / Score Ratio: {final_score_ratio:.2f})"
+            else:
+                explanation = f"Code hợp lệ hoàn toàn (Structure Match: {struct_sim:.2f})"
+
             return {
                 "score": max_points * final_score_ratio,
                 "type": "Code Match",
-                "explanation": f"Code hợp lệ (Structure Match: {struct_sim:.2f})"
+                "explanation": explanation
             }
         
         # SQL GRADING

@@ -33,12 +33,13 @@ const parseTextContent = (text) => {
     const line = lines[i];
 
     // Check for section markers
-    if (line.includes("Trắc nghiệm") && line.includes("MCQ")) {
+    const lowerLine = line.toLowerCase();
+    if (lowerLine.includes("trắc nghiệm") && lowerLine.includes("mcq")) {
       currentSection = "MCQ";
       hasMCQMarker = true;
       i++;
       continue;
-    } else if (line.includes("Tự luận") && line.includes("Essay")) {
+    } else if (lowerLine.includes("tự luận") && lowerLine.includes("essay")) {
       currentSection = "Essay";
       hasEssayMarker = true;
       i++;
@@ -117,23 +118,26 @@ const parseTextContent = (text) => {
 
     // Parse Essay
     if (currentSection === "Essay") {
-      const questionMatch = line.match(/Câu hỏi:\s*(.+?)(?=Câu trả lời:|$)/i);
-      const answerMatch = line.match(/Câu trả lời:\s*(.+)/i);
-
-      if (questionMatch || answerMatch) {
-        const errors = [];
-        const questionText = questionMatch ? questionMatch[1].trim() : "";
-        const modelAnswer = answerMatch ? answerMatch[1].trim() : "";
-
-        // Extract points
+      const isNewQuestion = /^(?:Câu|Question)\s*\d+[:.]?|^(?:Câu hỏi)[:.]?/i.test(line);
+      const answerMatchInline = line.match(/(?:Câu trả lời|Đáp án)\s*[:.]?\s*(.*)$/i);
+      
+      if (isNewQuestion) {
         const pointMatch = line.match(/\((\d+(?:[.,]\d+)?)đ\)/i);
         const points = pointMatch ? parseFloat(pointMatch[1].replace(",", ".")) : null;
 
-        if (!questionText) {
-          errors.push('Không tìm thấy "Câu hỏi:" trong văn bản');
+        let questionText = line.replace(/^(?:Câu|Question)?\s*\d+[:.]?\s*/i, "").replace(/^(?:Câu hỏi|Câu hỏi:)[:.]?\s*/i, "").trim();
+        if (answerMatchInline) {
+            questionText = questionText.split(/(?:Câu trả lời|Đáp án)\s*[:.]?/i)[0].trim();
         }
-        if (!modelAnswer) {
-          errors.push('Không tìm thấy "Câu trả lời:" trong văn bản');
+        
+        let modelAnswer = "";
+        const errors = [];
+        
+        if (answerMatchInline) {
+           modelAnswer = answerMatchInline[1].trim();
+           if (!modelAnswer) errors.push('Không tìm thấy "Câu trả lời:" trong văn bản');
+        } else {
+           errors.push('Không tìm thấy "Câu trả lời:" trong văn bản');
         }
 
         questions.push({
@@ -145,6 +149,27 @@ const parseTextContent = (text) => {
           points: points,
           errors: errors
         });
+      } else if (answerMatchInline && questions.length > 0 && questions[questions.length - 1].type === "Essay") {
+        const lastQ = questions[questions.length - 1];
+        lastQ.model_answer = answerMatchInline[1].trim();
+        lastQ.errors = lastQ.errors.filter(e => e !== 'Không tìm thấy "Câu trả lời:" trong văn bản');
+      } else if (questions.length > 0 && questions[questions.length - 1].type === "Essay") {
+        const lastQ = questions[questions.length - 1];
+        
+        const pointMatch = line.match(/\((\d+(?:[.,]\d+)?)đ\)/i);
+        if (pointMatch && lastQ.points === null) {
+           lastQ.points = parseFloat(pointMatch[1].replace(",", "."));
+        }
+        
+        if (lastQ.errors.includes('Không tìm thấy "Câu trả lời:" trong văn bản')) {
+           lastQ.question_text += "\n" + line;
+           lastQ.original_question_text += "\n" + line;
+        } else {
+           lastQ.model_answer += (lastQ.model_answer ? "\n" : "") + line;
+           if (lastQ.model_answer.trim()) {
+              lastQ.errors = lastQ.errors.filter(e => e !== 'Không tìm thấy "Câu trả lời:" trong văn bản');
+           }
+        }
       }
     }
 
@@ -409,12 +434,13 @@ const AssignExam = () => {
           .map((cell) => cell?.toString().trim() || "")
           .join(" ");
         // Check for section markers (có thể xuất hiện nhiều lần)
-        if (rowText.includes("Trắc nghiệm") && rowText.includes("MCQ")) {
+        const lowerRowText = rowText.toLowerCase();
+        if (lowerRowText.includes("trắc nghiệm") && lowerRowText.includes("mcq")) {
           currentSection = "MCQ";
           hasMCQMarker = true;
           rowIndex++;
           continue;
-        } else if (rowText.includes("Tự luận") && rowText.includes("Essay")) {
+        } else if (lowerRowText.includes("tự luận") && lowerRowText.includes("essay")) {
           currentSection = "Essay";
           hasEssayMarker = true;
           rowIndex++;
@@ -489,9 +515,12 @@ const AssignExam = () => {
             .replace(/^(?:Câu|Question)?\s*\d+[:.]?\s*/i, "")
             .trim();
           const questionMatch = cleanedFullText.match(
-            /Câu hỏi:\s*(.+?)(?=Câu trả lời:|$)/i
-          );
-          const answerMatch = cleanedFullText.match(/Câu trả lời:\s*(.+)/i);
+            /(?:Câu hỏi|Câu\s*\d+)\s*[:.]?\s*(.+?)(?=Câu trả lời|Đáp án|$)/ims
+          ) || cleanedFullText.match(/(.+?)(?=Câu trả lời|Đáp án|$)/ims); // Thêm cờ 's' (dotAll) để regex match được xuống dòng
+          const answerMatch = cleanedFullText.match(/(?:Câu trả lời|Đáp án)\s*[:.]?\s*(.+)/ims);
+          
+          const pointMatch = cleanedFullText.match(/\((\d+(?:[.,]\d+)?)đ\)/i);
+          const points = pointMatch ? parseFloat(pointMatch[1].replace(",", ".")) : null;
 
           if (questionMatch || answerMatch) {
             const questionData = {
@@ -500,6 +529,7 @@ const AssignExam = () => {
               original_question_text: fullText, // Lưu câu hỏi gốc để so sánh
               type: "Essay",
               model_answer: answerMatch ? answerMatch[1].trim() : "",
+              points: points,
               errors: [],
             };
             if (!questionData.question_text) {
@@ -1097,7 +1127,7 @@ const AssignExam = () => {
                         {q.type}
                       </span>
                     </div>
-                    <p className="font-medium text-gray-800 mb-2">
+                    <p className="font-medium text-gray-800 mb-2 whitespace-pre-wrap">
                       {renderQuestionText(q)}
                     </p>
                     {/* MCQ Options */}
@@ -1124,7 +1154,7 @@ const AssignExam = () => {
                     )}
                     {/* Essay Model Answer */}
                     {q.type === "Essay" && q.model_answer && (
-                      <div className="ml-4 p-2 bg-gray-100 rounded text-sm text-gray-700">
+                      <div className="ml-4 p-2 bg-gray-100 rounded text-sm text-gray-700 whitespace-pre-wrap">
                         <strong>Đáp án mẫu:</strong> {q.model_answer}
                       </div>
                     )}

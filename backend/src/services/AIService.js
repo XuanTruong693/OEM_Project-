@@ -6,10 +6,10 @@ const { pool } = require("../config/db");
 // ═══════════════════════════════════════════════════════
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:8000";
 const MAX_CONCURRENT_JOBS = 20;       // Reduced to avoid overwhelming AI service
-const GRADING_TIMEOUT = 90000;       // 90 seconds per AI request (CPU inference can be slow)
-const MAX_RETRIES = 5;               // Max retries per essay
-const RETRY_DELAY_BASE = 2000;       // 2 second base delay (exponential backoff)
-const RECOVERY_INTERVAL = 10000;     // Check for pending/failed every 10s (was 30s)
+const GRADING_TIMEOUT = 90000;       // 90 seconds per AI request
+const MAX_RETRIES = 10;               // Max retries per essay
+const RETRY_DELAY_BASE = 2000;       // 2 second base delay
+const RECOVERY_INTERVAL = 10000;     // Check for pending/failed every 10s
 const STALE_TIMEOUT = 180000;        // 3 minutes - mark as stale if in_progress too long
 const IMMEDIATE_RETRY_DELAY = 3000;  // Retry failed submission after 3s
 
@@ -28,7 +28,7 @@ const initialize = () => {
     console.log("[AIService] 🚀 Initializing AI Grading Service...");
     console.log(`[AIService] ⚙️ Config: MAX_CONCURRENT=${MAX_CONCURRENT_JOBS}, TIMEOUT=${GRADING_TIMEOUT}ms, MAX_RETRIES=${MAX_RETRIES}, RECOVERY_INTERVAL=${RECOVERY_INTERVAL}ms`);
 
-    // Run recovery on startup (wait for DB to stabilize)
+    // Run recovery on startup
     setTimeout(() => {
         console.log("[AIService] 🔍 Running startup recovery check...");
         recoverPendingSubmissions();
@@ -224,15 +224,15 @@ const processSubmission = async (submissionId, retryAttempt = 0) => {
 const performGrading = async (submissionId, conn) => {
     const startTime = Date.now();
 
-    // Fetch Essay Answers and their Exam grading mode
+    // Fetch Essay Answers
     const [answers] = await conn.query(`
         SELECT sa.id, sa.answer_text, sa.question_id, sa.student_id,
                q.model_answer, q.points AS max_points,
                e.grading_mode
         FROM student_answers sa
         JOIN exam_questions q ON sa.question_id = q.id
-        JOIN submissions sub ON sa.submission_id = sub.id
-        JOIN exams e ON sub.exam_id = e.id
+        JOIN submissions s ON sa.submission_id = s.id
+        JOIN exams e ON s.exam_id = e.id
         WHERE sa.submission_id = ? AND q.type = 'Essay'
     `, [submissionId]);
 
@@ -261,8 +261,7 @@ const performGrading = async (submissionId, conn) => {
         }
 
         try {
-            const mode = ans.grading_mode || 'general';
-            const aiResult = await callAIService(ans.answer_text, ans.model_answer, ans.max_points, mode);
+            const aiResult = await callAIService(ans.answer_text, ans.model_answer, ans.max_points, ans.grading_mode);
 
             if (aiResult && aiResult.score !== undefined) {
                 let { score, confidence, explanation, type } = aiResult;
@@ -272,7 +271,7 @@ const performGrading = async (submissionId, conn) => {
                     console.warn(`[AIService] ⚠️ Invalid score from AI (NaN): Answer ${ans.id}, using 0`);
                     score = 0;
                 }
-                
+
                 // Clamp score to valid range [0, max_points]
                 if (score < 0) {
                     console.warn(`[AIService] ⚠️ AI returned negative score (${score}): Answer ${ans.id}, clamping to 0`);

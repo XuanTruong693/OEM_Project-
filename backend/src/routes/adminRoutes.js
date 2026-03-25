@@ -10,7 +10,6 @@ const multer = require('multer');
 
 // Admin controllers
 const studentCardController = require('../controllers/admin/studentCardController');
-const aiLogsController = require('../controllers/admin/aiLogsController');
 
 // Admin models
 const {
@@ -36,12 +35,13 @@ router.use(activityLoggerMiddleware);
 
 router.get('/student-cards', verifyToken, verifyRole('admin'), studentCardController.getStudentCards);
 router.get('/student-cards/no-image', verifyToken, verifyRole('admin'), studentCardController.getStudentCardsWithoutImage);
+router.post('/student-cards/batch', verifyToken, verifyRole('admin'), upload.any(), studentCardController.batchUploadStudentCards);
 router.post('/student-cards/batch-update-images', verifyToken, verifyRole('admin'), upload.any(), studentCardController.batchUpdateCardImages);
+
 router.get('/student-cards/:id', verifyToken, verifyRole('admin'), studentCardController.getStudentCardById);
 router.post('/student-cards', verifyToken, verifyRole('admin'), upload.fields([{ name: 'card_image', maxCount: 1 }]), studentCardController.createStudentCard);
 router.put('/student-cards/:id', verifyToken, verifyRole('admin'), upload.fields([{ name: 'card_image', maxCount: 1 }]), studentCardController.updateStudentCard);
 router.delete('/student-cards/:id', verifyToken, verifyRole('admin'), studentCardController.deleteStudentCard);
-router.post('/student-cards/batch', verifyToken, verifyRole('admin'), upload.any(), studentCardController.batchUploadStudentCards);
 
 // ============================================================================
 // DASHBOARD APIs
@@ -768,14 +768,6 @@ router.delete('/results/:submissionId', verifyToken, verifyRole('admin'), async 
 });
 
 // ============================================================================
-// AI GRADING LOGS APIs
-// ============================================================================
-
-router.get('/ai-grading-logs', verifyToken, verifyRole('admin'), aiLogsController.getAIGradingLogs);
-router.get('/ai-grading-logs/:submissionId', verifyToken, verifyRole('admin'), aiLogsController.getAIGradingLogDetail);
-router.post('/ai-grading-logs/:submissionId/retry', verifyToken, verifyRole('admin'), aiLogsController.retryAIGrading);
-
-// ============================================================================
 // BACKUP & RESTORE APIs
 // ============================================================================
 
@@ -1121,6 +1113,200 @@ router.get('/profile', verifyToken, verifyRole('admin'), async (req, res) => {
 // ============================================================================
 // AI GRADING QUEUE MONITORING
 // ============================================================================
+
+/**
+ * GET /api/admin/ai-grading-logs
+ * Fetch AI grading logs/queue for the monitor table
+ */
+router.get('/ai-grading-logs', verifyToken, verifyRole('admin'), async (req, res) => {
+  try {
+    const { page = 1, limit = 10, status, search } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    let whereClause = "s.ai_grading_status IS NOT NULL AND s.ai_grading_status != 'not_required'";
+    const params = [];
+
+    if (status && status !== 'all') {
+      whereClause += ' AND s.ai_grading_status = ?';
+      params.push(status);
+    }
+
+    if (search) {
+      whereClause += ' AND (e.title LIKE ? OR u.full_name LIKE ? OR u.email LIKE ? OR s.id = ?)';
+      const searchParam = `%${search}%`;
+      params.push(searchParam, searchParam, searchParam, isNaN(search) ? 0 : search);
+    }
+
+    const [logs] = await pool.query(`
+      SELECT 
+        s.id as submission_id,
+        u.full_name as student_name,
+        u.email as student_email,
+        e.title as exam_title,
+        s.submitted_at,
+        s.ai_grading_status as status,
+        s.ai_grading_error as error,
+        s.ai_grading_retry_count as retry_count
+      FROM submissions s
+      JOIN users u ON s.user_id = u.id
+      JOIN exams e ON s.exam_id = e.id
+      WHERE ${whereClause}
+      ORDER BY s.submitted_at DESC
+      LIMIT ? OFFSET ?
+    `, [...params, parseInt(limit), offset]);
+
+    const [[{ total }]] = await pool.query(`
+      SELECT COUNT(*) as total
+      FROM submissions s
+      JOIN users u ON s.user_id = u.id
+      JOIN exams e ON s.exam_id = e.id
+      WHERE ${whereClause}
+    `, params);
+
+    // Get summary statistics
+    const [summaryResult] = await pool.query(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN ai_grading_status = 'pending' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN ai_grading_status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
+        SUM(CASE WHEN ai_grading_status = 'completed' THEN 1 ELSE 0 END) as completed,
+        SUM(CASE WHEN ai_grading_status = 'failed' THEN 1 ELSE 0 END) as failed
+      FROM submissions 
+      WHERE ai_grading_status IS NOT NULL AND ai_grading_status != 'not_required'
+    `);
+
+    const summary = summaryResult[0] || { total: 0, pending: 0, in_progress: 0, completed: 0, failed: 0 };
+    // Ensure numbers are preserved properly (SUM can return strings in MySQL driver)
+    if (summaryResult[0]) {
+      summary.total = parseInt(summary.total || 0);
+      summary.pending = parseInt(summary.pending || 0);
+      summary.in_progress = parseInt(summary.in_progress || 0);
+      summary.completed = parseInt(summary.completed || 0);
+      summary.failed = parseInt(summary.failed || 0);
+    }
+
+    res.json({
+      success: true,
+      logs,
+      summary,
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalPages: Math.ceil(total / limit)
+    });
+  } catch (error) {
+    console.error('❌ Error fetching AI grading logs:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * POST /api/admin/ai-grading-logs/:id/retry
+ * Retry a specific failed submission
+ */
+router.post('/ai-grading-logs/:id/retry', verifyToken, verifyRole('admin'), async (req, res) => {
+  try {
+    const submissionId = req.params.id;
+    await pool.query(`
+      UPDATE submissions 
+      SET ai_grading_status = 'pending',
+          ai_grading_retry_count = 0,
+          ai_grading_error = NULL
+      WHERE id = ?
+    `, [submissionId]);
+
+    // Trigger AI service to fetch it
+    const { recoverPendingSubmissions } = require('../services/AIService');
+    if (typeof recoverPendingSubmissions === 'function') {
+      recoverPendingSubmissions();
+    }
+
+    res.json({ success: true, message: 'Đã đưa bài thi vào hàng đợi chấm lại' });
+  } catch (error) {
+    console.error('❌ Error retrying submission:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * GET /api/admin/ai-grading-logs/:id
+ * Fetch detail AI grading logs for a submission
+ */
+router.get('/ai-grading-logs/:id', verifyToken, verifyRole('admin'), async (req, res) => {
+  try {
+    const submissionId = req.params.id;
+
+    const [submissions] = await pool.query(`
+      SELECT 
+        s.id as submission_id,
+        u.full_name as student_name,
+        u.email as student_email,
+        e.title as exam_title,
+        s.submitted_at,
+        s.ai_grading_status as status,
+        s.ai_grading_error as error,
+        s.ai_score,
+        s.suggested_total_score,
+        s.user_id as student_id
+      FROM submissions s
+      JOIN users u ON s.user_id = u.id
+      JOIN exams e ON s.exam_id = e.id
+      WHERE s.id = ?
+    `, [submissionId]);
+
+    if (submissions.length === 0) {
+      return res.status(404).json({ success: false, message: 'Submission not found' });
+    }
+
+    const submission = submissions[0];
+
+    // Fetch essays only
+    const [answersRows] = await pool.query(`
+      SELECT 
+        sa.question_id,
+        q.points as max_points,
+        q.question_text,
+        sa.answer_text as student_answer,
+        q.model_answer
+      FROM student_answers sa
+      JOIN exam_questions q ON sa.question_id = q.id
+      WHERE sa.submission_id = ? AND q.type = 'Essay'
+    `, [submissionId]);
+
+    // Inject AI feedback from latest ai_logs
+    const answers = await Promise.all(answersRows.map(async (ans) => {
+      const [logs] = await pool.query(`
+        SELECT response_payload 
+        FROM ai_logs 
+        WHERE question_id = ? AND student_id = ?
+        ORDER BY created_at DESC LIMIT 1
+      `, [ans.question_id, submission.student_id]);
+
+      let ai_feedback = null;
+      if (logs.length > 0 && logs[0].response_payload) {
+        try {
+          ai_feedback = JSON.parse(logs[0].response_payload);
+        } catch (e) {
+          console.warn('Failed to parse response_payload for question', ans.question_id);
+        }
+      }
+
+      return {
+        ...ans,
+        ai_feedback
+      };
+    }));
+
+    res.json({
+      success: true,
+      submission,
+      answers
+    });
+  } catch (error) {
+    console.error('❌ Error fetching AI grading details:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 /**
  * GET /api/admin/ai/queue-status

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Terminal, Trash2, Wifi, WifiOff } from 'lucide-react';
 import { io } from 'socket.io-client';
 import { useLanguage } from '../../context/LanguageContext';
+import { SOCKET_URL } from '../../api/config';
 
 const ServerLogsPanel = ({ fullWidth = false }) => {
     const { t } = useLanguage();
@@ -12,10 +13,9 @@ const ServerLogsPanel = ({ fullWidth = false }) => {
     const socketRef = useRef(null);
 
     useEffect(() => {
-        // Connect to Socket.IO server - auto-detect production
-        const serverUrl = window.location.hostname === 'localhost'
-            ? 'http://localhost:5000'
-            : window.location.origin;
+        // Connect to Socket.IO server using centralized config
+        const serverUrl = SOCKET_URL || 'http://localhost:5000';
+        console.log('📡 [ServerLogs] Connecting to:', serverUrl);
         const socket = io(serverUrl, {
             transports: ['websocket', 'polling'],
             reconnection: true,
