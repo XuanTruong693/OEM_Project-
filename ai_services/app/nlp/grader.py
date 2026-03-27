@@ -309,11 +309,11 @@ class UniversityGrader:
                 # Nếu code_analyzer trả về điểm (kể cả 0), return
                 return self._build_result(tech_result["score"], tech_result["explanation"], tech_result["type"])
             
-        s_code, m_code = student_text.replace(" ", "").rstrip(":"), model_text.replace(" ", "").rstrip(":")
+        s_code, m_code = student_text.strip().rstrip(":"), model_text.strip().rstrip(":")
         try:
-            if ast.dump(ast.parse(s_code, mode='eval')) == ast.dump(ast.parse(m_code, mode='eval')):
-                return self._build_result(max_points, "Biểu thức code tương đương logic.", "AST Match")
-        except SyntaxError: pass 
+            if ast.dump(ast.parse(s_code)) == ast.dump(ast.parse(m_code)):
+                return self._build_result(max_points, "Biểu thức code tương đương logic (AST).", "AST Match")
+        except Exception: pass 
 
         is_rev, verb = self._check_directional_logic(student_text, model_text)
         if is_rev: return self._build_result(max_points * 0.20, f"Đảo ngược logic OOP/Code ('{verb}').", "Logic Reversal")
@@ -447,8 +447,13 @@ class UniversityGrader:
                 except: pass
                 
             if m_nums:
-                if m_nums.issubset(s_nums):
+                if m_nums == s_nums: # Tuyệt đối khớp số lượng
                     return self._build_result(max_points, "Đáp án toán chính xác.", "Exact")
+                elif m_nums.issubset(s_nums):
+                    # Nếu chứa đáp án đúng nhưng kèm số liệu khác -> Phạt nhẹ vì trả lời nước đôi
+                    if len(s_nums) > len(m_nums) + 1: 
+                        return self._build_result(max_points * 0.5, "Chứa đáp án đúng nhưng dư thừa số liệu/trả lời nước đôi.", "Partial Math")
+                    return self._build_result(max_points * 0.9, "Đáp án toán chính xác (kèm dư liệu).", "Exact")
                 else:
                     return self._build_result(0.0, "Kết quả toán học sai.", "Wrong")
 

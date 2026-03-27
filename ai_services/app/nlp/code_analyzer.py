@@ -318,6 +318,187 @@ class CodeAnalyzer:
         
         return structure
     
+    def _grade_interface_only(self, m_struct: Dict[str, List[str]], s_struct: Dict[str, List[str]]) -> float:
+        """
+        Tính điểm vớt cho Interface (Class/Hàm) khi sinh viên tạo đúng cấu trúc OOP
+        nhưng đổi tên biến/hàm và bỏ trống ruột (thiếu logic).
+        """
+        interface_score = 0.0
+        
+        # 1. So sánh số lượng Class
+        m_classes = len(m_struct.get("classes", []))
+        s_classes = len(s_struct.get("classes", []))
+        class_score = 0.0
+        if m_classes > 0:
+            class_score = min(1.0, s_classes / m_classes)
+        elif s_classes > 0:
+            class_score = 1.0 # Model ko có class, student có -> Thưởng nhẹ hoặc giữ nguyên
+        else:
+            class_score = 1.0 # Cả 2 đều ko có class -> pass
+            
+        # 2. So sánh số lượng Hàm (Methods/Functions)
+        m_funcs = len(m_struct.get("functions", [])) + len(m_struct.get("constructors", []))
+        s_funcs = len(s_struct.get("functions", [])) + len(s_struct.get("constructors", []))
+        func_score = 0.0
+        if m_funcs > 0:
+            func_score = min(1.0, s_funcs / m_funcs)
+        elif s_funcs > 0:
+            func_score = 1.0
+        else:
+            func_score = 1.0
+            
+        # 3. So sánh số lượng thuộc tính (Attributes/Variables)
+        m_attrs = len(m_struct.get("attributes", [])) + len(m_struct.get("pointers", []))
+        s_attrs = len(s_struct.get("attributes", [])) + len(s_struct.get("pointers", []))
+        attr_score = 0.0
+        if m_attrs > 0:
+            attr_score = min(1.0, s_attrs / m_attrs)
+        elif s_attrs > 0:
+            attr_score = 1.0
+        else:
+            attr_score = 1.0
+            
+        # Tính Base Score cho Interface (Tối đa 0.3 -> 0.4 điểm)
+        # Tức là nếu viết đúng interface 100%, được vớt khoảng 30% - 40% số điểm của phần code structure
+        if m_classes > 0:
+            interface_score = (class_score * 0.4) + (func_score * 0.4) + (attr_score * 0.2)
+        else:
+            interface_score = (func_score * 0.7) + (attr_score * 0.3)
+            
+        # Điều chỉnh tỷ lệ rớt: Interface đúng hoàn toàn -> 0.35 * max_points
+        return interface_score * 0.35
+    
+    def _universal_sanitize(self, code: str) -> str:
+        """Step 1: Sanitize - Remove comments, convert all strings to <STR> tags."""
+        # Remove C++ block comments and line comments
+        code = re.sub(r'/\*.*?\*/', '', code, flags=re.DOTALL)
+        code = re.sub(r'//.*', '', code)
+        code = re.sub(r'(?m)^\s*#(?!\s*(include|define|pragma|ifndef|endif)\b).*', '', code)
+        
+        # Replace Python docstrings
+        code = re.sub(r'"""(.*?)"""', '<STR>', code, flags=re.DOTALL)
+        code = re.sub(r"'''(.*?)'''", '<STR>', code, flags=re.DOTALL)
+        
+        # Replace Strings
+        code = re.sub(r'".*?(?<!\\)"', '<STR>', code)
+        code = re.sub(r"'.*?(?<!\\)'", '<STR>', code)
+        code = re.sub(r"`.*?(?<!\\)`", '<STR>', code, flags=re.DOTALL)
+        
+        return code
+
+    def _universal_normalize(self, code: str) -> str:
+        """Step 2: Normalize - Standardize varying operators to a single format."""
+        # Convert x++ or ++x to x += 1
+        code = re.sub(r'([a-zA-Z_]\w*)\s*\+\+', r'\1 += 1', code)
+        code = re.sub(r'\+\+\s*([a-zA-Z_]\w*)', r'\1 += 1', code)
+        # Convert x-- or --x to x -= 1
+        code = re.sub(r'([a-zA-Z_]\w*)\s*--', r'\1 -= 1', code)
+        code = re.sub(r'--\s*([a-zA-Z_]\w*)', r'\1 -= 1', code)
+        
+        # Convert x = x + y to x += y
+        code = re.sub(r'\b([a-zA-Z_]\w*)\s*=\s*\1\s*([+\-*/%])\s*([^;\n]+)', r'\1 \2= \3', code)
+        return code
+
+    def _universal_tokenize(self, code: str) -> List[str]:
+        """Step 3: Tokenize - Convert into an abstract syntax sequence."""
+        code = self._universal_normalize(self._universal_sanitize(code))
+        
+        # Bảo vệ base case âm trước khi tách
+        code = code.replace('-1', '__NEG_ONE__') 
+        
+        # Add spaces around punctuation/operators for easy splitting
+        code = re.sub(r'([()\[\]{}.,:;=+\-*/%<>&|!])', r' \1 ', code)
+        
+        # Re-group composite operators that got split
+        comp_ops = [
+            ('=  =', '=='), ('!  =', '!='), ('>  =', '>='), ('<  =', '<='),
+            ('+  =', '+='), ('-  =', '-='), ('*  =', '*='), ('/  =', '/='),
+            ('%  =', '%='), ('&  &', '&&'), ('|  |', '||')
+        ]
+        for old, new in comp_ops:
+            code = code.replace(old, new)
+            
+        code = code.replace('__NEG_ONE__', '-1')
+        tokens = code.split()
+        final_tokens = []
+        
+        control_flow = {'if', 'else', 'elif', 'for', 'while', 'return', 'break', 'continue', 'switch', 'case', 'default'}
+        logic_ops = {'and', 'or', 'not', 'in', 'is', '&&', '||', '!', '==', '!=', '>=', '<=', '>', '<'}
+        declarations = {'int', 'float', 'double', 'char', 'bool', 'string', 'void', 'auto', 'var', 'let', 'const', 'public', 'private', 'protected', 'class', 'struct', 'def', 'function', 'static', 'final'}
+        math_ops = {'+', '-', '*', '/', '%', '+=', '-=', '*=', '/=', '%=', '='}
+        
+        for t in tokens:
+            if t in control_flow or t in logic_ops or t in math_ops or t == '<STR>':
+                final_tokens.append(t)
+            elif t in declarations:
+                # final_tokens.append('<DECL>') # Avoid polluting the sequence with too many DECLs
+                pass # Eliminating declaration noise completely works even better
+            elif t in ('0', '1', '-1'): 
+                final_tokens.append(t)
+            elif re.match(r'^-?\d+(\.\d+)?$', t):
+                final_tokens.append('<NUM>')
+            elif re.match(r'^([a-zA-Z_]\w*)$', t):
+                final_tokens.append('<VAR>')
+            else:
+                if t in (',', ';', '(', ')', '{', '}', '[', ']', '.', ':'):
+                    final_tokens.append(t)
+                    
+        return final_tokens
+
+    def _grade_algorithm_block(self, model: str, student: str) -> Tuple[float, List[str]]:
+        """Step 4: Block Matching - Grade the abstract sequences via coverage."""
+        m_tokens = self._universal_tokenize(model)
+        s_tokens = self._universal_tokenize(student)
+        
+        if not m_tokens:
+            return 1.0, []
+            
+        matcher = difflib.SequenceMatcher(None, m_tokens, s_tokens)
+        matches = sum(triple.size for triple in matcher.get_matching_blocks())
+        coverage = matches / len(m_tokens) if len(m_tokens) > 0 else 1.0
+        
+        penalties = []
+        multiplier = 1.0
+        
+        # Allow 15% slack for acceptable structural deviations
+        if coverage < 0.85:
+            missing_segments = []
+            for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+                if tag in ('delete', 'replace'):
+                    missing_segment = m_tokens[i1:i2]
+                    # Filter out purely noisy/non-informative tokens for error display
+                    filtered_segment = [t for t in missing_segment if t not in (',', ';', '{', '}', '(', ')', '.', ':', '<VAR>', '<NUM>', '<STR>')]
+                    
+                    if filtered_segment:
+                        expr = " ".join(filtered_segment)
+                        msg = ""
+                        if 'return' in filtered_segment:
+                            msg = f"Thiếu luồng trả về kết quả (Lệnh return)"
+                        elif 'for' in filtered_segment or 'while' in filtered_segment:
+                            msg = f"Thiếu cấu trúc vòng lặp cốt lõi"
+                        elif 'if' in filtered_segment or 'else' in filtered_segment or 'elif' in filtered_segment:
+                            msg = f"Thiếu rẽ nhánh điều kiện logic"
+                        elif any(op in filtered_segment for op in ('+=', '-=', '*=', '/=', '%=', '=', '+', '-', '*', '/', '%')):
+                            msg = f"Thiếu/Sai đoạn thuật toán tính toán/gán giá trị"
+                        else:
+                            msg = f"Thiếu phần thân xử lý thuật toán (chứa: {expr})"
+                            
+                        if msg and msg not in penalties:
+                            penalties.append(msg)
+                            
+            if coverage < 0.35:
+                multiplier = 0.2
+            elif coverage < 0.60:
+                multiplier = 0.35
+            else:
+                multiplier = 0.60
+                
+            logger.info(f"Block Match Failed: coverage={coverage:.2f}, multiplier={multiplier}, len(m)={len(m_tokens)}")
+        else:
+            logger.info(f"Block Match Passed: coverage={coverage:.2f}")
+            
+        return multiplier, penalties, coverage
+
     def compare_code_structure(self, model: str, student: str) -> Tuple[float, List[str]]:
         # Compare structural similarity of two code snippets using the 6-Tier Code Rubric.
         m_struct = self.extract_code_structure(model)
@@ -397,60 +578,24 @@ class CodeAnalyzer:
             
         struct_sim = max(token_score * 0.85, (strict_score * 0.6) + (skeleton_score * 0.4))
         
-        # Nhóm 2: Lỗi OOP
-        oop_penalty = False
-        if m_struct.get("classes") and not s_struct.get("classes"):
-            penalties.append("Lỗi OOP: Không tạo Class hướng đối tượng")
-            oop_penalty = True
+        # === INTERFACE BASE SCORE ===
+        # Điểm vớt nếu sinh viên viết đúng cấu trúc OOP/Hàm nhưng trống rỗng
+        interface_base_score = self._grade_interface_only(m_struct, s_struct)
         
-        if m_struct.get("objects") and not s_struct.get("objects") and not oop_penalty and len(m_struct.get("classes", [])) > 0:
-            penalties.append("Lỗi OOP: Không dùng khởi tạo và gọi Object")
-            oop_penalty = True
+        # === UNIVERSAL TOKENIZER (BLOCK MATCHING) ===
+        # Sử dụng Tokenizer để phân tích cú pháp trừu tượng, tìm kiếm block bị thiếu
+        block_multiplier, block_penalties, block_coverage = self._grade_algorithm_block(model, student)
+        
+        # Mã Hóa Vạn Năng: Nếu Tokenizer xác nhận thuật toán khớp (coverage cao), 
+        # dùng nó làm điểm base đè lên mọi điểm số string/skeleton cũ vốn thiếu chính xác
+        if block_coverage >= 0.85 and block_multiplier == 1.0:
+            struct_sim = max(struct_sim, block_coverage)
             
-        if m_struct.get("method_calls") and not s_struct.get("method_calls") and not oop_penalty:
-            penalties.append("Lỗi OOP: Không gọi phương thức (method) thông qua Object")
-            oop_penalty = True
-
-        if m_struct.get("access_modifiers") and not s_struct.get("access_modifiers") and not oop_penalty:
-            penalties.append("Lỗi OOP: Thiếu tính Đóng gói (không có private/public)")
-
-        if oop_penalty:
-            struct_sim *= 0.4  # Core penalty for breaking OOP rules
-
-        # Nhóm 3: Sai yêu cầu đề (Constraints)
-        if m_struct.get("functions") and s_struct.get("functions"):
-            if len(s_struct["functions"]) < len(m_struct["functions"]) * 0.5:
-                struct_sim *= 0.6
-                penalties.append("Lỗi Yêu cầu: Thiếu quá nhiều hàm yêu cầu (như đề yêu cầu 2 hàm, sinh viên gộp 1 hàm)")
-
-        if m_struct.get("io_operations") and not s_struct.get("io_operations"):
-            struct_sim *= 0.8
-            penalties.append("Lỗi Yêu cầu: Không có mã chức năng Nhập/Xuất dữ liệu (cin/cout/printf/scanf)")
-
-        # Nhóm 4: Lỗi Logic
-        if m_struct.get("returns") and s_struct.get("returns"):
-            def get_literals(ret_list):
-                cleaned = [re.sub(r'[\s;]+|//.*|/\*.*', '', r) for r in ret_list]
-                return sorted([r for r in cleaned if re.match(r'^-?\d+$|^(true|false|null|nullptr)$', r, re.IGNORECASE)])
-            m_lits = get_literals(m_struct["returns"])
-            s_lits = get_literals(s_struct["returns"])
-            if m_lits and s_lits and m_lits != s_lits:
-                struct_sim -= 0.15
-                penalties.append("Lỗi Logic: Trả về sai Output Base (sai giá trị Return)")
-
-        if m_struct.get("operators") and s_struct.get("operators"):
-            m_ops = set(m_struct["operators"])
-            s_ops = set(s_struct["operators"])
-            if m_ops and not m_ops.issubset(s_ops):
-                if len(m_ops) > 0 and len(m_ops & s_ops) / len(m_ops) <= 0.5:
-                    struct_sim -= 0.15
-                    penalties.append("Lỗi Logic: Sai lệch các phép tính cốt lõi (sử dụng toán tử không đúng)")
-
-        # Nhóm 5: Lỗi nửa đúng nửa sai (Dead code)
-        if s_struct.get("classes") and not s_struct.get("objects") and m_struct.get("objects"):
-            penalties.append("Lỗi Partial: Khai báo Class/Hàm nhưng không hề gọi chạy xử lý (Dead code)")
-            struct_sim *= 0.7
-
+        if block_multiplier < 1.0:
+            struct_sim *= block_multiplier
+            penalties.extend(block_penalties)
+            logger.info(f"Applied block matching penalty: multiplier={block_multiplier:.2f}, new struct_sim={struct_sim:.2f}")
+            
         # Nhóm 6: Lỗi Code Style / Trình bày
         s_lines = student.splitlines()
         s_lines_clean = [l for l in s_lines if l.strip()]
@@ -459,6 +604,12 @@ class CodeAnalyzer:
             if avg_line_len > 100 and len(s_lines_clean) <= 4 and len(m_struct.get("functions", [])) > 0:
                 struct_sim *= 0.95
                 penalties.append("Lỗi Code Style: Code rối, dài dòng trên một hàng, khó đọc")
+
+        # Áp dụng điểm vớt nếu struct_sim tụt xuống quá thấp do thiếu thuật toán lõi hoặc bị phạt
+        if struct_sim < interface_base_score and interface_base_score > 0.1:
+            logger.info(f"Rescue: struct_sim ({struct_sim:.2f}) < interface_base_score ({interface_base_score:.2f}). Bumping score.")
+            struct_sim = interface_base_score
+            penalties.append(f"Điểm vớt cấu trúc (Interface): Sinh viên tạo cấu trúc OOP/Hàm hợp lệ nhưng thiếu logic/vận hành cốt lõi. (Base score: {interface_base_score:.2f})")
 
         return max(0.0, struct_sim), list(set(penalties))
     
