@@ -204,7 +204,11 @@ class CodeAnalyzer:
         
         # Check code patterns
         code_score = sum(1 for p in self.code_indicators if re.search(p, text))
-        if code_score >= 2 or re.search(r"def __init__|\bclass\s+\w+", text): # Ưu tiên bắt OOP
+        
+        strong_code_indicators = r"(def\s+__init__|\bclass\s+\w+|public\s+class|\bvoid\s+\w+|#include|<iostream>|std::)"
+        generic_code_syntax = r"([{}();]|\breturn\b|=>|->|//|/\*.*\*/)"
+        
+        if code_score >= 1 or re.search(strong_code_indicators, text) or len(re.findall(generic_code_syntax, text)) >= 2:
             return "code"
         
         # Check math patterns
@@ -226,8 +230,8 @@ class CodeAnalyzer:
         code_lower = code.lower()
         
         # 1. Check function/class name first
-        func_match = re.search(r"(?:def|class)\s+(\w+)", code_lower)
-        if func_match:
+        func_matches = re.finditer(r"(?:^|\s)(?:def|class|void|int|float|double|bool|string|char|public|private)\s+(\w+)\s*\(?", code_lower)
+        for func_match in func_matches:
             func_name = func_match.group(1)
             for func_type, info in self.function_patterns.items():
                 if any(name in func_name for name in info["names"]):
@@ -277,64 +281,337 @@ class CodeAnalyzer:
         return False, ""
     
     def extract_code_structure(self, code: str) -> Dict[str, List[str]]:
-        """Extract structural elements from code, bao gồm cả yếu tố OOP."""
+        """Extract structural elements from code (Multi-language)."""
+        code_no_comments = re.sub(r'//.*', '', code)
+        code_no_comments = re.sub(r'/\*.*?\*/', '', code_no_comments, flags=re.DOTALL)
+        
         structure = {
-            "classes": re.findall(r"class\s+(\w+)", code),
-            "inheritance": re.findall(r"class\s+\w+\s*\(\s*(\w+)\s*\):", code), # Python
-            "constructors": re.findall(r"def\s+(__init__)", code),
-            "functions": re.findall(r"def\s+([a-zA-Z0-9_]+)(?!\s*__)", code), # Trừ __init__
-            "returns": re.findall(r"return\s+(.+?)(?:\n|$)", code),
-            "conditions": re.findall(r"if\s+(.+?):", code),
-            "loops": re.findall(r"for\s+(.+?):", code) + re.findall(r"while\s+(.+?):", code),
-            "attributes": re.findall(r"self\.(\w+)\s*=", code), # OOP Attributes
-            "variables": re.findall(r"([a-zA-Z0-9_]+)\s*=\s*(?!self)", code), # Normal vars
+            "classes": re.findall(r"(?:class|struct|interface)\s+(\w+)", code_no_comments),
+            "inheritance": re.findall(r"class\s+\w+\s*(?:\(|:\s*(?:public|private|protected)\s+|extends\s+|implements\s+)(\w+)", code_no_comments),
+            "constructors": re.findall(r"def\s+(__init__)|(?:^|[\s{}])([A-Z][a-zA-Z0-9_]*)\s*\([^)]*\)\s*(?:{|:)", code_no_comments),
+            "functions": re.findall(r"(?:def|void|int|float|double|bool|string|char|auto)\s+([a-zA-Z0-9_]+)\s*\(", code_no_comments),
+            "main": re.findall(r"(?:int|void|def)\s+main\s*\(", code_no_comments),
+            "returns": re.findall(r"return\s+([^;\n]+)", code_no_comments),
+            "conditions": re.findall(r"if\s*\(([^)]+)\)|if\s+([^:]+):", code_no_comments),
+            "loops": re.findall(r"for\s*\(([^)]+)\)|for\s+([^:]+):", code_no_comments) + re.findall(r"while\s*\(([^)]+)\)|while\s+([^:]+):", code_no_comments),
+            "attributes": re.findall(r"self\.(\w+)\s*=|this->(\w+)\s*=", code_no_comments),
+            "variables": re.findall(r"([a-zA-Z0-9_]+)\s*=\s*(?!self|this)", code_no_comments),
+            "memory": re.findall(r"(?:new\s+|malloc|calloc)", code_no_comments),
+            "pointers": re.findall(r"(\w+)\s*\*", code_no_comments),
+            "access_modifiers": re.findall(r"\b(private|public|protected|__\w+)\b", code_no_comments),
+            "objects": re.findall(r"(?:[A-Z][a-zA-Z0-9_]*\s+[a-zA-Z_]\w*\s*;|[A-Z][a-zA-Z0-9_]*\s*\*\s*[a-zA-Z_]\w*\s*=\s*new)", code_no_comments),
+            "method_calls": re.findall(r"(?:\w+\.\w+\(|\w+->\w+\()", code_no_comments),
+            "io_operations": re.findall(r"\b(cin|cout|scanf|printf|print|input)\b", code_no_comments),
+            "operators": re.findall(r"(\+|-|\*|/|%|&&|\|\||==|!=|>=|<=)", code_no_comments)
         }
+        
+        for key in structure:
+            cleaned = []
+            for item in structure[key]:
+                if isinstance(item, tuple):
+                    cleaned.extend([i.strip() for i in item if i and i.strip() != "def"])
+                elif isinstance(item, str) and item.strip():
+                    cleaned.append(item.strip())
+            structure[key] = cleaned
+            
+        structure["functions"] = [f for f in structure["functions"] if f not in structure["classes"] and f not in structure["constructors"] and f != "main"]
+        
         return structure
     
-    def compare_code_structure(self, model: str, student: str) -> float:
-        # Compare structural similarity of two code snippets.
-        # Uses both exact element matching and skeleton/token matching (for obfuscation).
-        # 1. Exact Element Match (Strict)
+    def _grade_interface_only(self, m_struct: Dict[str, List[str]], s_struct: Dict[str, List[str]]) -> float:
+        """
+        Tính điểm vớt cho Interface (Class/Hàm) khi sinh viên tạo đúng cấu trúc OOP
+        nhưng đổi tên biến/hàm và bỏ trống ruột (thiếu logic).
+        """
+        interface_score = 0.0
+        
+        # 1. So sánh số lượng Class
+        m_classes = len(m_struct.get("classes", []))
+        s_classes = len(s_struct.get("classes", []))
+        class_score = 0.0
+        if m_classes > 0:
+            class_score = min(1.0, s_classes / m_classes)
+        elif s_classes > 0:
+            class_score = 1.0 # Model ko có class, student có -> Thưởng nhẹ hoặc giữ nguyên
+        else:
+            class_score = 1.0 # Cả 2 đều ko có class -> pass
+            
+        # 2. So sánh số lượng Hàm (Methods/Functions)
+        m_funcs = len(m_struct.get("functions", [])) + len(m_struct.get("constructors", []))
+        s_funcs = len(s_struct.get("functions", [])) + len(s_struct.get("constructors", []))
+        func_score = 0.0
+        if m_funcs > 0:
+            func_score = min(1.0, s_funcs / m_funcs)
+        elif s_funcs > 0:
+            func_score = 1.0
+        else:
+            func_score = 1.0
+            
+        # 3. So sánh số lượng thuộc tính (Attributes/Variables)
+        m_attrs = len(m_struct.get("attributes", [])) + len(m_struct.get("pointers", []))
+        s_attrs = len(s_struct.get("attributes", [])) + len(s_struct.get("pointers", []))
+        attr_score = 0.0
+        if m_attrs > 0:
+            attr_score = min(1.0, s_attrs / m_attrs)
+        elif s_attrs > 0:
+            attr_score = 1.0
+        else:
+            attr_score = 1.0
+            
+        # Tính Base Score cho Interface (Tối đa 0.3 -> 0.4 điểm)
+        # Tức là nếu viết đúng interface 100%, được vớt khoảng 30% - 40% số điểm của phần code structure
+        if m_classes > 0:
+            interface_score = (class_score * 0.4) + (func_score * 0.4) + (attr_score * 0.2)
+        else:
+            interface_score = (func_score * 0.7) + (attr_score * 0.3)
+            
+        # Điều chỉnh tỷ lệ rớt: Interface đúng hoàn toàn -> 0.35 * max_points
+        return interface_score * 0.35
+    
+    def _universal_sanitize(self, code: str) -> str:
+        """Step 1: Sanitize - Remove comments, convert all strings to <STR> tags."""
+        # Remove C++ block comments and line comments
+        code = re.sub(r'/\*.*?\*/', '', code, flags=re.DOTALL)
+        code = re.sub(r'//.*', '', code)
+        code = re.sub(r'(?m)^\s*#(?!\s*(include|define|pragma|ifndef|endif)\b).*', '', code)
+        
+        # Replace Python docstrings
+        code = re.sub(r'"""(.*?)"""', '<STR>', code, flags=re.DOTALL)
+        code = re.sub(r"'''(.*?)'''", '<STR>', code, flags=re.DOTALL)
+        
+        # Replace Strings
+        code = re.sub(r'".*?(?<!\\)"', '<STR>', code)
+        code = re.sub(r"'.*?(?<!\\)'", '<STR>', code)
+        code = re.sub(r"`.*?(?<!\\)`", '<STR>', code, flags=re.DOTALL)
+        
+        return code
+
+    def _universal_normalize(self, code: str) -> str:
+        """Step 2: Normalize - Standardize varying operators to a single format."""
+        # Convert x++ or ++x to x += 1
+        code = re.sub(r'([a-zA-Z_]\w*)\s*\+\+', r'\1 += 1', code)
+        code = re.sub(r'\+\+\s*([a-zA-Z_]\w*)', r'\1 += 1', code)
+        # Convert x-- or --x to x -= 1
+        code = re.sub(r'([a-zA-Z_]\w*)\s*--', r'\1 -= 1', code)
+        code = re.sub(r'--\s*([a-zA-Z_]\w*)', r'\1 -= 1', code)
+        
+        # Convert x = x + y to x += y
+        code = re.sub(r'\b([a-zA-Z_]\w*)\s*=\s*\1\s*([+\-*/%])\s*([^;\n]+)', r'\1 \2= \3', code)
+        return code
+
+    def _universal_tokenize(self, code: str) -> List[str]:
+        """Step 3: Tokenize - Convert into an abstract syntax sequence."""
+        code = self._universal_normalize(self._universal_sanitize(code))
+        
+        # Bảo vệ base case âm trước khi tách
+        code = code.replace('-1', '__NEG_ONE__') 
+        
+        # Add spaces around punctuation/operators for easy splitting
+        code = re.sub(r'([()\[\]{}.,:;=+\-*/%<>&|!])', r' \1 ', code)
+        
+        # Re-group composite operators that got split
+        comp_ops = [
+            ('=  =', '=='), ('!  =', '!='), ('>  =', '>='), ('<  =', '<='),
+            ('+  =', '+='), ('-  =', '-='), ('*  =', '*='), ('/  =', '/='),
+            ('%  =', '%='), ('&  &', '&&'), ('|  |', '||')
+        ]
+        for old, new in comp_ops:
+            code = code.replace(old, new)
+            
+        code = code.replace('__NEG_ONE__', '-1')
+        tokens = code.split()
+        final_tokens = []
+        
+        control_flow = {'if', 'else', 'elif', 'for', 'while', 'return', 'break', 'continue', 'switch', 'case', 'default'}
+        logic_ops = {'and', 'or', 'not', 'in', 'is', '&&', '||', '!', '==', '!=', '>=', '<=', '>', '<'}
+        declarations = {'int', 'float', 'double', 'char', 'bool', 'string', 'void', 'auto', 'var', 'let', 'const', 'public', 'private', 'protected', 'class', 'struct', 'def', 'function', 'static', 'final'}
+        math_ops = {'+', '-', '*', '/', '%', '+=', '-=', '*=', '/=', '%=', '='}
+        
+        for t in tokens:
+            if t in control_flow or t in logic_ops or t in math_ops or t == '<STR>':
+                final_tokens.append(t)
+            elif t in declarations:
+                # final_tokens.append('<DECL>') # Avoid polluting the sequence with too many DECLs
+                pass # Eliminating declaration noise completely works even better
+            elif t in ('0', '1', '-1'): 
+                final_tokens.append(t)
+            elif re.match(r'^-?\d+(\.\d+)?$', t):
+                final_tokens.append('<NUM>')
+            elif re.match(r'^([a-zA-Z_]\w*)$', t):
+                final_tokens.append('<VAR>')
+            else:
+                if t in (',', ';', '(', ')', '{', '}', '[', ']', '.', ':'):
+                    final_tokens.append(t)
+                    
+        return final_tokens
+
+    def _grade_algorithm_block(self, model: str, student: str) -> Tuple[float, List[str]]:
+        """Step 4: Block Matching - Grade the abstract sequences via coverage."""
+        m_tokens = self._universal_tokenize(model)
+        s_tokens = self._universal_tokenize(student)
+        
+        if not m_tokens:
+            return 1.0, []
+            
+        matcher = difflib.SequenceMatcher(None, m_tokens, s_tokens)
+        matches = sum(triple.size for triple in matcher.get_matching_blocks())
+        coverage = matches / len(m_tokens) if len(m_tokens) > 0 else 1.0
+        
+        penalties = []
+        multiplier = 1.0
+        
+        # Allow 15% slack for acceptable structural deviations
+        if coverage < 0.85:
+            missing_segments = []
+            for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+                if tag in ('delete', 'replace'):
+                    missing_segment = m_tokens[i1:i2]
+                    # Filter out purely noisy/non-informative tokens for error display
+                    filtered_segment = [t for t in missing_segment if t not in (',', ';', '{', '}', '(', ')', '.', ':', '<VAR>', '<NUM>', '<STR>')]
+                    
+                    if filtered_segment:
+                        expr = " ".join(filtered_segment)
+                        msg = ""
+                        if 'return' in filtered_segment:
+                            msg = f"Thiếu luồng trả về kết quả (Lệnh return)"
+                        elif 'for' in filtered_segment or 'while' in filtered_segment:
+                            msg = f"Thiếu cấu trúc vòng lặp cốt lõi"
+                        elif 'if' in filtered_segment or 'else' in filtered_segment or 'elif' in filtered_segment:
+                            msg = f"Thiếu rẽ nhánh điều kiện logic"
+                        elif any(op in filtered_segment for op in ('+=', '-=', '*=', '/=', '%=', '=', '+', '-', '*', '/', '%')):
+                            msg = f"Thiếu/Sai đoạn thuật toán tính toán/gán giá trị"
+                        else:
+                            msg = f"Thiếu phần thân xử lý thuật toán (chứa: {expr})"
+                            
+                        if msg and msg not in penalties:
+                            penalties.append(msg)
+                            
+            if coverage < 0.35:
+                multiplier = 0.2
+            elif coverage < 0.60:
+                multiplier = 0.35
+            else:
+                multiplier = 0.60
+                
+            logger.info(f"Block Match Failed: coverage={coverage:.2f}, multiplier={multiplier}, len(m)={len(m_tokens)}")
+        else:
+            logger.info(f"Block Match Passed: coverage={coverage:.2f}")
+            
+        return multiplier, penalties, coverage
+
+    def compare_code_structure(self, model: str, student: str) -> Tuple[float, List[str]]:
+        # Compare structural similarity of two code snippets using the 6-Tier Code Rubric.
         m_struct = self.extract_code_structure(model)
         s_struct = self.extract_code_structure(student)
+        penalties = []
         
+        # Nhóm 1: Lỗi Cú pháp (Syntax)
+        s_no_comments = re.sub(r'//.*', '', student)
+        s_no_comments = re.sub(r'/\*.*?\*/', '', s_no_comments, flags=re.DOTALL)
+        if abs((s_no_comments.count('{') + s_no_comments.count('(')) - (s_no_comments.count('}') + s_no_comments.count(')'))) > 1:
+            penalties.append("Lỗi Syntax: Thiếu/Thừa ngoặc đóng mở {} () (Lỗi biên dịch)")
+            return 0.1, penalties
+            
+        if "#include" in model and "#include" not in student:
+            penalties.append("Lỗi Syntax: Thiếu khai báo thư viện gốc (VD: #include)")
+
+        # 1. Exact Element Match (Strict)
         strict_similarity = 0.0
         weight_count = 0
         
-        # Gia trọng điểm cho OOP components
         for key in m_struct:
             m_set = set(m_struct[key])
             s_set = set(s_struct[key])
-            
             if m_set or s_set:
-                if m_set and s_set:
-                    similarity = len(m_set & s_set) / len(m_set | s_set)
+                if m_set:
+                    quantity_score = min(1.0, len(s_set) / len(m_set))
+                    name_score = len(m_set & s_set) / len(m_set | s_set) if s_set else 0.0
+                    similarity = (quantity_score * 0.9) + (name_score * 0.1)
                 else:
-                    similarity = 0.0
+                    similarity = 1.0 # Tránh phạt oan khi model không có mà student có
                 
-                weight = 2.0 if key in ["classes", "inheritance", "attributes"] else 1.0
+                weight = 2.0 if key in ["classes", "inheritance", "attributes", "pointers", "memory", "constructors", "main", "objects", "method_calls"] else 1.0
                 strict_similarity += similarity * weight
                 weight_count += weight
         
-        strict_score = strict_similarity / weight_count if weight_count > 0 else 0.5
+        strict_score = strict_similarity / weight_count if weight_count > 0 else 0.2
         
         # 2. Skeleton Match (For Obfuscation / Variable Renaming)
+        import difflib
         def get_skeleton(code):
-            return re.findall(r"\b(class|def|if|elif|else|for|while|try|except|return|yield|break|continue|super|self)\b", code)
+            return re.findall(r"\b(class|struct|interface|public|private|protected|virtual|override|new|delete|malloc|free|def|void|int|float|double|bool|string|char|if|elif|else|for|while|try|except|catch|return|yield|break|continue|super|self|this)\b", code)
             
         m_skeleton = get_skeleton(model)
         s_skeleton = get_skeleton(student)
         
         skeleton_score = 0.0
-        if not m_skeleton and not s_skeleton:
-            skeleton_score = 1.0
-        elif m_skeleton and s_skeleton:
+        if m_skeleton and s_skeleton:
             matcher = difflib.SequenceMatcher(None, m_skeleton, s_skeleton)
             skeleton_score = matcher.ratio()
             
-        logger.info(f"Structure Check: strict={strict_score:.2f}, skeleton={skeleton_score:.2f}")
-        # Kết hợp điểm thay vì lấy max để đảm bảo cấu trúc tổng quát phải đi kèm với thành phần đúng
-        return (strict_score * 0.6) + (skeleton_score * 0.4)
+        # 3. Generic Token Match (For C/C++/Java & Snippets)
+        def basic_normalize(c):
+            c = re.sub(r'//.*', '', c)
+            c = re.sub(r'/\*.*?\*/', '', c, flags=re.DOTALL)
+            c = re.sub(r'\b(public|private|protected|virtual|abstract|static|inline|final)\b', '', c)
+            return re.sub(r'\s+', '', c)
+            
+        m_norm = basic_normalize(model)
+        s_norm = basic_normalize(student)
+        
+        token_score = 0.0
+        if m_norm and s_norm:
+            matcher = difflib.SequenceMatcher(None, m_norm, s_norm)
+            token_score = matcher.ratio()
+            matches = sum(triple.size for triple in matcher.get_matching_blocks())
+            containment = matches / len(s_norm) if len(s_norm) > 0 else 0
+            len_ratio = len(s_norm) / len(m_norm) if len(m_norm) > 0 else 1
+            if containment > 0.6 and len_ratio < 0.8:
+                boosted_score = containment * min(1.0, len_ratio * 2.0)
+                token_score = max(token_score, boosted_score)
+            if m_norm == s_norm: token_score = 1.0
+            
+        logger.info(f"Structure Check: strict={strict_score:.2f}, skeleton={skeleton_score:.2f}, token={token_score:.2f}")
+        
+        if len(model.splitlines()) <= 3 and weight_count == 0:
+            return token_score, penalties
+            
+        struct_sim = max(token_score * 0.85, (strict_score * 0.6) + (skeleton_score * 0.4))
+        
+        # === INTERFACE BASE SCORE ===
+        # Điểm vớt nếu sinh viên viết đúng cấu trúc OOP/Hàm nhưng trống rỗng
+        interface_base_score = self._grade_interface_only(m_struct, s_struct)
+        
+        # === UNIVERSAL TOKENIZER (BLOCK MATCHING) ===
+        # Sử dụng Tokenizer để phân tích cú pháp trừu tượng, tìm kiếm block bị thiếu
+        block_multiplier, block_penalties, block_coverage = self._grade_algorithm_block(model, student)
+        
+        # Mã Hóa Vạn Năng: Nếu Tokenizer xác nhận thuật toán khớp (coverage cao), 
+        # dùng nó làm điểm base đè lên mọi điểm số string/skeleton cũ vốn thiếu chính xác
+        if block_coverage >= 0.85 and block_multiplier == 1.0:
+            struct_sim = max(struct_sim, block_coverage)
+            
+        if block_multiplier < 1.0:
+            struct_sim *= block_multiplier
+            penalties.extend(block_penalties)
+            logger.info(f"Applied block matching penalty: multiplier={block_multiplier:.2f}, new struct_sim={struct_sim:.2f}")
+            
+        # Nhóm 6: Lỗi Code Style / Trình bày
+        s_lines = student.splitlines()
+        s_lines_clean = [l for l in s_lines if l.strip()]
+        if len(s_lines_clean) > 0:
+            avg_line_len = sum(len(l) for l in s_lines_clean) / len(s_lines_clean)
+            if avg_line_len > 100 and len(s_lines_clean) <= 4 and len(m_struct.get("functions", [])) > 0:
+                struct_sim *= 0.95
+                penalties.append("Lỗi Code Style: Code rối, dài dòng trên một hàng, khó đọc")
+
+        # Áp dụng điểm vớt nếu struct_sim tụt xuống quá thấp do thiếu thuật toán lõi hoặc bị phạt
+        if struct_sim < interface_base_score and interface_base_score > 0.1:
+            logger.info(f"Rescue: struct_sim ({struct_sim:.2f}) < interface_base_score ({interface_base_score:.2f}). Bumping score.")
+            struct_sim = interface_base_score
+            penalties.append(f"Điểm vớt cấu trúc (Interface): Sinh viên tạo cấu trúc OOP/Hàm hợp lệ nhưng thiếu logic/vận hành cốt lõi. (Base score: {interface_base_score:.2f})")
+
+        return max(0.0, struct_sim), list(set(penalties))
     
     # SQL ANALYSIS METHODS
     
@@ -484,50 +761,60 @@ class CodeAnalyzer:
                         "explanation": f"Yêu cầu {model_func}, sinh viên làm {student_func}"
                     }
             
-            struct_sim = self.compare_code_structure(model_text, student_text)
+            struct_sim, penalties = self.compare_code_structure(model_text, student_text)
             is_same_algo = (model_func != "unknown" and student_func != "unknown" and model_func == student_func)
             
-            if struct_sim < 0.3 and not is_same_algo:
-                return {
-                    "score": max_points * 0.25,
-                    "type": "Structure Mismatch",
-                    "explanation": f"Cấu trúc code khác biệt nhiều (similarity: {struct_sim:.0%})"
-                }
+            if struct_sim < 0.45 and not is_same_algo:
+                val = 0.0 if struct_sim < 0.25 else struct_sim * 0.5
+                penalties.append(f"Lỗi Tổng quan: Cú pháp/Cấu trúc sai lệch quá nhiều so với đáp án (Similarity: {struct_sim:.0%})")
+                struct_sim = val
             elif is_same_algo and struct_sim < 0.3:
                 logger.info(f"Code structure differs ({struct_sim:.2f}) but algorithm matches ({model_func}). Allowing.")
             
-            m_lines = len([l for l in model_text.splitlines() if l.strip()])
-            s_lines = len([l for l in student_text.splitlines() if l.strip()])
+            def strip_comments_and_blank_lines(c):
+                no_cmt = re.sub(r'//.*', '', c)
+                no_cmt = re.sub(r'/\*.*?\*/', '', no_cmt, flags=re.DOTALL)
+                return "\n".join([line for line in no_cmt.splitlines() if line.strip()])
+
+            m_clean = strip_comments_and_blank_lines(model_text)
+            s_clean = strip_comments_and_blank_lines(student_text)
+            
+            m_lines = len(m_clean.splitlines())
+            s_lines = len(s_clean.splitlines())
             
             logger.info(f"Code Length Check: student={s_lines}, model={m_lines}, ratio={s_lines/m_lines if m_lines else 0:.2f}")
 
             placeholder_patterns = [
-                r"#.*đệ quy", r"#.*viết tiếp", r"#.*TODO", r"#.*... ",
-                r"//.*TODO", r"/\*.*TODO"
+                r"#.*đệ quy", r"#.*viết tiếp", r"#.*\bTODO\b", r"#.*\.{3}",
+                r"//.*\bTODO\b", r"/\*.*\bTODO\b"
             ]
             for p in placeholder_patterns:
-                if re.search(p, student_text, re.IGNORECASE):
-                    return {
-                        "score": max_points * 0.4,
-                        "type": "Partial Code",
-                        "explanation": "Code chưa hoàn thiện (chứa comment placeholder)."
-                    }
+                if re.search(p, student_text, re.IGNORECASE) and (s_lines / m_lines) < 0.5:
+                    penalties.append("Lỗi Nửa chừng: Code chưa hoàn thiện (chứa comment placeholder và quá ngắn)")
+                    struct_sim *= 0.4
 
             if m_lines > 2 and s_lines / m_lines < 0.4:
-                 return {
-                    "score": max_points * 0.4,
-                    "type": "Partial Code",
-                    "explanation": f"Code quá ngắn so với đáp án ({s_lines}/{m_lines} dòng)."
-                }
+                 val = 0.0 if struct_sim < 0.3 else 0.4 * struct_sim
+                 penalties.append(f"Lỗi Độ Dài Bất Thường: Code nộp quá nguyên thủy hoặc thiếu nhiều function so với đáp án ({s_lines}/{m_lines} dòng)")
+                 struct_sim = val
 
-            # Nâng hệ số thưởng cho những bài Code/OOP có cấu trúc tốt
-            final_score_ratio = max(0.9, struct_sim * 1.2) if struct_sim > 0.5 else 0.75
-            final_score_ratio = min(1.0, final_score_ratio) # Cap at 100%
-            
+            # Áp dụng Hình thức phạt nặng nếu sai cấu trúc (Đặc biệt với lỗi OOP/Code style)
+            if struct_sim > 0.8:
+                final_score_ratio = min(1.0, struct_sim * 1.25)
+            elif struct_sim >= 0.5:
+                final_score_ratio = struct_sim * 0.8
+            else:
+                final_score_ratio = struct_sim * 0.3
+                
+            if struct_sim < 1.0 and penalties:
+                explanation = "Các lỗi vi phạm (AI Rubric):\n- " + "\n- ".join(penalties) + f"\n(Code Match: {struct_sim:.2f} / Score Ratio: {final_score_ratio:.2f})"
+            else:
+                explanation = f"Code hợp lệ hoàn toàn (Structure Match: {struct_sim:.2f})"
+
             return {
                 "score": max_points * final_score_ratio,
                 "type": "Code Match",
-                "explanation": f"Code hợp lệ (Structure Match: {struct_sim:.2f})"
+                "explanation": explanation
             }
         
         # SQL GRADING

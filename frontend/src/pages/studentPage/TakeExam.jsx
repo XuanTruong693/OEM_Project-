@@ -50,6 +50,7 @@ export default function TakeExam() {
   const [submitted, setSubmitted] = useState(false); // Đánh dấu đã nộp bài
   const [showConfirmModal, setShowConfirmModal] = useState(false); // Modal xác nhận nộp bài
   const [unansweredQuestions, setUnansweredQuestions] = useState([]); // Danh sách câu bỏ trống
+  const [isTimeUp, setIsTimeUp] = useState(false); // Danh sách câu bỏ trống
   const [showMobileNav, setShowMobileNav] = useState(false); // Mobile drawer state
   const [showFullscreenOverlay, setShowFullscreenOverlay] = useState(false); // Overlay bắt buộc vào lại fullscreen
   const [monitoringActive, setMonitoringActive] = useState(false); // State for inactivity hook (not ref)
@@ -339,10 +340,7 @@ export default function TakeExam() {
         const checkRes = await axiosClient.get(
           `/submissions/${submissionId}/status`
         );
-        if (
-          checkRes.data?.submitted_at ||
-          ["submitted", "graded"].includes(checkRes.data?.status)
-        ) {
+        if (checkRes.data?.submitted_at) {
           console.warn(
             "⚠️ [TakeExam] Submission already submitted, logging out..."
           );
@@ -381,6 +379,7 @@ export default function TakeExam() {
             q.type === "MCQ" ? q.options || optsByQ[q.question_id] || [] : [];
           const a = byAns.get(q.question_id);
           base.__selected = a?.selected_option_id || null;
+          base.__answer_text = a?.answer_text || "";
           base.__answered = !!(
             a?.selected_option_id ||
             (a?.answer_text && a.answer_text.trim())
@@ -400,7 +399,17 @@ export default function TakeExam() {
           : Date.now();
         const durSec = (res.data?.duration_minutes || duration) * 60;
         const passed = Math.max(0, Math.floor((serverNow - startedAt) / 1000));
-        setRemaining(Math.max(0, durSec - passed));
+        
+        let calculatedRemaining = Math.max(0, durSec - passed);
+        if (res.data?.seconds_until_close !== undefined && res.data?.seconds_until_close !== null) {
+             calculatedRemaining = Math.min(calculatedRemaining, Math.max(0, res.data.seconds_until_close));
+        } else if (res.data?.time_close) {
+             const closeTime = new Date(res.data.time_close).getTime();
+             const secondsUntilClose = Math.floor((closeTime - serverNow) / 1000);
+             calculatedRemaining = Math.min(calculatedRemaining, Math.max(0, secondsUntilClose));
+        }
+        
+        setRemaining(calculatedRemaining);
 
         setExamTitle(res.data?.exam_title || `Bài thi #${examId}`);
         monitorScreenConfigRef.current = !!res.data?.monitor_screen;
@@ -482,6 +491,7 @@ export default function TakeExam() {
     };
 
     const penalize = (evt, msg, key = null) => {
+      if (window.__isUnloadingApp) return;
       if (submittedRef.current) {
         console.log(
           "🛑 [TakeExam] Violation ignored - exam already submitted:",
@@ -864,6 +874,7 @@ export default function TakeExam() {
     };
     const onCtx = (e) => e.preventDefault();
     const onBefore = (e) => {
+      window.__isUnloadingApp = true;
       e.preventDefault();
       e.returnValue = "";
     };
@@ -1149,6 +1160,11 @@ export default function TakeExam() {
   const handleSubmit = async (auto = false) => {
     if (submitting) return;
     setSubmitting(true);
+    
+    // Nếu hệ thống tự nộp bài do hết giờ
+    if (auto) {
+      setIsTimeUp(true);
+    }
 
     setSubmitted(true);
     submittedRef.current = true;
@@ -1467,7 +1483,7 @@ export default function TakeExam() {
                   {/* Câu hỏi: trắng sáng khi dark */}
                   <div
                     className={`${theme === "dark" ? "text-white" : "text-slate-800"
-                      } font-bold text-sm md:text-base`}
+                      } font-bold text-sm md:text-base whitespace-pre-wrap`}
                   >
                     {idx + 1}. {q.question_text.replace(/^(?:Câu|Question)?\s*\d+[:.]?\s*/i, "")}
                   </div>
@@ -1528,6 +1544,7 @@ export default function TakeExam() {
                   ) : (
                     <textarea
                       rows={4}
+                      value={q.__answer_text || ""}
                       placeholder="Nhập câu trả lời…"
                       data-gramm="false"
                       data-enpass="false"
@@ -1550,7 +1567,7 @@ export default function TakeExam() {
                         setQuestions((prev) =>
                           prev.map((qq) =>
                             qq.question_id === q.question_id
-                              ? { ...qq, __answered: v && v.trim().length > 0 }
+                              ? { ...qq, __answered: v && v.trim().length > 0, __answer_text: v }
                               : qq
                           )
                         );
@@ -1606,9 +1623,14 @@ export default function TakeExam() {
           className={`w-full max-w-[560px] p-4 md:p-6 rounded-xl md:rounded-2xl border border-slate-200 shadow-2xl text-slate-800 bg-white`}
           style={{ backgroundColor: "#ffffff", color: "#0f172a" }}
         >
-          <h2 className="text-base md:text-lg font-bold mb-2">
-            Kết quả tạm thời
+          <h2 className={`text-base md:text-lg font-bold mb-2 ${isTimeUp ? "text-red-600" : ""}`}>
+            {isTimeUp ? "⏰ Đã hết giờ làm bài!" : "Kết quả tạm thời"}
           </h2>
+          {isTimeUp && (
+            <p className="text-sm text-slate-600 mb-4 font-medium">
+              Hệ thống đã tự động thu bài và chấm điểm các câu bạn đã làm.
+            </p>
+          )}
           <div
             className={`flex items-center justify-between py-2 border-b text-sm md:text-base ${theme === "dark"
               ? "border-white/10"

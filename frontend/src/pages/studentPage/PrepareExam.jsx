@@ -1039,6 +1039,34 @@ export default function PrepareExam() {
             if (ok && !facePreviewUrl) {
               stableOkCountRef.current += 1;
               if (stableOkCountRef.current >= 7) {
+                // Final verification: kiểm tra face lần cuối trước khi chụp
+                const finalCheck = await (async () => {
+                  try {
+                    if (window.faceapi && faceApiRef.current.loaded) {
+                      const det = await window.faceapi
+                        .detectSingleFace(v, new window.faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 }))
+                        .withFaceLandmarks();
+                      if (!det) return false;
+                      const box = det.detection.box;
+                      const fcx = box.x + box.width / 2;
+                      const fcy = box.y + box.height / 2;
+                      const fdx = Math.abs(fcx - c.width / 2) / c.width;
+                      const fdy = Math.abs(fcy - c.height / 2) / c.height;
+                      const fsr = Math.max(box.width / c.width, box.height / c.height);
+                      return fdx <= 0.25 && fdy <= 0.25 && fsr >= 0.08;
+                    }
+                    return true; // fallback nếu không có face-api
+                  } catch { return false; }
+                })();
+
+                if (!finalCheck) {
+                  console.log("[Auto Capture] ❌ Final check thất bại — hủy chụp");
+                  stableOkCountRef.current = 0;
+                  setFaceGuideMsg("Khuôn mặt bị che — vui lòng giữ mặt rõ ràng");
+                  setFaceGuideOk(false);
+                  return;
+                }
+
                 stableOkCountRef.current = 0; // Ngăn chặn việc kích hoạt lại trước khi quá trình xử lý dữ liệu hoàn tất
                 clearInterval(guideIntervalRef.current); // stop interval immediately
                 const snap = document.createElement("canvas");
@@ -1069,8 +1097,8 @@ export default function PrepareExam() {
                 );
               }
             } else if (!ok) {
-              // Chỉ reset khi không nhìn thấy mặt, không reset vì angle/still nhỏ
-              if (!positionOk) stableOkCountRef.current = 0;
+              // Reset counter ngay lập tức khi BẤT KỲ điều kiện nào không đạt
+              stableOkCountRef.current = 0;
             }
           } catch { }
         }, 450);

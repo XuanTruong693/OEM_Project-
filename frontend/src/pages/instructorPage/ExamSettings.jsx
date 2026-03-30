@@ -1,80 +1,90 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
 import { useExamContext } from "../../context/ExamContext";
+import {
+  Clock,
+  Shield,
+  ChevronLeft,
+  Eye,
+  Play,
+  RotateCcw,
+  MonitorSmartphone,
+  UserCheck,
+  CreditCard,
+  Shuffle,
+  CheckCircle2,
+  AlertCircle
+} from "lucide-react";
 
-const Label = ({ children }) => (
-  <label className="text-sm text-slate-600">{children}</label>
-);
-
-const Input = ({ type = "text", value, onChange, min, max, required }) => (
-  <input
-    type={type}
-    min={min}
-    max={max}
-    required={required}
-    className="w-full mt-1 border border-slate-300 rounded-xl p-2 bg-white transition focus:outline-none focus:ring-2 focus:ring-blue-300 hover:border-blue-300"
-    value={value}
-    onChange={onChange}
-  />
-);
-
-const Toggle = ({ checked, onChange }) => (
+const ToggleButton = ({ checked, onChange }) => (
   <button
     type="button"
     role="switch"
     aria-checked={checked}
     onClick={() => onChange(!checked)}
-    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${checked ? "bg-emerald-500" : "bg-slate-300"
-      }`}
+    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 ${
+      checked ? "bg-blue-600" : "bg-slate-200"
+    }`}
   >
     <span
-      className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${checked ? "translate-x-5" : "translate-x-1"
-        }`}
+      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+        checked ? "translate-x-5" : "translate-x-0"
+      }`}
     />
   </button>
 );
 
-const SectionCard = ({ icon, title, subtitle, children }) => (
-  <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-      <div className="flex items-center gap-3">
-        <div className="h-9 w-9 rounded-xl grid place-items-center text-white bg-gradient-to-br from-blue-500 to-indigo-500">
-          {icon}
-        </div>
-        <div>
-          <h2 className="font-semibold text-slate-800 leading-tight">
-            {title}
-          </h2>
-          {subtitle && (
-            <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>
-          )}
-        </div>
+const SectionHeading = ({ icon: Icon, title, description }) => (
+  <div className="mb-6">
+    <div className="flex items-center gap-2 text-slate-900 mb-1">
+      <div className="p-1.5 rounded-md bg-slate-100/80 text-slate-700">
+        <Icon className="w-5 h-5" />
+      </div>
+      <h2 className="text-lg font-semibold">{title}</h2>
+    </div>
+    {description && <p className="text-sm text-slate-500">{description}</p>}
+  </div>
+);
+
+const LabeledToggle = ({ icon: Icon, label, description, checked, onChange }) => (
+  <div className="flex items-start sm:items-center justify-between gap-4 py-4 border-b border-slate-100 last:border-0 last:pb-0">
+    <div className="flex items-center gap-4">
+      <div className="hidden sm:flex p-2.5 rounded-full bg-slate-50 text-slate-400 border border-slate-100">
+        <Icon className="w-5 h-5" />
+      </div>
+      <div>
+        <div className="font-medium text-slate-800">{label}</div>
+        <div className="text-sm text-slate-500 mt-0.5">{description}</div>
       </div>
     </div>
-    <div className="p-4">{children}</div>
-  </section>
+    <div className="pt-1 sm:pt-0">
+      <ToggleButton checked={checked} onChange={onChange} />
+    </div>
+  </div>
 );
 
 const ModeSwitch = ({ combined, setCombined }) => (
   <div className="hidden md:flex items-center gap-2 text-sm">
-    <span className="text-slate-500">Chế độ:</span>
-    <div className="inline-flex rounded-xl border border-slate-200 bg-slate-100 p-0.5">
+    <span className="text-slate-500 font-medium">Chế độ hiển thị:</span>
+    <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100/80 p-0.5">
       <button
         onClick={() => setCombined(true)}
-        className={`px-3 py-1.5 rounded-lg transition ${combined
-          ? "bg-white text-blue-700 shadow-sm"
-          : "text-slate-600 hover:text-slate-800"
-          }`}
+        className={`px-3 py-1.5 rounded-md transition-all text-sm font-medium ${
+          combined
+            ? "bg-white text-blue-700 shadow-sm ring-1 ring-slate-900/5"
+            : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
+        }`}
       >
         Chung
       </button>
       <button
         onClick={() => setCombined(false)}
-        className={`px-3 py-1.5 rounded-lg transition ${!combined
-          ? "bg-white text-blue-700 shadow-sm"
-          : "text-slate-600 hover:text-slate-800"
-          }`}
+        className={`px-3 py-1.5 rounded-md transition-all text-sm font-medium ${
+          !combined
+            ? "bg-white text-blue-700 shadow-sm ring-1 ring-slate-900/5"
+            : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
+        }`}
       >
         Theo tab
       </button>
@@ -83,81 +93,25 @@ const ModeSwitch = ({ combined, setCombined }) => (
 );
 
 const Tabs = ({ tab, setTab }) => (
-  <div className="mb-4 flex gap-2 border-b border-slate-200">
-    {["overview", "anti"].map((k) => (
+  <div className="mb-6 flex gap-6 border-b border-slate-200">
+    {[
+      { id: "overview", label: "Tổng quan" },
+      { id: "anti", label: "Chống gian lận" }
+    ].map((t) => (
       <button
-        key={k}
-        onClick={() => setTab(k)}
-        className={`px-3 py-2 text-sm rounded-t-lg border-b-2 -mb-px ${tab === k
-          ? "border-blue-600 text-blue-700"
-          : "border-transparent text-slate-500 hover:text-slate-700"
-          }`}
+        key={t.id}
+        onClick={() => setTab(t.id)}
+        className={`pb-3 text-sm font-medium transition-colors border-b-2 relative -mb-[1px] ${
+          tab === t.id
+            ? "border-blue-600 text-blue-700"
+            : "border-transparent text-slate-500 hover:text-slate-800"
+        }`}
       >
-        {k === "overview" ? "Tổng quan" : "Chống gian lận"}
+        {t.label}
       </button>
     ))}
-    <span className="px-3 py-2 text-sm text-slate-400">Làm chủ</span>
-    <span className="px-3 py-2 text-sm text-slate-400">Game hoá</span>
-  </div>
-);
-
-const Page = ({
-  children,
-  examId,
-  nav,
-  combined,
-  setCombined,
-  submitting,
-  submit,
-}) => (
-  <div className="min-h-screen bg-slate-50">
-    {/* Sticky header */}
-    <header className="sticky top-0 z-20 backdrop-blur supports-[backdrop-filter]:bg-white/70 bg-white/90 border-b border-slate-200">
-      <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg md:text-xl font-semibold text-slate-800">
-            Cấu hình phòng thi
-          </h1>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => nav(`/exams/${examId}/preview`)}
-            className="hidden md:inline-flex items-center gap-2 rounded-xl px-3 py-2 border border-slate-200 text-slate-700 hover:border-blue-300 hover:text-blue-700"
-            title="Xem lại đề đã chọn"
-          >
-            Xem lại đề
-          </button>
-          <button
-            onClick={() => nav("/open-exam")}
-            className="hidden md:inline-flex items-center gap-2 rounded-xl px-3 py-2 border border-slate-200 text-slate-700 hover:border-blue-300 hover:text-blue-700"
-            title="Quay lại danh sách đề"
-          >
-            ← Quay lại danh sách
-          </button>
-          <ModeSwitch combined={combined} setCombined={setCombined} />
-          <button
-            disabled={submitting}
-            onClick={submit}
-            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm disabled:opacity-60"
-          >
-            {submitting ? (
-              <>
-                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-transparent" />
-                Đang lưu…
-              </>
-            ) : (
-              <>
-                <span>🚀</span>
-                <span>Mở phòng</span>
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-    </header>
-
-    {/* Content */}
-    <main className="mx-auto max-w-6xl p-4">{children}</main>
+    <span className="pb-3 text-sm font-medium text-slate-300 cursor-not-allowed hidden sm:inline-block">Làm chủ (Sắp tới)</span>
+    <span className="pb-3 text-sm font-medium text-slate-300 cursor-not-allowed hidden sm:inline-block">Game hoá (Sắp tới)</span>
   </div>
 );
 
@@ -165,9 +119,11 @@ export default function ExamSettings() {
   const { examId } = useParams();
   const { setActiveExamId } = useExamContext();
   const nav = useNavigate();
-  const [tab, setTab] = React.useState("overview");
-  const [combined, setCombined] = React.useState(true);
-  const [form, setForm] = React.useState({
+  
+  const [tab, setTab] = useState("overview");
+  const [combined, setCombined] = useState(true);
+  
+  const [form, setForm] = useState({
     duration: 60,
     duration_minutes: 60,
     time_open: "",
@@ -179,15 +135,15 @@ export default function ExamSettings() {
     intent_shuffle: false,
     grading_mode: "general",
   });
-  const [submitting, setSubmitting] = React.useState(false);
-  const [room, setRoom] = React.useState("");
-  const [err, setErr] = React.useState("");
-  const [notice, setNotice] = React.useState(null);
+  
+  const [submitting, setSubmitting] = useState(false);
+  const [room, setRoom] = useState("");
+  const [err, setErr] = useState("");
+  const [notice, setNotice] = useState(null);
 
   const onChange = (k, v) => setForm((s) => ({ ...s, [k]: v }));
 
-  // ===== Set active exam ID in context =====
-  React.useEffect(() => {
+  useEffect(() => {
     if (examId) {
       console.log(`📍 [ExamSettings] Setting activeExamId: ${examId}`);
       setActiveExamId(parseInt(examId));
@@ -200,8 +156,7 @@ export default function ExamSettings() {
     return d.toISOString().slice(0, 16);
   };
 
-  React.useEffect(() => {
-    // mặc định time_open = now, time_close = +2h
+  useEffect(() => {
     const open = new Date();
     const close = new Date(open.getTime() + 2 * 3600 * 1000);
     open.setMinutes(open.getMinutes() - open.getTimezoneOffset());
@@ -218,21 +173,21 @@ export default function ExamSettings() {
     const o = new Date(form.time_open);
     const c = new Date(form.time_close);
     const now = new Date();
+    
     if (o.getTime() < now.getTime()) {
-      setErr("Thời gian bắt đầu phải từ hiện tại trở đi");
+      setErr("Thời gian bắt đầu phải từ hiện tại trở đi.");
       return false;
     }
     if (c.getTime() <= o.getTime()) {
-      setErr("Thời gian kết thúc phải sau thời gian bắt đầu");
+      setErr("Thời gian kết thúc phải lớn hơn thời gian bắt đầu.");
       return false;
     }
     if (!form.duration || !form.duration_minutes) {
-      setErr("Vui lòng nhập thời lượng");
+      setErr("Vui lòng nhập đầy đủ thời lượng thi.");
       return false;
     }
-    // Kiểm tra duration không được âm
     if (Number(form.duration) <= 0 || Number(form.duration_minutes) <= 0) {
-      setErr("Thời lượng phải là số dương (lớn hơn 0)");
+      setErr("Thời lượng thi phải là số dương.");
       return false;
     }
     return true;
@@ -255,245 +210,250 @@ export default function ExamSettings() {
       const toISO = (s) => new Date(s).toISOString();
       payload.time_open = toISO(form.time_open);
       payload.time_close = toISO(form.time_close);
-      const res = await axiosClient.post(
-        `/instructor/exams/${examId}/open`,
-        payload
-      );
+      
+      const res = await axiosClient.post(`/instructor/exams/${examId}/open`, payload);
       const code = res.data?.exam_room_code || "";
       setRoom(code);
-      setNotice("Mở phòng thành công. Đang chuyển...");
+      setNotice("Mở phòng thi thành công. Đang chuyển hướng...");
       nav(`/open-success/${examId}?room=${encodeURIComponent(code)}`);
     } catch (e) {
-      setErr(e?.response?.data?.message || "Không thể lưu cấu hình");
+      setErr(e?.response?.data?.message || "Không thể lưu cấu hình phòng thi.");
     } finally {
       setSubmitting(false);
     }
   };
 
-  // các component con đã chuyển ra ngoài để tránh remount
-
   return (
-    <Page
-      examId={examId}
-      nav={nav}
-      combined={combined}
-      setCombined={setCombined}
-      submitting={submitting}
-      submit={submit}
-    >
-      {!combined && <Tabs tab={tab} setTab={setTab} />}
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Left (main) */}
-        <div className="lg:col-span-2 space-y-4">
-          {(combined || tab === "overview") && (
-            <SectionCard
-              icon="⚙️"
-              title="Tổng quan"
-              subtitle="Cấu hình thời lượng và khung giờ mở/đóng phòng"
+    <div className="min-h-screen bg-slate-50/50 font-sans pb-10">
+      {/* Sticky header */}
+      <div className="bg-white border-b border-slate-200 sticky top-0 z-20 shadow-sm supports-[backdrop-filter]:bg-white/90 supports-[backdrop-filter]:backdrop-blur">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-semibold text-slate-900 leading-tight">Cấu hình phòng thi</h1>
+              <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-xs font-medium text-slate-600 border border-slate-200">ID: {examId}</span>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-4 self-start md:self-auto w-full md:w-auto mt-2 md:mt-0 overflow-x-auto pb-1 md:pb-0">
+            <button
+              onClick={() => nav("/open-exam")}
+              className="hidden md:flex text-sm font-medium text-slate-500 hover:text-slate-800 items-center transition-colors"
             >
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <ChevronLeft className="w-4 h-4 mr-0.5" />
+              Danh sách đề
+            </button>
+            <button
+              onClick={() => nav(`/exams/${examId}/preview`)}
+              className="inline-flex justify-center items-center px-3 py-2 md:py-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-200 transition-colors whitespace-nowrap"
+            >
+              <Eye className="w-4 h-4 mr-1.5 text-slate-500" />
+              Xem đề
+            </button>
+            
+            <div className="hidden md:block w-px h-6 bg-slate-200"></div>
+            
+            <ModeSwitch combined={combined} setCombined={setCombined} />
+            
+            <button
+              onClick={submit}
+              disabled={submitting}
+              className="inline-flex justify-center items-center px-4 py-2 md:py-1.5 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600 shadow-sm transition-all disabled:opacity-70 disabled:cursor-not-allowed whitespace-nowrap ml-auto md:ml-0"
+            >
+              {submitting ? (
+                <RotateCcw className="w-4 h-4 mr-1.5 animate-spin" />
+              ) : (
+                <Play className="w-4 h-4 mr-1.5" />
+              )}
+              {submitting ? "Đang xử lý..." : "Mở phòng"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 sm:mt-8">
+        {!combined && <Tabs tab={tab} setTab={setTab} />}
+        
+        <div className="space-y-6">
+          
+          {/* Error / Notice Display */}
+          {err && (
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-red-50 border border-red-100 text-red-800 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-red-600" />
+              <div>
+                <h3 className="font-medium text-red-900">Có lỗi xảy ra</h3>
+                <p className="text-sm text-red-700 mt-1">{err}</p>
+              </div>
+            </div>
+          )}
+
+          {notice && (
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-green-50 border border-green-100 text-green-800 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+              <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5 text-green-600" />
+              <div>
+                <h3 className="font-medium text-green-900">Hoàn tất</h3>
+                <p className="text-sm text-green-700 mt-1">{notice}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Main settings sections */}
+          {(combined || tab === "overview") && (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <SectionHeading 
+                icon={Clock} 
+                title="Thời gian & Chấm điểm" 
+                description="Thiết lập thời lượng, khung giờ mở phòng và cách thức chấm điểm của hệ thống." 
+              />
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <Label>Duration (phút) *</Label>
-                  <Input
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Thời lượng (phút)</label>
+                  <input
                     type="number"
-                    min={1}
-                    required
+                    min="1"
+                    className="block w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 sm:text-sm transition-colors"
                     value={form.duration}
                     onChange={(e) => onChange("duration", e.target.value)}
                   />
                 </div>
                 <div>
-                  <Label>Duration minutes *</Label>
-                  <Input
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Số phút tính giờ (Duration Minutes)</label>
+                  <input
                     type="number"
-                    min={1}
-                    required
+                    min="1"
+                    className="block w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 sm:text-sm transition-colors bg-slate-50"
                     value={form.duration_minutes}
-                    onChange={(e) =>
-                      onChange("duration_minutes", e.target.value)
-                    }
+                    onChange={(e) => onChange("duration_minutes", e.target.value)}
                   />
+                  <p className="mt-1.5 text-[11px] text-slate-500">Thường giống với thời lượng thực tế.</p>
                 </div>
-                <div className="md:col-span-2">
-                  <Label>Thời gian bắt đầu</Label>
-                  <Input
-                    type="datetime-local"
-                    min={nowLocal()}
-                    value={form.time_open}
-                    onChange={(e) => onChange("time_open", e.target.value)}
-                  />
+                
+                <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 p-4 rounded-xl bg-slate-50 border border-slate-100/80">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Thời gian bắt đầu</label>
+                    <input
+                      type="datetime-local"
+                      min={nowLocal()}
+                      className="block w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 sm:text-sm transition-colors bg-white"
+                      value={form.time_open}
+                      onChange={(e) => onChange("time_open", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Thời gian kết thúc</label>
+                    <input
+                      type="datetime-local"
+                      min={form.time_open}
+                      className="block w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 sm:text-sm transition-colors bg-white"
+                      value={form.time_close}
+                      onChange={(e) => onChange("time_close", e.target.value)}
+                    />
+                  </div>
                 </div>
+
                 <div className="md:col-span-2">
-                  <Label>Thời gian kết thúc</Label>
-                  <Input
-                    type="datetime-local"
-                    min={form.time_open}
-                    value={form.time_close}
-                    onChange={(e) => onChange("time_close", e.target.value)}
-                  />
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Số lần làm lại tối đa</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="0"
+                      className="block w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 sm:text-sm transition-colors pr-12"
+                      value={form.max_attempts}
+                      onChange={(e) => onChange("max_attempts", e.target.value)}
+                    />
+                    <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                      <span className="text-slate-400 sm:text-sm">{form.max_attempts == 0 ? "Vô hạn" : "lần"}</span>
+                    </div>
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-slate-500">Nhập 0 để cho phép làm lại không giới hạn.</p>
                 </div>
-                <div className="md:col-span-2">
-                  <Label>Số lần thi tối đa (0 = không giới hạn)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={form.max_attempts}
-                    onChange={(e) => onChange("max_attempts", e.target.value)}
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <Label>Mô hình chấm điểm AI</Label>
+                
+                <div className="md:col-span-2 pt-2 border-t border-slate-100">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Mô hình chấm bài tự động AI</label>
                   <select
-                    className="w-full mt-1 border border-slate-300 rounded-xl p-2 bg-white transition focus:outline-none focus:ring-2 focus:ring-blue-300 hover:border-blue-300"
+                    className="block w-full rounded-lg border border-slate-300 px-3.5 py-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 sm:text-sm transition-colors bg-white"
                     value={form.grading_mode}
                     onChange={(e) => onChange("grading_mode", e.target.value)}
                   >
-                    <option value="general">Linh hoạt - Triết học, Pháp luật, Xã hội (General Mode)</option>
-                    <option value="technical">Khắt khe - Lập trình, Toán học, Logic (Technical Mode)</option>
+                    <option value="general">Linh hoạt - Mở rộng dựa trên ngữ nghĩa (General Mode)</option>
+                    <option value="technical">Khắt khe - Kiểm tra cú pháp kỹ thuật, lập trình (Technical Mode)</option>
                   </select>
-                  <p className="mt-1 text-xs text-slate-500">
-                    * General: AI chấm linh hoạt hơn, cho điểm nếu đúng ý (hiểu từ đồng nghĩa/đảo ngữ). <br/>
-                    * Technical: AI chấm khắt khe theo cấu trúc ngữ pháp hàm/code, yêu cầu nộp đúng framework.
-                  </p>
+                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className={`p-3.5 rounded-xl border transition-colors ${form.grading_mode === 'general' ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-slate-200 transparent opacity-60'}`}>
+                      <strong className="block text-xs text-slate-800 mb-1">Mode: Linh hoạt</strong>
+                      <span className="text-xs text-slate-600 leading-relaxed block">AI tự động nhận diện điểm nếu bài làm khớp ngữ nghĩa hoặc ý tưởng. Thích hợp cho môn luật, triết học.</span>
+                    </div>
+                    <div className={`p-3.5 rounded-xl border transition-colors ${form.grading_mode === 'technical' ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-200 transparent opacity-60'}`}>
+                      <strong className="block text-xs text-slate-800 mb-1">Mode: Khắt khe</strong>
+                      <span className="text-xs text-slate-600 leading-relaxed block">AI kiểm tra chính xác cấu trúc khối code, tên hàm theo quy chuẩn. Thích hợp cho môn lập trình.</span>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </SectionCard>
+            </div>
           )}
 
           {(combined || tab === "anti") && (
-            <SectionCard
-              icon="🛡️"
-              title="Chống gian lận"
-              subtitle="Thiết lập xác minh danh tính và kiểm soát môi trường làm bài"
-            >
-              <div className="space-y-4">
-                <div className="flex items-start sm:items-center justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-slate-800 text-sm sm:text-base">
-                      Yêu cầu xác minh khuôn mặt
-                    </div>
-                    <div className="text-xs sm:text-sm text-slate-500">
-                      Bật xác minh bằng ảnh khuôn mặt trước khi vào thi
-                    </div>
-                  </div>
-                  <div className="flex-shrink-0">
-                    <Toggle
-                      checked={form.require_face_check}
-                      onChange={(v) => onChange("require_face_check", v)}
-                    />
-                  </div>
-                </div>
-                <div className="flex items-start sm:items-center justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-slate-800 text-sm sm:text-base">
-                      Yêu cầu xác minh thẻ SV
-                    </div>
-                    <div className="text-xs sm:text-sm text-slate-500">
-                      Tải ảnh thẻ sinh viên để đối chiếu
-                    </div>
-                  </div>
-                  <div className="flex-shrink-0">
-                    <Toggle
-                      checked={form.require_student_card}
-                      onChange={(v) => onChange("require_student_card", v)}
-                    />
-                  </div>
-                </div>
-                <div className="flex items-start sm:items-center justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-slate-800 text-sm sm:text-base">
-                      Theo dõi màn hình
-                    </div>
-                    <div className="text-xs sm:text-sm text-slate-500">
-                      Yêu cầu fullscreen, ghi nhận rời tab/thoát toàn màn hình
-                    </div>
-                  </div>
-                  <div className="flex-shrink-0">
-                    <Toggle
-                      checked={form.monitor_screen}
-                      onChange={(v) => onChange("monitor_screen", v)}
-                    />
-                  </div>
-                </div>
-                <div className="flex items-start sm:items-center justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-slate-800 text-sm sm:text-base">
-                      Trộn câu hỏi
-                    </div>
-                    <div className="text-xs sm:text-sm text-slate-500">
-                      Ngẫu nhiên hóa thứ tự câu hỏi cho mỗi sinh viên
-                    </div>
-                  </div>
-                  <div className="flex-shrink-0">
-                    <Toggle
-                      checked={form.intent_shuffle}
-                      onChange={(v) => onChange("intent_shuffle", v)}
-                    />
-                  </div>
-                </div>
-              </div>
-            </SectionCard>
-          )}
-        </div>
-
-        {/* Right (help / tips) */}
-        <aside className="space-y-4">
-          <section className="bg-gradient-to-br from-sky-50 to-indigo-50 border border-slate-200 rounded-2xl p-4">
-            <div className="flex items-start gap-3">
-              <div className="h-9 w-9 rounded-xl grid place-items-center bg-white text-indigo-600 shadow-sm">
-                ℹ️
-              </div>
-              <div>
-                <div className="font-medium text-slate-800">Mẹo</div>
-                <ul className="mt-1 text-sm text-slate-600 list-disc list-inside space-y-1">
-                  <li>Đặt khung giờ đủ dài để sinh viên vào phòng.</li>
-                  <li>Sử dụng theo dõi màn hình cho các kỳ thi quan trọng.</li>
-                  <li>Kiểm tra kỹ thời lượng trước khi mở.</li>
-                </ul>
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <SectionHeading 
+                icon={Shield} 
+                title="Chống gian lận" 
+                description="Bảo mật phòng thi thông qua xác thực thông tin và theo dõi môi trường làm bài." 
+              />
+              
+              <div className="mt-4 space-y-1">
+                <LabeledToggle
+                  icon={UserCheck}
+                  label="Xác minh khuôn mặt trước khi thi"
+                  description="Đối chiếu ảnh chụp trực tiếp với hồ sơ trên hệ thống."
+                  checked={form.require_face_check}
+                  onChange={(v) => onChange("require_face_check", v)}
+                />
+                <LabeledToggle
+                  icon={CreditCard}
+                  label="Xác minh thẻ Sinh viên"
+                  description="Sinh viên phải tải lên hình ảnh thẻ để kiểm tra."
+                  checked={form.require_student_card}
+                  onChange={(v) => onChange("require_student_card", v)}
+                />
+                <LabeledToggle
+                  icon={MonitorSmartphone}
+                  label="Theo dõi màn hình (Proctoring)"
+                  description="Yêu cầu chế độ Fullscreen, cảnh báo và ghi nhận khi chuyển đổi tab."
+                  checked={form.monitor_screen}
+                  onChange={(v) => onChange("monitor_screen", v)}
+                />
+                <LabeledToggle
+                  icon={Shuffle}
+                  label="Xáo trộn câu hỏi"
+                  description="Mỗi sinh viên sẽ nhận đề với thứ tự câu hỏi ngẫu nhiên."
+                  checked={form.intent_shuffle}
+                  onChange={(v) => onChange("intent_shuffle", v)}
+                />
               </div>
             </div>
-          </section>
-
-          {(err || notice) && (
-            <section
-              className={`${err ? "bg-rose-50" : "bg-emerald-50"
-                } border border-slate-200 rounded-2xl p-4`}
-            >
-              <div className="flex items-start gap-3">
-                <div
-                  className={`h-9 w-9 rounded-xl grid place-items-center ${err ? "bg-white text-rose-600" : "bg-white text-emerald-600"
-                    } shadow-sm`}
-                >
-                  {err ? "⚠️" : "✅"}
-                </div>
-                <div>
-                  <div
-                    className={`font-medium ${err ? "text-rose-700" : "text-emerald-700"
-                      }`}
-                  >
-                    {err ? "Có lỗi xảy ra" : "Thành công"}
-                  </div>
-                  <p className="text-sm text-slate-700 mt-1">{err || notice}</p>
-                </div>
-              </div>
-            </section>
           )}
-
-          <section className="bg-white border border-slate-200 rounded-2xl p-4">
-            <div className="text-sm text-slate-600">
-              Kiểm tra kỹ cấu hình trước khi mở phòng.
-            </div>
+          
+          {/* Action Button */}
+          <div className="flex justify-end pt-4 pb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <button
-              disabled={submitting}
               onClick={submit}
-              className="mt-3 w-full px-4 py-2 rounded-xl text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm disabled:opacity-60"
+              disabled={submitting}
+              className="flex items-center justify-center px-8 py-3 text-base font-medium text-white bg-blue-600 border border-transparent rounded-xl hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600 shadow-sm disabled:opacity-70 disabled:cursor-not-allowed transition-all w-full sm:w-auto"
             >
-              {submitting ? "Đang lưu…" : "Mở phòng"}
+              {submitting ? (
+                <RotateCcw className="w-5 h-5 mr-2 animate-spin" />
+              ) : (
+                <Play className="w-5 h-5 mr-2" />
+              )}
+              {submitting ? "Hệ thống đang mở phòng..." : "Mở phòng thi ngay"}
             </button>
-          </section>
-        </aside>
+          </div>
+
+        </div>
       </div>
-    </Page>
+    </div>
   );
 }

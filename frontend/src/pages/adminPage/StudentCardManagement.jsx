@@ -146,16 +146,47 @@ const StudentCardManagement = () => {
         setShowUploadModal(true);
     };
 
-    // Chọn file ảnh trong modal upload
+    // Chọn file ảnh trong modal upload — tự xoay ảnh dọc sang ngang
     const handleFileChange = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        setFormFile(file);
-        setFormPreview(URL.createObjectURL(file));
+
+        const img = new Image();
+        img.onload = () => {
+            // Nếu ảnh dọc (portrait) → xoay 90° sang ngang (landscape)
+            if (img.height > img.width) {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.height;
+                canvas.height = img.width;
+                const ctx = canvas.getContext('2d');
+                ctx.translate(img.height, 0);
+                ctx.rotate(Math.PI / 2);
+                ctx.drawImage(img, 0, 0);
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        const rotatedFile = new File([blob], file.name, { type: 'image/jpeg' });
+                        setFormFile(rotatedFile);
+                        setFormPreview(URL.createObjectURL(blob));
+                    }
+                }, 'image/jpeg', 0.9);
+            } else {
+                setFormFile(file);
+                setFormPreview(URL.createObjectURL(file));
+            }
+            URL.revokeObjectURL(img.src);
+        };
+        img.src = URL.createObjectURL(file);
     };
+
+    // Regex: chỉ cho phép chữ cái (bao gồm tiếng Việt) và khoảng trắng
+    const VALID_NAME_REGEX = /^[\p{L}\s]+$/u;
 
     // Submit Upload thủ công (Thêm mới / Sửa)
     const handleSaveUpload = async () => {
+        if (form.student_name && !VALID_NAME_REGEX.test(form.student_name.trim())) {
+            showToast('error', 'Tên sinh viên chỉ được chứa chữ cái và khoảng trắng (không có số hoặc ký tự đặc biệt).');
+            return;
+        }
         try {
             setSaving(true);
             const fd = new FormData();
@@ -253,7 +284,7 @@ const StudentCardManagement = () => {
         setShowBatchModal(false);
         setBatchStep(1);
         setExcelData([]);
-        setBatchImages([]);
+        setBatchExcelFile(null);
         setBatchResult(null);
     };
 
@@ -557,8 +588,7 @@ const StudentCardManagement = () => {
                                 {/* File ảnh */}
                                 <div>
                                     <label className="block text-sm text-gray-300 mb-1">
-                                        File Ảnh Thẻ {uploadMode === 'create' && <span className="text-red-400">*</span>}
-                                        {uploadMode === 'edit' && <span className="text-gray-500 text-xs"> (để trống nếu không muốn đổi ảnh)</span>}
+                                        File Ảnh Thẻ <span className="text-gray-500 text-xs"> (không bắt buộc, có thể bổ sung sau)</span>
                                     </label>
                                     <input
                                         type="file"

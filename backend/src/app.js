@@ -151,7 +151,7 @@ sequelize
 
     // ✅ [StudentCard] Tạo/cập nhật bảng student_cards tự động khi server khởi động
     try {
-      await StudentCard.sync({ alter: true });
+      await StudentCard.sync();
       console.log('✅ [StudentCard] Bảng student_cards đã được đồng bộ.');
     } catch (syncErr) {
       console.error('❌ [StudentCard] Lỗi sync bảng student_cards:', syncErr.message);

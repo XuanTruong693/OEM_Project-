@@ -73,7 +73,7 @@ async function getSubmissionStatus(req, res) {
         // Kiểm tra submission tồn tại và thuộc về user
         const [rows] = await sequelize.query(
             `SELECT 
-        id, exam_id, user_id, status,
+        id, exam_id, user_id, status, submitted_at,
         face_image_url, student_card_url,
         CASE WHEN face_image_blob IS NOT NULL OR face_image_url IS NOT NULL THEN TRUE ELSE FALSE END as face_verified,
         CASE WHEN student_card_blob IS NOT NULL OR student_card_url IS NOT NULL THEN TRUE ELSE FALSE END as card_verified
@@ -92,6 +92,7 @@ async function getSubmissionStatus(req, res) {
             submission_id: submission.id,
             exam_id: submission.exam_id,
             status: submission.status,
+            submitted_at: submission.submitted_at,
             face_image_url: submission.face_image_url,
             student_card_url: submission.student_card_url,
             face_verified: !!submission.face_verified,

@@ -301,28 +301,36 @@ router.post("/google", async (req, res) => {
       const maxAttempts = maxAttemptsRows[0]?.max_attempts || 0;
 
       if (maxAttempts > 0) {
-        const [attemptRows] = await sequelize.query(
-          `SELECT COUNT(*) as attempt_count FROM submissions WHERE exam_id = ? AND user_id = ?`,
+        // CHO PHÉP NẾU CÓ BÀI THI ĐANG DỞ HOẶC PENDING
+        const [activeSub] = await sequelize.query(
+          `SELECT id FROM submissions WHERE exam_id = ? AND user_id = ? AND status IN ('pending', 'in_progress') LIMIT 1`,
           { replacements: [exam.id, user.id] }
         );
-        const currentAttempts = attemptRows[0]?.attempt_count || 0;
 
-        console.log(`[Google Login] 🔢 Kiểm tra lượt thi: ${currentAttempts}/${maxAttempts} cho exam ${exam.id}`);
+        if (!Array.isArray(activeSub) || activeSub.length === 0) {
+          const [attemptRows] = await sequelize.query(
+            `SELECT COUNT(*) as attempt_count FROM submissions WHERE exam_id = ? AND user_id = ? AND status NOT IN ('pending', 'in_progress')`,
+            { replacements: [exam.id, user.id] }
+          );
+          const currentAttempts = attemptRows[0]?.attempt_count || 0;
 
-        if (currentAttempts >= maxAttempts) {
-          console.log(`[Google Login] ❌ Đã hết lượt thi: ${currentAttempts}/${maxAttempts}`);
-          const token = generateToken(user);
-          return res.status(403).json({
-            message: `Bạn đã hết lượt thi. Số lần thi tối đa: ${maxAttempts}`,
-            status: "error",
-            reason: "max_attempts_exceeded",
-            max_attempts: maxAttempts,
-            current_attempts: currentAttempts,
-            exam_id: exam.id,
-            exam_title: exam.title,
-            token,
-            user: { id: user.id, full_name: user.full_name, role: user.role }
-          });
+          console.log(`[Google Login] 🔢 Kiểm tra lượt thi: ${currentAttempts}/${maxAttempts} cho exam ${exam.id}`);
+
+          if (currentAttempts >= maxAttempts) {
+            console.log(`[Google Login] ❌ Đã hết lượt thi: ${currentAttempts}/${maxAttempts}`);
+            const token = generateToken(user);
+            return res.status(403).json({
+              message: `Bạn đã hết lượt thi. Số lần thi tối đa: ${maxAttempts}`,
+              status: "error",
+              reason: "max_attempts_exceeded",
+              max_attempts: maxAttempts,
+              current_attempts: currentAttempts,
+              exam_id: exam.id,
+              exam_title: exam.title,
+              token,
+              user: { id: user.id, full_name: user.full_name, role: user.role }
+            });
+          }
         }
       }
     }
@@ -638,28 +646,35 @@ router.post("/login", async (req, res) => {
       const maxAttempts = maxAttemptsRows[0]?.max_attempts || 0;
 
       if (maxAttempts > 0) {
-        const [attemptRows] = await sequelize.query(
-          `SELECT COUNT(*) as attempt_count FROM submissions WHERE exam_id = ? AND user_id = ?`,
+        const [activeSub] = await sequelize.query(
+          `SELECT id FROM submissions WHERE exam_id = ? AND user_id = ? AND status IN ('pending', 'in_progress') LIMIT 1`,
           { replacements: [exam.id, user.id] }
         );
-        const currentAttempts = attemptRows[0]?.attempt_count || 0;
 
-        console.log(`[Login] 🔢 Kiểm tra lượt thi: ${currentAttempts}/${maxAttempts} cho exam ${exam.id}`);
+        if (!Array.isArray(activeSub) || activeSub.length === 0) {
+          const [attemptRows] = await sequelize.query(
+            `SELECT COUNT(*) as attempt_count FROM submissions WHERE exam_id = ? AND user_id = ? AND status NOT IN ('pending', 'in_progress')`,
+            { replacements: [exam.id, user.id] }
+          );
+          const currentAttempts = attemptRows[0]?.attempt_count || 0;
 
-        if (currentAttempts >= maxAttempts) {
-          console.log(`[Login] ❌ Đã hết lượt thi: ${currentAttempts}/${maxAttempts}`);
-          const token = generateToken(user);
-          return res.status(403).json({
-            message: `Bạn đã hết lượt thi. Số lần thi tối đa: ${maxAttempts}`,
-            status: "error",
-            reason: "max_attempts_exceeded",
-            max_attempts: maxAttempts,
-            current_attempts: currentAttempts,
-            exam_id: exam.id,
-            exam_title: exam.title,
-            token,
-            user: { id: user.id, full_name: user.full_name, role: user.role }
-          });
+          console.log(`[Login] 🔢 Kiểm tra lượt thi: ${currentAttempts}/${maxAttempts} cho exam ${exam.id}`);
+
+          if (currentAttempts >= maxAttempts) {
+            console.log(`[Login] ❌ Đã hết lượt thi: ${currentAttempts}/${maxAttempts}`);
+            const token = generateToken(user);
+            return res.status(403).json({
+              message: `Bạn đã hết lượt thi. Số lần thi tối đa: ${maxAttempts}`,
+              status: "error",
+              reason: "max_attempts_exceeded",
+              max_attempts: maxAttempts,
+              current_attempts: currentAttempts,
+              exam_id: exam.id,
+              exam_title: exam.title,
+              token,
+              user: { id: user.id, full_name: user.full_name, role: user.role }
+            });
+          }
         }
       }
     }

@@ -116,11 +116,24 @@ const UpdateStudentCardPhotos = () => {
 
         const video = videoRef.current;
         const canvas = canvasRef.current;
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
 
         const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0);
+
+        // Nếu ảnh dọc (portrait) → xoay 90° sang ngang (landscape)
+        if (vh > vw) {
+            canvas.width = vh;
+            canvas.height = vw;
+            ctx.translate(vh, 0);
+            ctx.rotate(Math.PI / 2); // Xoay 90° theo chiều kim đồng hồ
+            ctx.drawImage(video, 0, 0);
+            ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+        } else {
+            canvas.width = vw;
+            canvas.height = vh;
+            ctx.drawImage(video, 0, 0);
+        }
 
         canvas.toBlob((blob) => {
             if (!blob) {

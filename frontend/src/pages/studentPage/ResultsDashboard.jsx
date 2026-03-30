@@ -188,11 +188,7 @@ export default function ResultsDashboard() {
         ) : (
           <div className="space-y-4">
             {filtered.map((r, i) => {
-<<<<<<< Updated upstream
               const mcq = r.mcq_score ?? r.total_score;
-=======
-              const mcq = r.total_score ?? r.mcq_score;
->>>>>>> Stashed changes
               const essay = r.essay_score ?? r.ai_score;
               const total = r.suggested_total_score ?? (Number(mcq || 0) + Number(essay || 0));
               const totalBadge = getScoreBadge(total);
