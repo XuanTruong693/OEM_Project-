@@ -45,7 +45,7 @@ const RegisterPage = () => {
     // Real-time validation for lastName and firstName
     if (name === 'lastName' || name === 'firstName') {
       const trimmedValue = value.trim();
-      if (trimmedValue && !/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔưăâêô\s]+$/.test(trimmedValue)) {
+      if (trimmedValue && !/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔưăâêô\s\u00C0-\u024F\u1E00-\u1EFF]+$/.test(trimmedValue)) {
         setErrors({
           ...errors,
           [name]: `${name === 'lastName' ? 'Họ' : 'Tên'} chỉ được chứa chữ cái, không được có số hoặc ký tự đặc biệt`
@@ -62,14 +62,14 @@ const RegisterPage = () => {
     // Validation cho Họ
     if (!form.lastName.trim()) {
       newErrors.lastName = "Vui lòng nhập họ";
-    } else if (!/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔưăâêô\s]+$/.test(form.lastName.trim())) {
+    } else if (!/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔưăâêô\s\u00C0-\u024F\u1E00-\u1EFF]+$/.test(form.lastName.trim())) {
       newErrors.lastName = "Họ chỉ được chứa chữ cái, không được có số hoặc ký tự đặc biệt";
     }
 
     // Validation cho Tên
     if (!form.firstName.trim()) {
       newErrors.firstName = "Vui lòng nhập tên";
-    } else if (!/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔưăâêô\s]+$/.test(form.firstName.trim())) {
+    } else if (!/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔưăâêô\s\u00C0-\u024F\u1E00-\u1EFF]+$/.test(form.firstName.trim())) {
       newErrors.firstName = "Tên chỉ được chứa chữ cái, không được có số hoặc ký tự đặc biệt";
     }
 
@@ -152,14 +152,14 @@ const RegisterPage = () => {
     // Validation cho Họ - chỉ cho phép chữ cái và khoảng trắng
     if (!form.lastName.trim()) {
       newErrors.lastName = "Vui lòng nhập họ";
-    } else if (!/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔưăâêô\s]+$/.test(form.lastName.trim())) {
+    } else if (!/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔưăâêô\s\u00C0-\u024F\u1E00-\u1EFF]+$/.test(form.lastName.trim())) {
       newErrors.lastName = "Họ chỉ được chứa chữ cái, không được có số hoặc ký tự đặc biệt";
     }
 
     // Validation cho Tên - chỉ cho phép chữ cái và khoảng trắng
     if (!form.firstName.trim()) {
       newErrors.firstName = "Vui lòng nhập tên";
-    } else if (!/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔưăâêô\s]+$/.test(form.firstName.trim())) {
+    } else if (!/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔưăâêô\s\u00C0-\u024F\u1E00-\u1EFF]+$/.test(form.firstName.trim())) {
       newErrors.firstName = "Tên chỉ được chứa chữ cái, không được có số hoặc ký tự đặc biệt";
     }
 

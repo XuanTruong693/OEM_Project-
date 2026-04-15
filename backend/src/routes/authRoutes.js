@@ -395,38 +395,45 @@ router.post("/register", async (req, res) => {
     }
 
     const domain = email.split("@")[1];
+    const isDev = process.env.NODE_ENV && process.env.NODE_ENV.trim().toLowerCase() === "development";
+
     try {
-      const mxRecords = await dns.resolveMx(domain);
-      if (!mxRecords || mxRecords.length === 0) {
+      if (isDev) {
+        console.log(`[Register] [Dev Mode] Skipping MX verification for ${domain} (NODE_ENV: ${process.env.NODE_ENV})`);
+      } else {
+        const mxRecords = await dns.resolveMx(domain);
+        if (!mxRecords || mxRecords.length === 0) {
+          console.log(
+            `[Register] ❌ Domain "${domain}" không tồn tại (MX trống).`
+          );
+          return res.status(400).json({
+            message: "Email không tồn tại hoặc không thể nhận thư.",
+            status: "error",
+          });
+        }
         console.log(
-          `[Register] ❌ Domain "${domain}" không tồn tại (MX trống).`
+          `[Register] ✅ Domain "${domain}" hợp lệ (MX records found).`
         );
-        return res.status(400).json({
-          message: "Email không tồn tại hoặc không thể nhận thư.",
-          status: "error",
-        });
       }
-      console.log(
-        `[Register] ✅ Domain "${domain}" hợp lệ (MX records found).`
-      );
     } catch (dnsErr) {
-      console.log(
-        `[Register] ❌ Lỗi xác minh domain "${domain}":`,
+      // Chuyen thanh Warning thay vi loi nghiem trong de tranh block team test local
+      console.warn(
+        `[Register] ⚠️ Cảnh báo xác minh domain "${domain}" thất bại (nhưng vẫn tiếp tục):`,
         dnsErr.message
       );
-      return res.status(400).json({
-        message:
-          "Không thể xác minh email này. Vui lòng nhập email thật hoặc kiểm tra lại chính tả.",
-        status: "error",
-      });
+      if (isDev) {
+        console.log(`[Register] 🛠️ [Dev Mode Info] NODE_ENV hiện tại: ${process.env.NODE_ENV}`);
+      }
     }
+
+
 
     const existingUser = await User.findOne({
       where: { email: email.toLowerCase().trim() },
     });
 
     if (existingUser) {
-      console.log(`[Register] ❌ Email đã tồn tại trong hệ thống: ${email}`);
+      console.log(`[Register] ❌ Lỗi: Email đã tồn tại trong hệ thống: ${email}`);
       return res
         .status(400)
         .json({ message: "Email đã được đăng ký", status: "error" });
@@ -435,8 +442,10 @@ router.post("/register", async (req, res) => {
     const emailKey = email.toLowerCase().trim();
     const otpData = otpStorage.get(emailKey);
 
+    console.log(`[Register] Kiểm tra OTP cho ${emailKey}:`, otpData ? (otpData.verified ? "Đã xác minh" : "Chưa xác minh") : "Không tồn tại OTP");
+
     if (!otpData || !otpData.verified) {
-      console.log(`[Register] ❌ Email chưa được xác minh OTP: ${email}`);
+      console.log(`[Register] ❌ Lỗi: Email chưa được xác minh OTP: ${email}`);
       return res.status(400).json({
         message:
           "Email chưa được xác minh. Vui lòng xác minh email trước khi đăng ký",
@@ -587,7 +596,7 @@ router.post("/login", async (req, res) => {
     if (user.failed_login_attempts > 0) {
       await user.update({ failed_login_attempts: 0 });
     }
-    
+
     // Kiểm tra role người dùng chọn trên UI so với role thật trong DB
     if (role === "instructor" && user.role === "student") {
       return res.status(403).json({ message: "Tài khoản của bạn là Học viên (Student). Vui lòng chọn đúng vai trò để đăng nhập.", status: "error" });

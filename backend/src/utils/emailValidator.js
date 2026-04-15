@@ -3,14 +3,19 @@
 // ================================
 const dns = require('dns').promises;
 
-require('dns').setServers(['8.8.8.8', '8.8.4.4']);
 /**
  * Kiem tra ten mien email co ton tai thuc su khong (kiem tra MX record)
  * @param {string} email - Dia chi email can kiem tra
  * @returns {Promise<boolean>} - Tra ve true neu hop le, nguoc lai throw Error
  */
 async function validateEmailDomain(email) {
+  const isDev = process.env.NODE_ENV && process.env.NODE_ENV.trim().toLowerCase() === 'development';
   try {
+    if (isDev) {
+      console.log('🛠️ [Dev Mode] Bo qua xac minh MX record cho email:', email);
+      return true;
+    }
+
     // Kiem tra dinh dang email co hop le khong (regex don gian)
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
