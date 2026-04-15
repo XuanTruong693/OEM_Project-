@@ -191,7 +191,8 @@ export default function ExamPreview() {
           {qs.map((q, idx) => (
             <section
               key={q.question_id}
-              className="bg-slate-50 border border-slate-200 rounded-2xl p-4 hover:border-blue-300 hover:shadow transition"
+              className="notranslate bg-slate-50 border border-slate-200 rounded-2xl p-4 hover:border-blue-300 hover:shadow transition"
+              translate="no"
             >
               <div className="flex items-center gap-2 text-xs mb-1">
                 <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-100 text-green-700 font-bold">

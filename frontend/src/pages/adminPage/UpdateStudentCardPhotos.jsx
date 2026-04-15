@@ -6,9 +6,11 @@ import {
 } from 'lucide-react';
 import axiosClient from '../../api/axiosClient';
 import AdminSidebar from '../../components/admin/AdminSidebar';
+import { useLanguage } from '../../context/LanguageContext';
 
 const UpdateStudentCardPhotos = () => {
     const navigate = useNavigate();
+    const { t, language } = useLanguage();
 
     // --- Danh sách SV chưa có ảnh ---
     const [students, setStudents] = useState([]);
@@ -58,7 +60,7 @@ const UpdateStudentCardPhotos = () => {
             }
         } catch (err) {
             console.error('Lỗi tải danh sách SV:', err);
-            showToast('error', 'Lỗi khi tải danh sách sinh viên chưa có ảnh.');
+            showToast('error', t('error'));
         } finally {
             setLoading(false);
         }
@@ -96,7 +98,7 @@ const UpdateStudentCardPhotos = () => {
                 }
             } catch (err) {
                 console.error('Lỗi truy cập camera:', err);
-                showToast('error', 'Không thể truy cập camera. Vui lòng cấp quyền camera.');
+                showToast('error', language === 'vi' ? 'Không thể truy cập camera. Vui lòng cấp quyền camera.' : 'Unable to access camera. Please grant camera permission.');
                 closeCamera();
             }
         }, 200);
@@ -137,7 +139,7 @@ const UpdateStudentCardPhotos = () => {
 
         canvas.toBlob((blob) => {
             if (!blob) {
-                showToast('error', 'Lỗi khi chụp ảnh.');
+                showToast('error', t('error'));
                 return;
             }
 
@@ -153,7 +155,7 @@ const UpdateStudentCardPhotos = () => {
                 },
             }));
 
-            showToast('success', `Đã chụp ảnh cho ${captureTarget.student_name}`);
+            showToast('success', language === 'vi' ? `Đã chụp ảnh cho ${captureTarget.student_name}` : `Photo captured for ${captureTarget.student_name}`);
             closeCamera();
         }, 'image/jpeg', 0.85);
     };
@@ -175,7 +177,7 @@ const UpdateStudentCardPhotos = () => {
     const handleSubmitAll = async () => {
         const entries = Object.entries(capturedPhotos);
         if (entries.length === 0) {
-            showToast('error', 'Chưa có ảnh nào để cập nhật.');
+            showToast('error', language === 'vi' ? 'Chưa có ảnh nào để cập nhật.' : 'No photos to update.');
             return;
         }
 
@@ -192,7 +194,7 @@ const UpdateStudentCardPhotos = () => {
 
             if (res.data.success) {
                 setSubmitResult(res.data);
-                showToast('success', `Đã cập nhật ${res.data.successCount} ảnh thẻ thành công!`);
+                showToast('success', t('success'));
 
                 // Xóa tất cả ảnh tạm
                 Object.values(capturedPhotos).forEach(p => {
@@ -205,7 +207,7 @@ const UpdateStudentCardPhotos = () => {
                 setCurrentPage(1);
             }
         } catch (err) {
-            const errMsg = err.response?.data?.message || 'Lỗi khi cập nhật ảnh thẻ.';
+            const errMsg = err.response?.data?.message || t('error');
             showToast('error', errMsg);
         } finally {
             setSubmitting(false);
@@ -251,14 +253,14 @@ const UpdateStudentCardPhotos = () => {
                             className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-3"
                         >
                             <ArrowLeft size={18} />
-                            <span className="text-sm">Quay lại Quản lý Thẻ SV</span>
+                            <span className="text-sm">{t('backToStudentCardManagement')}</span>
                         </button>
                         <h1 className="text-3xl font-semibold text-white flex items-center gap-3">
                             <Camera size={30} className="text-amber-400" />
-                            Cập nhật Ảnh thẻ Sinh viên
+                            {t('batchUpdatePhotos')}
                         </h1>
                         <p className="text-gray-400 mt-1">
-                            Chụp và cập nhật ảnh thẻ cho các sinh viên chưa có ảnh trong hệ thống
+                            {t('batchUpdatePhotosDesc')}
                         </p>
                     </div>
                     {capturedCount > 0 && (
@@ -268,7 +270,7 @@ const UpdateStudentCardPhotos = () => {
                             className="flex items-center justify-center gap-2 px-6 py-3 w-full md:w-auto bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors font-medium text-lg disabled:opacity-50"
                         >
                             <Upload size={20} />
-                            {submitting ? 'Đang cập nhật...' : `Cập nhật ${capturedCount} ảnh thẻ`}
+                            {submitting ? t('processing') : (language === 'vi' ? `Cập nhật ${capturedCount} ảnh thẻ` : `Update ${capturedCount} photos`)}
                         </button>
                     )}
                 </div>
@@ -278,27 +280,27 @@ const UpdateStudentCardPhotos = () => {
                     <div className="mb-6 p-4 bg-green-600/10 border border-green-600/30 rounded-xl">
                         <div className="flex items-center gap-2 text-green-400 font-medium mb-2">
                             <Check size={18} />
-                            Kết quả cập nhật
+                            {t('updateResult')}
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div className="bg-gray-800 rounded-lg p-3 text-center">
                                 <div className="text-xl font-bold text-white">{submitResult.total}</div>
-                                <div className="text-xs text-gray-400">Tổng</div>
+                                <div className="text-xs text-gray-400">{t('total')}</div>
                             </div>
                             <div className="bg-green-600/20 border border-green-600/30 rounded-lg p-3 text-center">
                                 <div className="text-xl font-bold text-green-400">{submitResult.successCount}</div>
-                                <div className="text-xs text-green-400">Thành công</div>
+                                <div className="text-xs text-green-400">{t('success')}</div>
                             </div>
                             <div className="bg-red-600/20 border border-red-600/30 rounded-lg p-3 text-center">
                                 <div className="text-xl font-bold text-red-400">{submitResult.errorCount}</div>
-                                <div className="text-xs text-red-400">Lỗi</div>
+                                <div className="text-xs text-red-400">{t('failed')}</div>
                             </div>
                         </div>
                         <button
                             onClick={() => setSubmitResult(null)}
                             className="mt-3 text-sm text-gray-400 hover:text-white transition-colors"
                         >
-                            Ẩn kết quả
+                            {t('hideResult')}
                         </button>
                     </div>
                 )}
@@ -309,10 +311,10 @@ const UpdateStudentCardPhotos = () => {
                         <div className="flex items-center justify-between mb-4">
                             <h2 className="text-lg font-semibold text-amber-400 flex items-center gap-2">
                                 <Camera size={20} />
-                                Ảnh đã chụp ({capturedCount} sinh viên)
+                                {t('capturedPhotosTitle')} ({capturedCount} {t('students').toLowerCase()})
                             </h2>
                             <span className="text-xs text-gray-400">
-                                Nhấn "Cập nhật ảnh thẻ" ở góc trên phải để lưu vào hệ thống
+                                {t('capturedPhotosHint')}
                             </span>
                         </div>
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
@@ -333,7 +335,7 @@ const UpdateStudentCardPhotos = () => {
                                     <button
                                         onClick={() => removeCapturedPhoto(code)}
                                         className="absolute top-1 right-1 p-1.5 bg-red-600/80 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                                        title="Xóa ảnh"
+                                        title={t('delete')}
                                     >
                                         <Trash2 size={12} />
                                     </button>
@@ -348,8 +350,8 @@ const UpdateStudentCardPhotos = () => {
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-semibold text-white flex items-center gap-2">
                             <ImageOff size={20} className="text-gray-400" />
-                            Sinh viên chưa có ảnh thẻ
-                            <span className="text-sm font-normal text-gray-400">({totalItems} sinh viên)</span>
+                            {t('studentsWithoutPhotos')}
+                            <span className="text-sm font-normal text-gray-400">({totalItems} {t('students').toLowerCase()})</span>
                         </h2>
                     </div>
 
@@ -359,7 +361,7 @@ const UpdateStudentCardPhotos = () => {
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                             <input
                                 type="text"
-                                placeholder="Tìm kiếm theo Tên hoặc MSSV..."
+                                placeholder={t('searchPlaceholderStudent')}
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 className="w-full pl-10 pr-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-amber-500"
@@ -372,101 +374,101 @@ const UpdateStudentCardPhotos = () => {
                         <div className="overflow-x-auto">
                             <table className="w-full min-w-[800px]">
                                 <thead className="bg-gray-700/50">
-                                <tr>
-                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">#</th>
-                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">MSSV</th>
-                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Tên Sinh Viên</th>
-                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Trạng thái</th>
-                                    <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Hành động</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-700">
-                                {loading ? (
                                     <tr>
-                                        <td colSpan="5" className="px-6 py-10 text-center text-gray-400">
-                                            <div className="flex items-center justify-center gap-2">
-                                                <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-                                                Đang tải...
-                                            </div>
-                                        </td>
+                                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">#</th>
+                                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">MSSV</th>
+                                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">{t('studentName')}</th>
+                                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">{t('status')}</th>
+                                        <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">{t('actions')}</th>
                                     </tr>
-                                ) : students.length === 0 ? (
-                                    <tr>
-                                        <td colSpan="5" className="px-6 py-12 text-center">
-                                            <Check size={40} className="mx-auto text-green-500 mb-3" />
-                                            <p className="text-gray-400">Tất cả sinh viên đều đã có ảnh thẻ! 🎉</p>
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    students.map((student, index) => {
-                                        const isCaptured = !!capturedPhotos[student.student_code];
-                                        return (
-                                            <tr key={student.id} className={`transition-colors ${isCaptured ? 'bg-amber-600/5' : 'hover:bg-gray-700/30'}`}>
-                                                <td className="px-6 py-4 text-sm text-gray-400">
-                                                    {(currentPage - 1) * LIMIT + index + 1}
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-600/20 text-blue-400 border border-blue-600/30">
-                                                        {student.student_code}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 text-white font-medium flex items-center gap-2">
-                                                    <User size={16} className="text-gray-500" />
-                                                    {student.student_name}
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    {isCaptured ? (
-                                                        <span className="flex items-center gap-1.5 text-amber-400 text-sm">
-                                                            <Check size={14} />
-                                                            Đã chụp
+                                </thead>
+                                <tbody className="divide-y divide-gray-700">
+                                    {loading ? (
+                                        <tr>
+                                            <td colSpan="5" className="px-6 py-10 text-center text-gray-400">
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                                                    {t('loading')}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ) : students.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="5" className="px-6 py-12 text-center">
+                                                <Check size={40} className="mx-auto text-green-500 mb-3" />
+                                                <p className="text-gray-400">{language === 'vi' ? 'Tất cả sinh viên đều đã có ảnh thẻ! 🎉' : 'All students already have card photos! 🎉'}</p>
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        students.map((student, index) => {
+                                            const isCaptured = !!capturedPhotos[student.student_code];
+                                            return (
+                                                <tr key={student.id} className={`transition-colors ${isCaptured ? 'bg-amber-600/5' : 'hover:bg-gray-700/30'}`}>
+                                                    <td className="px-6 py-4 text-sm text-gray-400">
+                                                        {(currentPage - 1) * LIMIT + index + 1}
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-600/20 text-blue-400 border border-blue-600/30">
+                                                            {student.student_code}
                                                         </span>
-                                                    ) : (
-                                                        <span className="flex items-center gap-1.5 text-gray-500 text-sm">
-                                                            <ImageOff size={14} />
-                                                            Chưa có ảnh
-                                                        </span>
-                                                    )}
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex justify-end gap-2">
+                                                    </td>
+                                                    <td className="px-6 py-4 text-white font-medium flex items-center gap-2">
+                                                        <User size={16} className="text-gray-500" />
+                                                        {student.student_name}
+                                                    </td>
+                                                    <td className="px-6 py-4">
                                                         {isCaptured ? (
-                                                            <>
+                                                            <span className="flex items-center gap-1.5 text-amber-400 text-sm">
+                                                                <Check size={14} />
+                                                                {t('captured')}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="flex items-center gap-1.5 text-gray-500 text-sm">
+                                                                <ImageOff size={14} />
+                                                                {t('noPhoto')}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex justify-end gap-2">
+                                                            {isCaptured ? (
+                                                                <>
+                                                                    <button
+                                                                        onClick={() => openCamera({
+                                                                            student_code: student.student_code,
+                                                                            student_name: student.student_name,
+                                                                        })}
+                                                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition-colors"
+                                                                    >
+                                                                        <Camera size={14} />
+                                                                        {t('retake')}
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => removeCapturedPhoto(student.student_code)}
+                                                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-lg transition-colors"
+                                                                    >
+                                                                        <Trash2 size={14} />
+                                                                        {t('delete')}
+                                                                    </button>
+                                                                </>
+                                                            ) : (
                                                                 <button
                                                                     onClick={() => openCamera({
                                                                         student_code: student.student_code,
                                                                         student_name: student.student_name,
                                                                     })}
-                                                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition-colors"
+                                                                    className="flex items-center gap-1.5 px-4 py-1.5 text-xs bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors font-medium"
                                                                 >
                                                                     <Camera size={14} />
-                                                                    Chụp lại
+                                                                    {t('capture')}
                                                                 </button>
-                                                                <button
-                                                                    onClick={() => removeCapturedPhoto(student.student_code)}
-                                                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-lg transition-colors"
-                                                                >
-                                                                    <Trash2 size={14} />
-                                                                    Xóa
-                                                                </button>
-                                                            </>
-                                                        ) : (
-                                                            <button
-                                                                onClick={() => openCamera({
-                                                                    student_code: student.student_code,
-                                                                    student_name: student.student_name,
-                                                                })}
-                                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors font-medium"
-                                                            >
-                                                                <Camera size={14} />
-                                                                Chụp ảnh
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })
-                                )}
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    )}
                                 </tbody>
                             </table>
                         </div>
@@ -475,7 +477,10 @@ const UpdateStudentCardPhotos = () => {
                         {totalPages > 1 && (
                             <div className="flex flex-col md:flex-row items-center justify-between gap-4 px-6 py-4 border-t border-gray-700">
                                 <span className="text-sm text-gray-400 text-center md:text-left">
-                                    Đang xem {(currentPage - 1) * LIMIT + 1} - {Math.min(currentPage * LIMIT, totalItems)} trong {totalItems} sinh viên
+                                    {language === 'vi' 
+                                        ? `Đang xem ${(currentPage - 1) * LIMIT + 1} - ${Math.min(currentPage * LIMIT, totalItems)} trong ${totalItems} sinh viên`
+                                        : `Showing ${(currentPage - 1) * LIMIT + 1} - ${Math.min(currentPage * LIMIT, totalItems)} of ${totalItems} students`
+                                    }
                                 </span>
                                 <div className="flex items-center justify-center gap-2">
                                     <button
@@ -485,7 +490,7 @@ const UpdateStudentCardPhotos = () => {
                                     >
                                         <ChevronLeft size={18} />
                                     </button>
-                                    <span className="text-white text-sm">Trang {currentPage} / {totalPages}</span>
+                                    <span className="text-white text-sm">{t('page')} {currentPage} / {totalPages}</span>
                                     <button
                                         onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                                         disabled={currentPage === totalPages}
@@ -507,10 +512,10 @@ const UpdateStudentCardPhotos = () => {
                                 <div>
                                     <h2 className="text-lg font-semibold text-white flex items-center gap-2">
                                         <Camera size={20} className="text-amber-400" />
-                                        Chụp ảnh thẻ
+                                        {t('capture')}
                                     </h2>
                                     <p className="text-sm text-gray-400 mt-1">
-                                        Sinh viên: <span className="text-white font-medium">{captureTarget.student_name}</span>
+                                        {t('candidate')}: <span className="text-white font-medium">{captureTarget.student_name}</span>
                                         <span className="text-blue-400 ml-2">({captureTarget.student_code})</span>
                                     </p>
                                 </div>
@@ -534,7 +539,7 @@ const UpdateStudentCardPhotos = () => {
                                         <div className="absolute inset-4 border-2 border-amber-400/30 rounded-lg" />
                                         <div className="absolute bottom-2 left-0 right-0 text-center">
                                             <span className="bg-black/60 text-amber-400 text-xs px-3 py-1 rounded-full">
-                                                Đặt ảnh thẻ vào khung hình rồi nhấn Chụp
+                                                {t('cameraOverlayHint')}
                                             </span>
                                         </div>
                                     </div>
@@ -549,14 +554,14 @@ const UpdateStudentCardPhotos = () => {
                                         onClick={closeCamera}
                                         className="px-5 py-2.5 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
                                     >
-                                        Hủy
+                                        {t('cancel')}
                                     </button>
                                     <button
                                         onClick={capturePhoto}
                                         className="flex items-center gap-2 px-8 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors font-medium text-lg"
                                     >
                                         <Camera size={20} />
-                                        Chụp
+                                        {t('capture')}
                                     </button>
                                 </div>
                             </div>

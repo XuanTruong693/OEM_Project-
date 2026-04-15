@@ -18,6 +18,7 @@ const {
   myResults,
   getExamPublicInfo,
   getSubmissionStatus,
+  getSubmissionDetail,
 } = require("../controllers/studentExamController");
 
 // Import proctor event handler from submission controller
@@ -67,5 +68,6 @@ router.post("/submissions/:id/submit", verifyToken, requireRoomVerification, sub
 
 // Results
 router.get("/results/my", verifyToken, myResults);
+router.get("/results/:id/detail", verifyToken, getSubmissionDetail);
 
 module.exports = router;

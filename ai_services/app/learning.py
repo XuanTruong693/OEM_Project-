@@ -314,24 +314,35 @@ class LearningEngine:
 
     def _load_patterns_from_file(self):
         # Load learned patterns from JSON file
+        # FILTER: Only load entries where instructor actually changed the score
         try:
             if os.path.exists(LEARNED_DATA_PATH):
                 with open(LEARNED_DATA_PATH, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     if isinstance(data, list):
-                        self.patterns_cache = data
-                        print(f"[Learning] Loaded {len(self.patterns_cache)} learned patterns from file")
+                        # Filter: only keep real corrections
+                        filtered = [
+                            p for p in data 
+                            if abs(float(p.get('confirmed_score', 0)) - float(p.get('ai_score', 0))) > 0.05
+                        ]
+                        skipped = len(data) - len(filtered)
+                        self.patterns_cache = filtered
+                        print(f"[Learning] Loaded {len(filtered)} learned patterns from file (skipped {skipped} where AI==GV)")
                     else:
                         print("[Learning] Warning: learned_data.json is not a list")
         except Exception as e:
             print(f"[Learning] Could not load patterns file: {e}")
 
     def _save_patterns_to_file(self):
-        # Save learned patterns to JSON file
         try:
+            filtered = [
+                p for p in self.patterns_cache 
+                if abs(float(p.get('confirmed_score', 0)) - float(p.get('ai_score', 0))) > 0.05
+            ]
+            skipped = len(self.patterns_cache) - len(filtered)
             with open(LEARNED_DATA_PATH, 'w', encoding='utf-8') as f:
-                json.dump(self.patterns_cache, f, ensure_ascii=False, indent=2)
-            print(f"[Learning] Saved {len(self.patterns_cache)} patterns to file")
+                json.dump(filtered, f, ensure_ascii=False, indent=2)
+            print(f"[Learning] Saved {len(filtered)} patterns to file (filtered out {skipped} where AI==GV)")
         except Exception as e:
             print(f"[Learning] Could not save patterns file: {e}")
     
@@ -406,6 +417,7 @@ class LearningEngine:
                     al.model_answer,
                     al.ai_suggested_score,
                     sa.score as confirmed_score,
+                    sa.instructor_feedback as feedback,
                     eq.points as max_points
                 FROM ai_logs al
                 JOIN student_answers sa ON al.question_id = sa.question_id 
@@ -424,14 +436,23 @@ class LearningEngine:
             synonym_candidates = []
             count_new = 0
             
+            skipped_no_change = 0
             for row in results:
                 pattern = {
                     "student_answer": row["student_answer"],
                     "model_answer": row["model_answer"],
                     "confirmed_score": float(row["confirmed_score"]) if row["confirmed_score"] else 0,
                     "ai_score": float(row["ai_suggested_score"]) if row["ai_suggested_score"] else 0,
-                    "max_points": float(row["max_points"]) if row["max_points"] else 1.0
+                    "max_points": float(row["max_points"]) if row["max_points"] else 1.0,
+                    "score_ratio": (float(row["confirmed_score"]) / float(row["max_points"])) if float(row.get("max_points", 0)) > 0 else 0,
+                    "feedback": row.get("feedback") or "",
+                    "learned_at": datetime.now().isoformat()
                 }
+                
+                # GUARD: Skip if instructor didn't actually change the score
+                if abs(pattern["confirmed_score"] - pattern["ai_score"]) <= 0.05:
+                    skipped_no_change += 1
+                    continue
                 
                 # Check for duplicates efficiently
                 is_duplicate = False
@@ -464,6 +485,8 @@ class LearningEngine:
             if count_new > 0:
                 self._save_patterns_to_file()
                 print(f"[Learning] DB Sync: Merged {count_new} new patterns from DB. Total cache: {len(self.patterns_cache)}")
+            if skipped_no_change > 0:
+                print(f"[Learning] DB Sync: Skipped {skipped_no_change} entries (AI == GV, no learning value)")
             
             # Learn synonyms from candidates
             print(f"[Learning] Processing {len(synonym_candidates)} synonym candidates...")
@@ -663,13 +686,22 @@ class LearningEngine:
         return None
 
     def add_learned_pattern(self, student_answer: str, model_answer: str, 
-                           confirmed_score: float, max_points: float = 1.0) -> None:
+                           confirmed_score: float, max_points: float = 1.0, 
+                           feedback: str = "", ai_score: float = None) -> None:
+        # GUARD: Skip if instructor didn't change the score
+        if ai_score is not None and abs(float(confirmed_score) - float(ai_score)) <= 0.05:
+            print(f"[Learning] Skipped add_learned_pattern (no change): ai={ai_score} == gv={confirmed_score} for '{student_answer[:30]}...'")
+            return
+        
         pattern = {
             "student_answer": student_answer,
             "model_answer": model_answer,
             "confirmed_score": float(confirmed_score),
-            "ai_score": 0.0, # Not needed for matching
-            "max_points": float(max_points)
+            "ai_score": float(ai_score) if ai_score is not None else 0.0,
+            "max_points": float(max_points),
+            "score_ratio": (float(confirmed_score) / float(max_points)) if float(max_points) > 0 else 0,
+            "feedback": feedback,
+            "learned_at": datetime.now().isoformat()
         }
         
         # Check if already exists to avoid duplicates
@@ -680,8 +712,9 @@ class LearningEngine:
         for p in self.patterns_cache:
             if (self._normalize(p["student_answer"]) == stud_norm and 
                 self._normalize(p["model_answer"]) == mod_norm):
-                # Update existing score
+                # Update existing score and feedback
                 p["confirmed_score"] = float(confirmed_score)
+                p["feedback"] = feedback
                 updated = True
                 print(f"[Learning] Updated existing pattern in cache: '{student_answer[:20]}...'")
                 break

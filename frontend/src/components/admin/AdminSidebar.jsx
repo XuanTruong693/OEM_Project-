@@ -8,13 +8,13 @@ import { useLanguage } from '../../context/LanguageContext';
 
 const AdminSidebar = ({ activeTab, onTabChange }) => {
     const navigate = useNavigate();
-    const { t } = useLanguage();
+    const { t, language } = useLanguage();
     const [mobileOpen, setMobileOpen] = useState(false);
 
     const navItems = [
         { icon: Home, labelKey: 'dashboard', path: '/admin-dashboard', tab: 'dashboard' },
         { icon: Users, labelKey: 'userManagement', path: '/admin/users', tab: 'users' },
-        // ✅ [StudentCard] Menu mới - Quản lý Thẻ Sinh Viên
+        //[StudentCard] Menu mới - Quản lý Thẻ Sinh Viên
         { icon: CreditCard, labelKey: 'studentCards', path: '/admin/student-cards', tab: 'student-cards' },
         { icon: BookOpen, labelKey: 'examManagement', path: '/admin/exams', tab: 'exams' },
         { icon: FileText, labelKey: 'examOverview', path: '/admin/exam-overview', tab: 'exam-overview' },
@@ -25,9 +25,8 @@ const AdminSidebar = ({ activeTab, onTabChange }) => {
     ];
 
     const handleLogout = () => {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        localStorage.removeItem('role');
+        localStorage.clear();
+        sessionStorage.clear();
         navigate('/login');
     };
 
@@ -65,7 +64,7 @@ const AdminSidebar = ({ activeTab, onTabChange }) => {
                                 }`}
                         >
                             <item.icon size={18} />
-                            <span>{item.labelKey === 'aiGrading' ? 'AI Monitor' : t(item.labelKey)}</span>
+                            <span>{item.labelKey === 'aiGrading' ? (language === 'vi' ? 'Giám sát AI' : 'AI Monitor') : t(item.labelKey)}</span>
                         </button>
                     );
                 })}
@@ -112,9 +111,8 @@ const AdminSidebar = ({ activeTab, onTabChange }) => {
 
             {/* Mobile Drawer */}
             <aside
-                className={`fixed top-0 left-0 h-full w-64 bg-gray-800 border-r border-gray-700 z-50 flex flex-col transform transition-transform duration-300 md:hidden ${
-                    mobileOpen ? 'translate-x-0' : '-translate-x-full'
-                }`}
+                className={`fixed top-0 left-0 h-full w-64 bg-gray-800 border-r border-gray-700 z-50 flex flex-col transform transition-transform duration-300 md:hidden ${mobileOpen ? 'translate-x-0' : '-translate-x-full'
+                    }`}
             >
                 <div className="absolute top-4 right-4 md:hidden">
                     <button onClick={() => setMobileOpen(false)} className="text-gray-400 hover:text-white transition-colors">

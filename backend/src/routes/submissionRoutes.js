@@ -9,6 +9,11 @@ router.post(
   submissionController.postProctorEvent
 );
 
+router.delete(
+  "/submissions/:submissionId/proctor-event/:snapshotId",
+  submissionController.deleteProctorEvent
+);
+
 router.post(
   "/submissions/:submissionId/snapshots",
   snapshotController.uploadSnapshots
@@ -17,6 +22,11 @@ router.post(
 router.post(
   "/submissions/:submissionId/videos/merge",
   snapshotController.mergeToVideo
+);
+
+router.delete(
+  "/submissions/:submissionId/snapshots/:violationId",
+  snapshotController.deleteEvidence
 );
 
 router.get("/exams/:examId/violations", submissionController.getExamViolations);

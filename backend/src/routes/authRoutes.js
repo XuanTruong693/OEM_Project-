@@ -251,7 +251,16 @@ router.post("/google", async (req, res) => {
 
     let user = await User.findOne({ where: { email } });
 
-    // Removed appRole check for existing users - different users can have different roles
+    if (user) {
+      if (role === "instructor" && user.role === "student") {
+        return res.status(403).json({ message: "Tài khoản của bạn là Học viên (Student). Vui lòng chọn đúng vai trò để đăng nhập.", status: "error" });
+      }
+      if (role === "student" && user.role !== "student") {
+        const viRole = user.role === "admin" ? "Quản trị viên (Admin)" : "Giảng viên (Instructor)";
+        return res.status(403).json({ message: `Tài khoản của bạn là ${viRole}. Vui lòng chọn đúng vai trò để đăng nhập.`, status: "error" });
+      }
+    }
+
     if (!user) {
       user = await User.create({
         full_name,
@@ -517,29 +526,6 @@ router.post("/login", async (req, res) => {
         .status(400)
         .json({ message: "Địa chỉ email không hợp lệ", status: "error" });
     }
-
-    const domain = email.split("@")[1];
-    try {
-      const mxRecords = await dns.resolveMx(domain);
-      if (!mxRecords || mxRecords.length === 0) {
-        console.log(`[Login] ❌ Domain email "${domain}" không tồn tại.`);
-        return res.status(400).json({
-          message: "Email này không tồn tại hoặc không thể nhận thư.",
-          status: "error",
-        });
-      }
-      console.log(`[Login] ✅ Domain "${domain}" hợp lệ (MX records found).`);
-    } catch (dnsErr) {
-      console.log(
-        `[Login] ❌ Lỗi xác minh domain "${domain}":`,
-        dnsErr.message
-      );
-      return res.status(400).json({
-        message: "Không thể xác minh tên miền email, vui lòng kiểm tra lại.",
-        status: "error",
-      });
-    }
-
     const user = await User.findOne({
       where: { email: email.toLowerCase().trim() },
     });
@@ -601,7 +587,16 @@ router.post("/login", async (req, res) => {
     if (user.failed_login_attempts > 0) {
       await user.update({ failed_login_attempts: 0 });
     }
-    // Removed appRole check - different users on different devices can use different roles
+    
+    // Kiểm tra role người dùng chọn trên UI so với role thật trong DB
+    if (role === "instructor" && user.role === "student") {
+      return res.status(403).json({ message: "Tài khoản của bạn là Học viên (Student). Vui lòng chọn đúng vai trò để đăng nhập.", status: "error" });
+    }
+    if (role === "student" && user.role !== "student") {
+      const viRole = user.role === "admin" ? "Quản trị viên (Admin)" : "Giảng viên (Instructor)";
+      return res.status(403).json({ message: `Tài khoản của bạn là ${viRole}. Vui lòng chọn đúng vai trò để đăng nhập.`, status: "error" });
+    }
+
 
     if (role === "student") {
       if (!roomId) {

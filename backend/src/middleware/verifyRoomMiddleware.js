@@ -34,6 +34,19 @@ const requireRoomVerification = async (req, res, next) => {
       });
     }
 
+    // ✅ THÊM: Kiểm tra xem sinh viên có được Giảng viên bypass (admin_bypass) cho submission này không
+    if (req.params.id && req.path.includes('/submissions/')) {
+        const submissionId = req.params.id;
+        const [bypassRows] = await sequelize.query(
+            `SELECT id FROM cheating_logs WHERE submission_id = ? AND event_type = 'admin_bypass' LIMIT 1`,
+            { replacements: [submissionId] }
+        );
+        if (Array.isArray(bypassRows) && bypassRows.length > 0) {
+            console.log(`✅ [verifyRoomMiddleware] Submission ${submissionId} is bypassed by instructor. Skipping room check.`);
+            return next();
+        }
+    }
+
     // Lấy exam_room_code từ exam
     const [examRows] = await sequelize.query(
       `SELECT exam_room_code FROM exams WHERE id = ? LIMIT 1`,

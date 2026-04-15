@@ -64,6 +64,7 @@ CREATE TABLE exams (
         'general',
         'technical'
     ) NOT NULL DEFAULT 'general',
+    allow_view_answers TINYINT(1) DEFAULT 0 COMMENT 'Allow students to see detail results',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_exams_room_code (exam_room_code),
@@ -160,6 +161,7 @@ CREATE TABLE student_answers (
     answer_text TEXT NULL,
     selected_option_id INT UNSIGNED NULL,
     score FLOAT DEFAULT 0 CHECK (score >= 0),
+    instructor_feedback TEXT DEFAULT NULL,
     status ENUM(
         'pending',
         'graded',

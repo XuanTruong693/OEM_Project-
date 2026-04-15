@@ -8,7 +8,7 @@ import AdminSidebar from '../../components/admin/AdminSidebar';
 import { useLanguage } from '../../context/LanguageContext';
 
 const ResultsManagement = () => {
-    const { t } = useLanguage();
+    const { t, language } = useLanguage();
     const [results, setResults] = useState([]);
     const [exams, setExams] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -141,13 +141,36 @@ const ResultsManagement = () => {
     const totalPages = Math.ceil(total / limit);
 
     const getStatusBadge = (status) => {
-        switch (status) {
-            case 'confirmed': return { label: t('confirmed'), class: 'bg-green-600/20 text-green-400' };
-            case 'graded': return { label: t('confirmed'), class: 'bg-blue-600/20 text-blue-400' };
-            case 'pending': return { label: t('pending'), class: 'bg-yellow-600/20 text-yellow-400' };
-            case 'submitted': return { label: t('pending'), class: 'bg-purple-600/20 text-purple-400' };
-            default: return { label: status || 'N/A', class: 'bg-gray-600/20 text-gray-300' };
-        }
+        const config = {
+            confirmed: { 
+                label: t('confirmed'), 
+                color: "bg-green-500/10 text-green-500 border-green-500/20 [.light-theme_&]:bg-green-50 [.light-theme_&]:text-green-600 [.light-theme_&]:border-green-200" 
+            },
+            graded: { 
+                label: t('confirmed'), 
+                color: "bg-blue-500/10 text-blue-500 border-blue-500/20 [.light-theme_&]:bg-blue-50 [.light-theme_&]:text-blue-600 [.light-theme_&]:border-blue-200" 
+            },
+            pending: { 
+                label: t('pending'), 
+                color: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20 [.light-theme_&]:bg-yellow-50 [.light-theme_&]:text-yellow-600 [.light-theme_&]:border-yellow-200" 
+            },
+            submitted: { 
+                label: t('pending'), 
+                color: "bg-purple-500/10 text-purple-500 border-purple-500/20 [.light-theme_&]:bg-purple-50 [.light-theme_&]:text-purple-600 [.light-theme_&]:border-purple-200" 
+            },
+            default: { 
+                label: status || 'N/A', 
+                color: "bg-gray-500/10 text-gray-400 border-gray-500/20 [.light-theme_&]:bg-gray-50 [.light-theme_&]:text-gray-600 [.light-theme_&]:border-gray-200" 
+            }
+        };
+
+        const { label, color } = config[status] || config.default;
+
+        return (
+            <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold border whitespace-nowrap shadow-sm transition-all duration-200 ${color}`}>
+                {label}
+            </span>
+        );
     };
 
     const getScoreColor = (score) => {
@@ -158,15 +181,15 @@ const ResultsManagement = () => {
     };
 
     return (
-        <div className="flex flex-col md:flex-row min-h-screen bg-gray-900">
+        <div className="flex flex-col md:flex-row min-h-screen bg-gray-900 [.light-theme_&]:bg-gray-50 transition-colors">
             <AdminSidebar activeTab="results" />
 
             <main className="flex-1 p-4 pt-20 md:p-8 overflow-y-auto">
                 {/* Header */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-0 mb-8">
                     <div>
-                        <h1 className="text-3xl font-semibold text-white">{t('results')}</h1>
-                        <p className="text-gray-300 mt-1">{t('results')}</p>
+                        <h1 className="text-3xl font-semibold text-white [.light-theme_&]:text-gray-900 transition-colors">{t('resultsManagementTitle') || t('results')}</h1>
+                        <p className="text-gray-300 [.light-theme_&]:text-gray-600 mt-1 transition-colors">{t('resultsManagementDesc') || t('results')}</p>
                     </div>
                 </div>
 
@@ -181,39 +204,41 @@ const ResultsManagement = () => {
 
                 {/* Filters */}
                 <div className="flex flex-col md:flex-row gap-4 mb-6">
-                    <select
-                        value={examFilter}
-                        onChange={(e) => { setExamFilter(e.target.value); setPage(1); }}
-                        className="px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500 min-w-[300px]"
-                    >
-                        <option value="">{t('allExams')}</option>
-                        {exams.map(exam => (
-                            <option key={exam.id} value={exam.id}>{exam.title}</option>
-                        ))}
-                    </select>
+                    <div className="relative w-full md:max-w-md">
+                        <select
+                            value={examFilter}
+                            onChange={(e) => { setExamFilter(e.target.value); setPage(1); }}
+                            className="w-full px-4 py-2.5 bg-gray-800 [.light-theme_&]:bg-white border border-gray-700 [.light-theme_&]:border-gray-200 rounded-lg text-white [.light-theme_&]:text-gray-900 focus:outline-none focus:border-blue-500 shadow-sm transition-colors"
+                        >
+                            <option value="">{t('allExams')}</option>
+                            {exams.map(exam => (
+                                <option key={exam.id} value={exam.id}>{exam.title}</option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
 
                 {/* Stats */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-                        <p className="text-gray-300 text-sm">{t('totalResults')}</p>
-                        <p className="text-2xl font-bold text-white">{total}</p>
+                    <div className="bg-gray-800 [.light-theme_&]:bg-white border border-gray-700 [.light-theme_&]:border-gray-200 rounded-lg p-5 shadow-sm transition-colors border-l-4 border-l-blue-500">
+                        <p className="text-gray-400 [.light-theme_&]:text-gray-500 text-xs font-bold uppercase mb-1">{t('totalResults')}</p>
+                        <p className="text-2xl font-bold text-white [.light-theme_&]:text-gray-900">{total}</p>
                     </div>
-                    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-                        <p className="text-gray-300 text-sm">{t('confirmed')}</p>
-                        <p className="text-2xl font-bold text-green-400">
+                    <div className="bg-gray-800 [.light-theme_&]:bg-white border border-gray-700 [.light-theme_&]:border-gray-200 rounded-lg p-5 shadow-sm transition-colors border-l-4 border-l-green-500">
+                        <p className="text-gray-400 [.light-theme_&]:text-gray-500 text-xs font-bold uppercase mb-1">{t('confirmed')}</p>
+                        <p className="text-2xl font-bold text-green-400 font-mono">
                             {results.filter(r => r.status === 'confirmed').length}
                         </p>
                     </div>
-                    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-                        <p className="text-gray-300 text-sm">{t('pending')}</p>
-                        <p className="text-2xl font-bold text-yellow-400">
+                    <div className="bg-gray-800 [.light-theme_&]:bg-white border border-gray-700 [.light-theme_&]:border-gray-200 rounded-lg p-5 shadow-sm transition-colors border-l-4 border-l-yellow-500">
+                        <p className="text-gray-400 [.light-theme_&]:text-gray-500 text-xs font-bold uppercase mb-1">{t('pending')}</p>
+                        <p className="text-2xl font-bold text-yellow-400 font-mono">
                             {results.filter(r => r.status === 'pending' || r.status === 'submitted').length}
                         </p>
                     </div>
-                    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-                        <p className="text-gray-300 text-sm">{t('avgScore')}</p>
-                        <p className="text-2xl font-bold text-blue-400">
+                    <div className="bg-gray-800 [.light-theme_&]:bg-white border border-gray-700 [.light-theme_&]:border-gray-200 rounded-lg p-5 shadow-sm transition-colors border-l-4 border-l-purple-500">
+                        <p className="text-gray-400 [.light-theme_&]:text-gray-500 text-xs font-bold uppercase mb-1">{t('avgScore')}</p>
+                        <p className="text-2xl font-bold text-blue-400 font-mono">
                             {results.length > 0
                                 ? (results.reduce((acc, r) => acc + (r.total_score || 0), 0) / results.length).toFixed(1)
                                 : 'N/A'
@@ -223,117 +248,115 @@ const ResultsManagement = () => {
                 </div>
 
                 {/* Results Table */}
-                <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
+                <div className="bg-gray-800 [.light-theme_&]:bg-white border border-gray-700 [.light-theme_&]:border-gray-200 rounded-xl overflow-hidden shadow-sm transition-colors">
                     <div className="overflow-x-auto">
                         <table className="w-full min-w-[800px]">
-                            <thead className="bg-gray-700/50">
-                            <tr>
-                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('student')}</th>
-                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('exam')}</th>
-                                <th className="px-6 py-4 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">{t('score')}</th>
-                                <th className="px-6 py-4 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">{t('aiScore')}</th>
-                                <th className="px-6 py-4 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">{t('status')}</th>
-                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('submittedAt')}</th>
-                                <th className="px-6 py-4 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">{t('action')}</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-700">
-                            {loading ? (
+                            <thead className="bg-gray-700/50 [.light-theme_&]:bg-gray-50 border-b border-gray-700 [.light-theme_&]:border-gray-200 transition-colors">
                                 <tr>
-                                    <td colSpan="7" className="px-6 py-8 text-center text-gray-300">
-                                        {t('loading')}
-                                    </td>
+                                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 [.light-theme_&]:text-gray-500 uppercase tracking-wider">{t('student')}</th>
+                                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 [.light-theme_&]:text-gray-500 uppercase tracking-wider">{t('exam')}</th>
+                                    <th className="px-6 py-4 text-center text-xs font-bold text-gray-400 [.light-theme_&]:text-gray-500 uppercase tracking-wider">{t('score')}</th>
+                                    <th className="px-6 py-4 text-center text-xs font-bold text-gray-400 [.light-theme_&]:text-gray-500 uppercase tracking-wider">{t('aiScore')}</th>
+                                    <th className="px-6 py-4 text-center text-xs font-bold text-gray-400 [.light-theme_&]:text-gray-500 uppercase tracking-wider">{t('status')}</th>
+                                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 [.light-theme_&]:text-gray-500 uppercase tracking-wider">{t('submittedAt')}</th>
+                                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 [.light-theme_&]:text-gray-500 uppercase tracking-wider">{t('action')}</th>
                                 </tr>
-                            ) : results.length === 0 ? (
-                                <tr>
-                                    <td colSpan="7" className="px-6 py-8 text-center text-gray-300">
-                                        {t('noData')}
-                                    </td>
-                                </tr>
-                            ) : (
-                                results.map((result) => {
-                                    const status = getStatusBadge(result.status);
+                            </thead>
+                            <tbody className="divide-y divide-gray-700 [.light-theme_&]:divide-gray-100 transition-colors">
+                                {loading ? (
+                                    <tr>
+                                        <td colSpan="7" className="px-6 py-8 text-center text-gray-300">
+                                            {t('loading')}
+                                        </td>
+                                    </tr>
+                                ) : results.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="7" className="px-6 py-8 text-center text-gray-300">
+                                            {t('noData')}
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    results.map((result) => {
+                                        const status = getStatusBadge(result.status);
 
-                                    return (
-                                        <tr key={result.submission_id} className="hover:bg-gray-700/30 transition-colors">
-                                            <td className="px-6 py-4">
-                                                <div>
-                                                    <p className="text-white font-medium">{result.student_name}</p>
-                                                    <p className="text-gray-300 text-xs">{result.student_email}</p>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex items-center gap-2">
-                                                    <BookOpen className="text-blue-400" size={16} />
-                                                    <span className="text-gray-300">{result.exam_title}</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 text-center">
-                                                <span className={`text-xl font-bold ${getScoreColor(result.total_score)}`}>
-                                                    {result.total_score?.toFixed(1) || '-'}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 text-center">
-                                                <span className="text-gray-300">
-                                                    {result.ai_score?.toFixed(1) || '-'}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 text-center">
-                                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${status.class}`}>
-                                                    {status.label}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-gray-300">
-                                                {result.submitted_at
-                                                    ? new Date(result.submitted_at).toLocaleString('vi-VN')
-                                                    : 'N/A'
-                                                }
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex justify-end gap-2">
-                                                    <button
-                                                        onClick={() => handleEdit(result)}
-                                                        className="p-2 text-gray-300 hover:text-yellow-400 hover:bg-yellow-600/10 rounded-lg transition-colors"
-                                                        title="Sửa điểm"
-                                                    >
-                                                        <Edit2 size={16} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDelete(result)}
-                                                        className="p-2 text-gray-300 hover:text-red-400 hover:bg-red-600/10 rounded-lg transition-colors"
-                                                        title="Xóa"
-                                                    >
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })
-                            )}
-                        </tbody>
-                    </table>
+                                        return (
+                                            <tr key={result.submission_id} className="hover:bg-gray-700/30 [.light-theme_&]:hover:bg-gray-50 transition-colors">
+                                                <td className="px-6 py-4">
+                                                    <div>
+                                                        <p className="text-white [.light-theme_&]:text-gray-900 font-bold transition-colors">{result.student_name}</p>
+                                                        <p className="text-gray-400 [.light-theme_&]:text-gray-500 text-xs transition-colors">{result.student_email}</p>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <BookOpen className="text-blue-400 [.light-theme_&]:text-blue-600 shadow-sm" size={16} />
+                                                        <span className="text-gray-300 [.light-theme_&]:text-gray-700 font-medium transition-colors">{result.exam_title}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 text-center">
+                                                    <span className={`text-xl font-bold font-mono drop-shadow-sm ${getScoreColor(result.total_score)}`}>
+                                                        {result.total_score?.toFixed(1) || '0.0'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-center">
+                                                    <span className="text-gray-300 [.light-theme_&]:text-gray-600 font-bold font-mono transition-colors">
+                                                        {result.ai_score?.toFixed(1) || '0.0'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-center">
+                                                    {getStatusBadge(result.status)}
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-gray-400 [.light-theme_&]:text-gray-500 transition-colors">
+                                                    {result.submitted_at
+                                                        ? new Date(result.submitted_at).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US')
+                                                        : 'N/A'
+                                                    }
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex justify-end gap-2">
+                                                        <button
+                                                            onClick={() => handleEdit(result)}
+                                                            className="p-2 text-gray-300 hover:text-yellow-400 hover:bg-yellow-600/10 rounded-lg transition-colors"
+                                                            title="Sửa điểm"
+                                                        >
+                                                            <Edit2 size={16} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDelete(result)}
+                                                            className="p-2 text-gray-300 hover:text-red-400 hover:bg-red-600/10 rounded-lg transition-colors"
+                                                            title="Xóa"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
+                            </tbody>
+                        </table>
                     </div>
 
                     {/* Pagination */}
                     {totalPages > 1 && (
-                        <div className="flex flex-col md:flex-row items-center justify-between gap-4 px-6 py-4 border-t border-gray-700">
-                            <span className="text-sm text-gray-300 text-center md:text-left">
-                                Hiển thị {(page - 1) * limit + 1} - {Math.min(page * limit, total)} trong tổng số {total} kết quả
+                        <div className="flex flex-col md:flex-row items-center justify-between gap-4 px-6 py-4 border-t border-gray-700 [.light-theme_&]:border-gray-100 transition-colors">
+                            <span className="text-sm text-gray-400 [.light-theme_&]:text-gray-600 text-center md:text-left transition-colors">
+                                {t('showing')} {(page - 1) * limit + 1} - {Math.min(page * limit, total)} {t('of')} {total} {t('results')}
                             </span>
                             <div className="flex items-center justify-center gap-2">
                                 <button
                                     onClick={() => setPage(p => Math.max(1, p - 1))}
                                     disabled={page === 1}
-                                    className="p-2 text-gray-300 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="p-2 text-gray-400 [.light-theme_&]:text-gray-500 hover:text-white [.light-theme_&]:hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 >
                                     <ChevronLeft size={18} />
                                 </button>
-                                <span className="text-white">Trang {page} / {totalPages}</span>
+                                <span className="text-white [.light-theme_&]:text-gray-900 font-medium">{t('page')} {page} / {totalPages}</span>
                                 <button
                                     onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                                     disabled={page === totalPages}
-                                    className="p-2 text-gray-300 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="p-2 text-gray-400 [.light-theme_&]:text-gray-500 hover:text-white [.light-theme_&]:hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 >
                                     <ChevronRight size={18} />
                                 </button>
@@ -341,131 +364,128 @@ const ResultsManagement = () => {
                         </div>
                     )}
                 </div>
-
-                {/* Edit Score Modal */}
-                {showEditModal && selectedResult && (
-                    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-                        <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-md mx-4">
-                            <div className="flex justify-between items-center p-6 border-b border-gray-700">
-                                <h2 className="text-xl font-semibold text-white">Sửa điểm</h2>
-                                <button onClick={() => setShowEditModal(false)} className="text-gray-300 hover:text-white">
-                                    <X size={20} />
-                                </button>
-                            </div>
-                            <div className="p-6 space-y-4">
-                                <div>
-                                    <p className="text-gray-300 text-sm">Sinh viên</p>
-                                    <p className="text-white font-medium">{selectedResult.student_name}</p>
-                                </div>
-                                <div>
-                                    <p className="text-gray-300 text-sm">Bài thi</p>
-                                    <p className="text-white">{selectedResult.exam_title}</p>
-                                </div>
-
-                                {/* 3 Cột điểm có thể sửa: MCQ, Tự luận, Tổng */}
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                    <div className="bg-gray-700/50 p-3 rounded-lg">
-                                        <p className="text-gray-300 text-xs mb-2 text-center">Điểm MCQ</p>
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            max="10"
-                                            step="0.1"
-                                            value={newMcqScore}
-                                            onChange={(e) => handleMcqChange(e.target.value)}
-                                            className="w-full px-2 py-1.5 bg-gray-600 border border-gray-500 rounded text-blue-400 text-xl font-bold text-center focus:outline-none focus:border-blue-500"
-                                        />
-                                    </div>
-                                    <div className="bg-gray-700/50 p-3 rounded-lg">
-                                        <p className="text-gray-300 text-xs mb-2 text-center">Điểm Tự luận</p>
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            max="10"
-                                            step="0.1"
-                                            value={newEssayScore}
-                                            onChange={(e) => handleEssayChange(e.target.value)}
-                                            className="w-full px-2 py-1.5 bg-gray-600 border border-gray-500 rounded text-purple-400 text-xl font-bold text-center focus:outline-none focus:border-purple-500"
-                                        />
-                                    </div>
-                                    <div className="bg-gray-700/50 p-3 rounded-lg">
-                                        <p className="text-gray-300 text-xs mb-2 text-center">Điểm Tổng</p>
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            max="10"
-                                            step="0.1"
-                                            value={newTotalScore}
-                                            onChange={(e) => setNewTotalScore(e.target.value)}
-                                            className="w-full px-2 py-1.5 bg-gray-600 border border-gray-500 rounded text-green-400 text-xl font-bold text-center focus:outline-none focus:border-green-500"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Cảnh báo */}
-                                <div className="bg-yellow-600/20 border border-yellow-600/30 rounded-lg p-3">
-                                    <p className="text-yellow-400 text-xs">
-                                        ⚠️ <strong>Lưu ý:</strong> Thay đổi điểm MCQ hoặc Tự luận sẽ tự động cập nhật Điểm Tổng.
-                                        Bạn cũng có thể sửa trực tiếp Điểm Tổng nếu cần.
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="flex justify-end gap-3 p-6 border-t border-gray-700">
-                                <button
-                                    onClick={() => setShowEditModal(false)}
-                                    className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
-                                >
-                                    Hủy
-                                </button>
-                                <button
-                                    onClick={handleSaveScore}
-                                    disabled={saving}
-                                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50"
-                                >
-                                    <Save size={16} />
-                                    {saving ? 'Đang lưu...' : 'Lưu'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Delete Confirmation Modal */}
-                {showDeleteModal && selectedResult && (
-                    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-                        <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-md mx-4">
-                            <div className="p-6 text-center">
-                                <div className="w-16 h-16 rounded-full bg-red-600/20 flex items-center justify-center mx-auto mb-4">
-                                    <AlertTriangle className="text-red-400" size={32} />
-                                </div>
-                                <h2 className="text-xl font-semibold text-white mb-2">Xác nhận xóa</h2>
-                                <p className="text-gray-300 mb-6">
-                                    Bạn có chắc chắn muốn xóa kết quả thi của <span className="text-white font-medium">{selectedResult.student_name}</span> trong bài thi "{selectedResult.exam_title}"?
-                                </p>
-                                <div className="flex justify-center gap-3">
-                                    <button
-                                        onClick={() => setShowDeleteModal(false)}
-                                        className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
-                                    >
-                                        Hủy
-                                    </button>
-                                    <button
-                                        onClick={confirmDelete}
-                                        disabled={saving}
-                                        className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50"
-                                    >
-                                        {saving ? 'Đang xóa...' : 'Xóa'}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
             </main>
+
+            {/* Edit Score Modal */}
+            {showEditModal && selectedResult && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+                    <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-md mx-4">
+                        <div className="flex justify-between items-center p-6 border-b border-gray-700">
+                            <h2 className="text-xl font-semibold text-white">{t('editScore')}</h2>
+                            <button onClick={() => setShowEditModal(false)} className="text-gray-300 hover:text-white">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <p className="text-gray-300 text-sm">{t('student')}</p>
+                                <p className="text-white font-medium">{selectedResult.student_name}</p>
+                            </div>
+                            <div>
+                                <p className="text-gray-300 text-sm">{t('exam')}</p>
+                                <p className="text-white">{selectedResult.exam_title}</p>
+                            </div>
+
+                            {/* 3 Cột điểm có thể sửa: MCQ, Tự luận, Tổng */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div className="bg-gray-700/50 p-3 rounded-lg">
+                                    <p className="text-gray-300 text-xs mb-2 text-center">{t('mcqScore')}</p>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        max="10"
+                                        step="0.1"
+                                        value={newMcqScore}
+                                        onChange={(e) => handleMcqChange(e.target.value)}
+                                        className="w-full px-2 py-1.5 bg-gray-600 border border-gray-500 rounded text-blue-400 text-xl font-bold text-center focus:outline-none focus:border-blue-500"
+                                    />
+                                </div>
+                                <div className="bg-gray-700/50 p-3 rounded-lg">
+                                    <p className="text-gray-300 text-xs mb-2 text-center">{t('essayScore')}</p>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        max="10"
+                                        step="0.1"
+                                        value={newEssayScore}
+                                        onChange={(e) => handleEssayChange(e.target.value)}
+                                        className="w-full px-2 py-1.5 bg-gray-600 border border-gray-500 rounded text-purple-400 text-xl font-bold text-center focus:outline-none focus:border-purple-500"
+                                    />
+                                </div>
+                                <div className="bg-gray-700/50 p-3 rounded-lg">
+                                    <p className="text-gray-300 text-xs mb-2 text-center">{t('totalScore')}</p>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        max="10"
+                                        step="0.1"
+                                        value={newTotalScore}
+                                        onChange={(e) => setNewTotalScore(e.target.value)}
+                                        className="w-full px-2 py-1.5 bg-gray-600 border border-gray-500 rounded text-green-400 text-xl font-bold text-center focus:outline-none focus:border-green-500"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Cảnh báo */}
+                            <div className="bg-yellow-600/20 border border-yellow-600/30 rounded-lg p-3">
+                                <p className="text-yellow-400 text-xs italic">
+                                    ⚠️ <strong>{t('note')}:</strong> {t('scoreUpdateNote')}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-3 p-6 border-t border-gray-700">
+                            <button
+                                onClick={() => setShowEditModal(false)}
+                                className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+                            >
+                                {t('cancel')}
+                            </button>
+                            <button
+                                onClick={handleSaveScore}
+                                disabled={saving}
+                                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50"
+                            >
+                                <Save size={16} />
+                                {saving ? t('saving') : t('save')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {showDeleteModal && selectedResult && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+                    <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-md mx-4">
+                        <div className="p-6 text-center">
+                            <div className="w-16 h-16 rounded-full bg-red-600/20 flex items-center justify-center mx-auto mb-4">
+                                <AlertTriangle className="text-red-400" size={32} />
+                            </div>
+                            <h2 className="text-xl font-semibold text-white mb-2">{t('confirmDelete')}</h2>
+                            <p className="text-gray-300 mb-6">
+                                {t('deleteConfirmResultText')} <span className="text-white font-medium">{selectedResult.student_name}</span> {t('inExam')} "{selectedResult.exam_title}"?
+                            </p>
+                            <div className="flex justify-center gap-3">
+                                <button
+                                    onClick={() => setShowDeleteModal(false)}
+                                    className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                                >
+                                    {t('cancel')}
+                                </button>
+                                <button
+                                    onClick={confirmDelete}
+                                    disabled={saving}
+                                    className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                                >
+                                    {saving ? t('deleting') : t('delete')}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
 
 export default ResultsManagement;
-
-

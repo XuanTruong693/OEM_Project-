@@ -1,7 +1,9 @@
 import React from 'react';
 import axiosClient from '../../api/axiosClient';
 import { useNavigate } from 'react-router-dom';
-import { FiArrowLeft, FiSearch, FiTrendingUp, FiAward, FiCalendar } from 'react-icons/fi';
+import { FiArrowLeft, FiSearch, FiTrendingUp, FiAward, FiCalendar, FiCheckCircle, FiX, FiXCircle, FiInfo } from 'react-icons/fi';
+import io from 'socket.io-client';
+import { SOCKET_URL } from '../../api/config';
 
 export default function ResultsDashboard() {
   const navigate = useNavigate();
@@ -9,6 +11,10 @@ export default function ResultsDashboard() {
   const [loading, setLoading] = React.useState(true);
   const [q, setQ] = React.useState('');
   const [sort, setSort] = React.useState('date_desc');
+
+  // Real-time & Detail Modal
+  const [detailModal, setDetailModal] = React.useState({ isOpen: false, submissionId: null });
+  const socketRef = React.useRef(null);
 
   React.useEffect(() => {
     (async () => {
@@ -21,6 +27,30 @@ export default function ResultsDashboard() {
         setLoading(false);
       }
     })();
+
+    // Initialize Socket for real-time config updates
+    socketRef.current = io(SOCKET_URL || window.location.origin, {
+      withCredentials: true,
+      transports: ["websocket"]
+    });
+
+    socketRef.current.on("connect", () => {
+      console.log("Connected to results socket");
+    });
+
+    socketRef.current.on("exam:config-updated", (data) => {
+      if (data.allow_view_answers !== undefined) {
+        setRows(prev => prev.map(row =>
+          String(row.exam_id) === String(data.examId || data.id)
+            ? { ...row, allow_view_answers: !!data.allow_view_answers }
+            : row
+        ));
+      }
+    });
+
+    return () => {
+      if (socketRef.current) socketRef.current.disconnect();
+    };
   }, []);
 
   const filtered = React.useMemo(() => {
@@ -293,6 +323,18 @@ export default function ResultsDashboard() {
                           </div>
                         )}
                       </div>
+
+                      {/* View Answers Button */}
+                      {r.allow_view_answers ? (
+                        <button
+                          onClick={() => setDetailModal({ isOpen: true, submissionId: r.submission_id })}
+                          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all active:scale-95 shrink-0"
+                        >
+                          <FiCheckCircle /> Xem đáp án
+                        </button>
+                      ) : (
+                        <div className="hidden lg:block w-32"></div> // Spacer to maintain alignment
+                      )}
                     </div>
                   </div>
                 </div>
@@ -300,6 +342,13 @@ export default function ResultsDashboard() {
             })}
           </div>
         )}
+
+        {/* Detail Modal */}
+        <DetailedResultModal
+          isOpen={detailModal.isOpen}
+          onClose={() => setDetailModal({ ...detailModal, isOpen: false })}
+          submissionId={detailModal.submissionId}
+        />
 
         {/* Footer Info */}
         {!loading && filtered.length > 0 && (
@@ -311,3 +360,180 @@ export default function ResultsDashboard() {
     </div>
   );
 }
+
+const DetailedResultModal = ({ isOpen, onClose, submissionId }) => {
+  const [loading, setLoading] = React.useState(true);
+  const [data, setData] = React.useState(null);
+  const [error, setError] = React.useState(null);
+
+  React.useEffect(() => {
+    if (isOpen && submissionId) {
+      fetchDetail();
+    }
+  }, [isOpen, submissionId]);
+
+  const fetchDetail = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await axiosClient.get(`/results/${submissionId}/detail`);
+      setData(res.data);
+    } catch (err) {
+      setError(err.response?.data?.message || "Không thể tải chi tiết câu trả lời.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      {/* Overlay */}
+      <div
+        className="absolute inset-0 bg-black/50"
+        onClick={onClose}
+      ></div>
+
+      {/* Modal Content */}
+      <div className="relative bg-white w-full md:w-[80vw] max-h-[90vh] rounded-lg shadow-2xl overflow-hidden flex flex-col">
+
+        {/* Header */}
+        <div className="px-6 py-5 border-b border-gray-200 flex items-center justify-between bg-white sticky top-0 z-10">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Chi tiết bài làm</h2>
+            {data && <p className="text-sm text-gray-600 font-medium">{data.exam_title}</p>}
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <FiX className="w-6 h-6" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-20">
+              <div className="w-10 h-10 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin mb-3"></div>
+              <p className="text-gray-400 text-sm">Đang tải dữ liệu...</p>
+            </div>
+          ) : error ? (
+            <div className="bg-red-50 border border-red-200 p-6 rounded text-center">
+              <p className="text-red-700 font-bold mb-1">Lỗi tải dữ liệu</p>
+              <p className="text-red-600 text-sm mb-4">{error}</p>
+              <button
+                onClick={fetchDetail}
+                className="px-4 py-2 bg-white border border-red-300 text-red-600 rounded text-sm hover:bg-red-50 transition-colors"
+              >
+                Thử lại
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {data.questions.map((q, idx) => {
+                const answer = data.answers.find(a => a.question_id === q.question_id);
+                const isUnanswered = q.type === 'MCQ' 
+                  ? (!answer || !answer.selected_option_id)
+                  : (!answer || !answer.answer_text || answer.answer_text.trim() === '');
+                
+                return (
+                  <div key={q.question_id} className={`border rounded-lg overflow-hidden ${isUnanswered ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white'}`}>
+                    {/* Question Header */}
+                    <div className="p-6 border-b border-inherit flex items-start gap-4">
+                      <div className={`w-9 h-9 rounded border-2 flex items-center justify-center text-lg font-black shrink-0 ${isUnanswered ? 'bg-red-100 text-red-700 border-red-200' : 'bg-gray-100 text-gray-700 border-gray-300'}`}>
+                        {idx + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs font-black uppercase px-2 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-300">
+                              {q.type === 'MCQ' ? 'Trắc nghiệm' : 'Tự luận'}
+                            </span>
+                            {isUnanswered && (
+                              <span className="text-xs font-black uppercase px-2 py-0.5 rounded bg-red-600 text-white shadow-sm shadow-red-200 animate-pulse">
+                                Chưa trả lời
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-base font-black text-gray-600">
+                            Điểm: {answer?.score || 0} / {q.points}
+                          </span>
+                        </div>
+                        <h3 className="text-gray-900 font-bold text-lg leading-snug">{q.question_text}</h3>
+                      </div>
+                    </div>
+
+                    {/* Options / Answers */}
+                    <div className="p-6">
+                      {q.type === 'MCQ' ? (
+                        <div className="space-y-3">
+                          {data.options.filter(o => o.question_id === q.question_id).map(opt => {
+                            const isSelected = answer?.selected_option_id === opt.option_id;
+                            const isTrue = !!opt.is_correct;
+
+                            let styles = "border-gray-200 bg-white text-gray-700 hover:border-gray-300";
+                            if (isSelected && isTrue) styles = "border-green-500 bg-green-50 text-green-800 font-bold ring-1 ring-green-500/10";
+                            else if (isSelected && !isTrue) styles = "border-red-500 bg-red-50 text-red-800 font-bold ring-1 ring-red-500/10";
+                            else if (!isSelected && isTrue) styles = "border-green-400 bg-green-50/50 text-green-700 italic";
+
+                            return (
+                              <div key={opt.option_id} className={`p-4 rounded-lg border-2 text-base flex items-center gap-4 transition-all ${styles}`}>
+                                <div className="shrink-0">
+                                  {isTrue ? (
+                                    <FiCheckCircle className="w-6 h-6 text-green-600" />
+                                  ) : isSelected ? (
+                                    <FiXCircle className="w-6 h-6 text-red-600" />
+                                  ) : (
+                                    <div className="w-6 h-6 rounded-full border-2 border-gray-300"></div>
+                                  )}
+                                </div>
+                                <span className="leading-relaxed">{opt.option_text}</span>
+                                {isSelected && (
+                                  <span className="ml-auto text-xs font-black uppercase tracking-widest text-inherit opacity-80">
+                                    Đáp án của bạn
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="space-y-5">
+                          <div className={`p-5 rounded-lg border-2 ${isUnanswered ? 'bg-red-50 border-red-300' : 'bg-gray-50 border-gray-200'}`}>
+                            <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-2">Bài làm của bạn</label>
+                            <p className="text-base text-gray-800 whitespace-pre-wrap leading-relaxed font-medium">{answer?.answer_text || "Không có nội dung bài làm."}</p>
+                          </div>
+
+                          <div className="p-5 rounded-lg border-2 bg-blue-50 border-blue-200">
+                            <label className="text-xs font-black text-blue-500 uppercase tracking-widest block mb-2">Đáp án mẫu / Gợi ý</label>
+                            <p className="text-base text-blue-900 whitespace-pre-wrap leading-relaxed">{q.model_answer || "Chưa cập nhật đáp án mẫu."}</p>
+                          </div>
+
+                          {answer?.instructor_feedback && (
+                            <div className="p-5 rounded-lg border-2 bg-amber-50 border-amber-200">
+                              <label className="text-xs font-black text-amber-600 uppercase tracking-widest block mb-2 flex items-center gap-2">
+                                <FiInfo className="w-4 h-4" /> Phản hồi từ giảng viên
+                              </label>
+                              <p className="text-base text-amber-900 font-medium leading-relaxed">{answer.instructor_feedback}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-3 border-t border-gray-100 text-center bg-gray-50">
+          <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">Hệ thống khảo thí thông minh OEM</p>
+        </div>
+      </div>
+    </div>
+  );
+};

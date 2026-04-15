@@ -22,9 +22,134 @@
   <link rel="icon" type="image/svg+xml" href="/vite.svg" />
 
   <title>OEM Exam</title>
+
+  <!-- Google Translate Setup -->
+  <style>
+    /* AGGRESSIVELY HIDE GOOGLE NATIVE UI */
+    body { 
+      top: 0 !important; 
+      position: static !important; 
+    }
+    .goog-te-banner-frame.skiptranslate, 
+    .goog-te-banner-frame, 
+    .goog-te-balloon-frame,
+    .VIpgJd-ZVi91d-OR9Z1c-smv99a { 
+      display: none !important; 
+    }
+    .goog-te-menu-value { display: none !important; }
+    .goog-tooltip { display: none !important; }
+    .goog-tooltip:hover { display: none !important; }
+    .goog-text-highlight { 
+      background-color: transparent !important; 
+      border: none !important; 
+      box-shadow: none !important; 
+    }
+    #google_translate_element { display: none !important; }
+    
+    /* Ensure layout doesn't shift */
+    .skiptranslate { display: none !important; }
+  </style>
+
+  <script type="text/javascript">
+    /**
+     * CRITICAL: Resilient DOM Patch for React + Google Translate
+     * Prevents "NotFoundError: Failed to execute 'insertBefore' on 'Node'"
+     * when the translation engine wraps text nodes in <font> tags.
+     */
+    if (typeof Node === 'function' && Node.prototype) {
+      const originalInsertBefore = Node.prototype.insertBefore;
+      Node.prototype.insertBefore = function(newNode, referenceNode) {
+        if (referenceNode && referenceNode.parentNode !== this) {
+          if (console) console.warn('DOM Patch: insertBefore prevented crash.', this, newNode, referenceNode);
+          return newNode;
+        }
+        return originalInsertBefore.apply(this, arguments);
+      };
+
+      const originalRemoveChild = Node.prototype.removeChild;
+      Node.prototype.removeChild = function(child) {
+        if (child.parentNode !== this) {
+          if (console) console.warn('DOM Patch: removeChild prevented crash.', this, child);
+          return child;
+        }
+        return originalRemoveChild.apply(this, arguments);
+      };
+    }
+
+    // Pre-emptive cookie check to ensure global persistence before script loads
+    (function() {
+      try {
+        const savedLang = localStorage.getItem('oem_preferred_lang') || localStorage.getItem('admin_language');
+        const pathname = window.location.pathname;
+        const isAdminPath = pathname.startsWith('/admin') || pathname.startsWith('/admin-dashboard') || pathname.startsWith('/exam-settings');
+        
+        const hostname = window.location.hostname;
+        const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+        const domainParts = hostname.split('.');
+        let primaryDomain = hostname;
+        if (!isLocalhost && domainParts.length >= 3) {
+          primaryDomain = domainParts.slice(-3).join('.');
+        }
+
+        if (isAdminPath) {
+          // AGGRESSIVE CLEARING FOR ADMIN
+          document.documentElement.classList.add('notranslate');
+          document.documentElement.setAttribute('translate', 'no');
+          
+          const clearOptions = '; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+          document.cookie = `googtrans=${clearOptions}`;
+          if (!isLocalhost) {
+            document.cookie = `googtrans=; domain=${hostname}${clearOptions}`;
+            document.cookie = `googtrans=; domain=.${hostname}${clearOptions}`;
+            if (primaryDomain !== hostname) {
+              document.cookie = `googtrans=; domain=.${primaryDomain}${clearOptions}`;
+            }
+          }
+          console.log('🚫 [Translation] Admin path detected. Pre-emptively blocked Google Translate.');
+        } else if (savedLang && savedLang !== 'vi') {
+          const cookieValue = `/vi/${savedLang}`;
+          const options = '; path=/; SameSite=Lax';
+
+          if (isLocalhost) {
+            document.cookie = `googtrans=${cookieValue}${options}`;
+          } else {
+            document.cookie = `googtrans=${cookieValue}${options}`;
+            document.cookie = `googtrans=${cookieValue}; domain=${hostname}${options}`;
+            if (primaryDomain !== hostname) {
+              document.cookie = `googtrans=${cookieValue}; domain=.${primaryDomain}${options}`;
+            }
+            document.cookie = `googtrans=${cookieValue}; domain=.${hostname}${options}`;
+          }
+          console.log('🌐 [Translation] Pre-emptive cookie set for:', savedLang);
+        }
+      } catch (e) {}
+    })();
+
+    function googleTranslateElementInit() {
+      if (typeof google !== 'undefined' && google.translate) {
+        new google.translate.TranslateElement({
+          pageLanguage: 'vi',
+          includedLanguages: 'vi,en',
+          layout: google.translate.TranslateElement.InlineLayout.SIMPLE,
+          autoDisplay: false
+        }, 'google_translate_element');
+      }
+    }
+
+    // Resilience: Force re-init if GT widget doesn't load
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        if (typeof google === 'undefined' || !google.translate) {
+          console.warn('⚠️ [Translation] Google Translate script failed to load (503 or blocked). Internal translations still active.');
+        }
+      }, 5000);
+    });
+  </script>
+  <script type="text/javascript" src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit" onerror="console.error('❌ [Translation] GT Script failed to load')"></script>
 </head>
 
 <body>
+  <div id="google_translate_element" style="display:none !important"></div>
   <div id="root"></div>
   <script type="module" src="/src/main.jsx"></script>
 

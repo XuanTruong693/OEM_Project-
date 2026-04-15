@@ -2,9 +2,9 @@ import React from "react";
 
 const newsList = [
   {
-    title: "",
-    date: "",
-    description: "",
+    title: "Kỷ nguyên chuyển đổi số trong giáo dục",
+    date: "04/03/2026",
+    description: " Trong kỷ nguyên số hóa, giáo dục đang trải qua những thay đổi mạnh mẽ. Công nghệ thông tin đã trở thành một công cụ đắc lực hỗ trợ việc dạy và học, giúp nâng cao hiệu quả giáo dục và mang lại nhiều tiện ích cho người học và người dạy. Hệ thống OEM ra đời nhằm đáp ứng nhu cầu đó, mang đến cho người dùng những trải nghiệm học tập và thi cử tốt nhất.",
   },
   {
     title: "",

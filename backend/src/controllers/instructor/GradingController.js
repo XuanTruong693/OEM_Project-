@@ -318,12 +318,9 @@ async function approveAllExamScores(req, res) {
         }
 
         console.log(`📝 [ApproveAll] Starting bulk approval for exam ${examId}`);
-
-        // Update all submissions: copy suggested_total_score to total_score, set instructor_confirmed=1
         const [result] = await sequelize.query(
             `UPDATE submissions 
-             SET total_score = suggested_total_score,
-                 instructor_confirmed = 1,
+             SET instructor_confirmed = 1,
                  status = 'confirmed'
              WHERE exam_id = ? 
                AND instructor_confirmed = 0`,
@@ -373,29 +370,33 @@ async function updateStudentAnswerScore(req, res) {
         const isOwner = await ensureExamOwnership(sub.exam_id, req.user.id);
         if (!isOwner) return res.status(403).json({ message: "Access denied" });
 
-        // Check old score before update to trigger AI learning
+        // Get original AI suggestions from logs for comparison
         const [oldAnswer] = await sequelize.query(
-            `SELECT sa.score, sa.answer_text, q.question_text, q.model_answer, q.points as max_points
+            `SELECT sa.answer_text, q.question_text, q.model_answer, q.points as max_points,
+                    (SELECT ai_suggested_score FROM ai_logs 
+                     WHERE question_id = sa.question_id AND student_id = sa.student_id 
+                     ORDER BY created_at DESC LIMIT 1) as ai_suggested_score
              FROM student_answers sa
              JOIN exam_questions q ON sa.question_id = q.id
              WHERE sa.id = ? AND sa.submission_id = ?`,
             { replacements: [answerId, submissionId] }
         );
 
-        const oldScore = Number(oldAnswer[0]?.score || 0);
-        const scoreIncreased = score > oldScore;
+        const aiSuggestedScore = Number(oldAnswer[0]?.ai_suggested_score ?? 0);
+        // Only trigger learning if the instructor actually CHANGED the AI's recommendation
+        const scoreCorrected = Math.abs(score - aiSuggestedScore) > 0.05;
         let aiLearned = false;
 
         // Update answer score
         await sequelize.query(
             `UPDATE student_answers 
-       SET score = ?, status = 'confirmed', graded_at = NOW()
+       SET score = ?, instructor_feedback = ?, status = 'confirmed', graded_at = NOW()
        WHERE id = ? AND submission_id = ?`,
-            { replacements: [score, answerId, submissionId] }
+            { replacements: [score, correctionFeedback || null, answerId, submissionId] }
         );
 
-        // TRIGGER AI LEARNING if score increased
-        if (scoreIncreased && oldAnswer[0]) {
+        // TRIGGER AI LEARNING if score was corrected (up or down)
+        if (scoreCorrected && oldAnswer[0]) {
             try {
                 // Async save to JSON (fire and forget to avoid blocking)
                 saveToAiTrainingData({
@@ -403,11 +404,11 @@ async function updateStudentAnswerScore(req, res) {
                     model_answer: oldAnswer[0].model_answer,
                     student_answer: oldAnswer[0].answer_text,
                     score: score,
-                    ai_score: oldScore,
+                    ai_score: aiSuggestedScore,
                     max_points: oldAnswer[0].max_points,
                     category: "General",
-                    feedback: correctionFeedback || `Instructor corrected: ${oldScore} → ${score}`
-                }).catch(err => console.error("Video AI Training Data Save Error:", err));
+                    feedback: correctionFeedback || `Instructor corrected: ${aiSuggestedScore} → ${score}`
+                }).catch(err => console.error("⚠️ [AI Learning] Save Error:", err));
                 aiLearned = true;
             } catch (e) {
                 console.error("Trigger AI Learning Error:", e);
@@ -469,9 +470,10 @@ async function updateStudentAnswerScore(req, res) {
             new_ai_score: newAiSum,
             new_mcq_score: newMcqScore,
             new_grand_total: newSuggestedTotal,
-            score_increased: scoreIncreased, // ✅ Return flag for Frontend Toast
+            score_increased: score > aiSuggestedScore, // Keep for legacy UI toasts
+            score_changed: scoreCorrected,
             ai_learned: aiLearned, // ✅ Return flag for ML learning indicator
-            old_ai_score: oldScore // ✅ Return old score for comparison
+            old_ai_score: aiSuggestedScore // ✅ Return old score for comparison
         });
     } catch (err) {
         console.error("updateStudentAnswerScore error:", err);
@@ -488,7 +490,7 @@ async function updateStudentExamScore(req, res) {
     try {
         const examId = parseInt(req.params.examId, 10);
         const studentId = parseInt(req.params.studentId, 10);
-        const { mcq_score, ai_score, total_score, per_question_scores } = req.body;
+        const { mcq_score, ai_score, total_score, per_question_scores, submission_id } = req.body;
 
         if (!Number.isFinite(examId) || !Number.isFinite(studentId)) {
             return res.status(400).json({ message: "Invalid IDs" });
@@ -500,8 +502,6 @@ async function updateStudentExamScore(req, res) {
         transaction = await sequelize.transaction();
 
         // 1. Call Stored Procedure to update submission record
-        // SP signature: sp_update_student_exam_record(exam_id, user_id, submission_id, mcq_score, ai_score)
-        // submissionController passed null for submission_id
         await sequelize.query(
             "CALL sp_update_student_exam_record(:examId, :studentId, NULL, :mcqScore, :aiScore)",
             {
@@ -517,18 +517,17 @@ async function updateStudentExamScore(req, res) {
 
         // 2. Update individual question scores (if provided)
         if (per_question_scores && Array.isArray(per_question_scores) && per_question_scores.length > 0) {
-            for (const { question_id, score } of per_question_scores) {
+            for (const { answer_id, score, feedback } of per_question_scores) {
                 await sequelize.query(
-                    `UPDATE student_answers sa
-           JOIN submissions s ON sa.submission_id = s.id
-           SET sa.score = :score, sa.status = 'confirmed', sa.graded_at = NOW()
-           WHERE s.exam_id = :examId AND s.user_id = :studentId AND sa.question_id = :questionId`,
+                    `UPDATE student_answers 
+                     SET score = :score, instructor_feedback = :feedback, status = 'confirmed', graded_at = NOW()
+                     WHERE id = :answerId AND submission_id = :submissionId`,
                     {
                         replacements: {
                             score,
-                            examId,
-                            studentId,
-                            questionId: question_id
+                            feedback: feedback || null,
+                            submissionId: submission_id || 0,
+                            answerId: answer_id
                         },
                         transaction
                     }
@@ -536,23 +535,101 @@ async function updateStudentExamScore(req, res) {
             }
         }
 
-        // 3. Ensure submission status is 'graded' and 'confirmed'
+        // 3. Update the submission summary using legacy mapping
+        const mcqPart = Number(mcq_score || 0);
+        const essayPart = Number(ai_score || 0);
+        const absoluteTotal = mcqPart + essayPart;
+
         await sequelize.query(
             `UPDATE submissions 
-           SET instructor_confirmed = 1, status = 'graded', total_score = :totalScore
-           WHERE exam_id = :examId AND user_id = :studentId`,
+             SET instructor_confirmed = 1, 
+                 status = 'graded', 
+                 total_score = :mcqPart, 
+                 ai_score = :essayPart, 
+                 suggested_total_score = :totalSum, 
+                 updated_at = NOW()
+             WHERE id = :submissionId`,
             {
                 replacements: {
-                    totalScore: total_score,
-                    examId,
-                    studentId
+                    mcqPart,
+                    essayPart,
+                    totalSum: absoluteTotal,
+                    submissionId: submission_id
                 },
                 transaction
             }
         );
 
         await transaction.commit();
-        return res.json({ success: true, message: "Student score updated successfully" });
+
+        // 4. TRIGGER BATCH AI LEARNING (if per_question_scores provided)
+        if (per_question_scores && Array.isArray(per_question_scores)) {
+            try {
+                const samples = [];
+                for (const item of per_question_scores) {
+                    // Find matching question details from db using the answer_id
+                    const [qDetail] = await sequelize.query(
+                        `SELECT sa.answer_text, sa.score as current_score, q.question_text, q.model_answer, q.points as max_points
+                         FROM student_answers sa
+                         JOIN exam_questions q ON q.id = sa.question_id
+                         WHERE sa.id = ? AND sa.submission_id = ?`,
+                        { replacements: [item.answer_id, submission_id] }
+                    );
+
+                    if (qDetail && qDetail[0]) {
+                        const old_score = Number(qDetail[0].current_score || 0);
+                        const new_score = Number(item.score);
+
+                        // GUARD: Only learn if score was actually changed
+                        if (Math.abs(new_score - old_score) > 0.05) {
+                            samples.push({
+                                student_answer: qDetail[0].answer_text,
+                                model_answer: qDetail[0].model_answer,
+                                old_score: old_score,
+                                new_score: new_score,
+                                max_points: Number(qDetail[0].max_points || 10),
+                                feedback: item.feedback || `Bulk Instructor correction`
+                            });
+
+                            // Also append to local file for consistency
+                            saveToAiTrainingData({
+                                question: qDetail[0].question_text,
+                                model_answer: qDetail[0].model_answer,
+                                student_answer: qDetail[0].answer_text,
+                                score: item.score,
+                                ai_score: old_score,
+                                max_points: qDetail[0].max_points,
+                                feedback: item.feedback || ''
+                            }).catch(e => { });
+                        } else {
+                            console.log(`⏭️ [AI Learning] Skipped answer ${item.answer_id} (no change: ${old_score} == ${new_score})`);
+                        }
+                    }
+                }
+
+                if (samples.length > 0) {
+                    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+                    const axios = require('axios');
+                    axios.post(`${AI_SERVICE_URL}/learn/batch-train`, { samples, trigger_retrain: true })
+                        .then(() => console.log(`✅ [AI Learning] Batch trained ${samples.length} samples`))
+                        .catch(e => console.error("⚠️ [AI Learning] Batch train failed:", e.message));
+                }
+            } catch (learningErr) {
+                console.error("⚠️ [AI Learning] Post-transaction learning trigger failed:", learningErr);
+            }
+        }
+
+        // 5. Fetch and return the updated row for UI sync
+        const [updatedRows] = await sequelize.query(
+            `SELECT s.id as submission_id, s.user_id as student_id, u.full_name as student_name,
+                    s.total_score, s.ai_score, s.suggested_total_score, s.status, s.instructor_confirmed
+             FROM submissions s
+             JOIN users u ON u.id = s.user_id
+             WHERE s.id = ?`,
+            { replacements: [submission_id] }
+        );
+
+        return res.json(updatedRows[0] || { success: true });
     } catch (err) {
         if (transaction) await transaction.rollback();
         console.error("updateStudentExamScore error:", err);
@@ -560,66 +637,23 @@ async function updateStudentExamScore(req, res) {
     }
 }
 
-
 /**
  * Helper: Save corrected score to AI Training Data
  */
 async function saveToAiTrainingData(sample) {
     try {
-        // 1. SAVE TO JSON FILE
-        const filePath = path.resolve(__dirname, '../../../../ai_services/app/learned_data.json');
-        console.log("📝 [AI Service] Saving to file:", filePath);
-
-        // Ensure file exists
-        if (!fs.existsSync(filePath)) {
-            // Create new file with empty array
-            await fs.promises.writeFile(filePath, '[]', 'utf8');
-        }
-
-        // Read and Parse
-        const data = await fs.promises.readFile(filePath, 'utf8');
-        let json;
-        try {
-            json = JSON.parse(data);
-            if (!Array.isArray(json)) json = [];
-        } catch (parseErr) {
-            json = [];
-        }
-
-        // Add sample with proper schema
-        const newRecord = {
+        const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+        await require('axios').post(`${AI_SERVICE_URL}/learn/from-correction`, {
             student_answer: sample.student_answer,
             model_answer: sample.model_answer,
-            confirmed_score: Number(sample.score),
+            old_score: Number(sample.ai_score || 0),
+            new_score: Number(sample.score),
             max_points: Number(sample.max_points || 10),
-            score_ratio: Number(sample.score) / Number(sample.max_points || 10),
-            feedback: sample.feedback || `Instructor corrected: ${sample.ai_score} → ${sample.score}`,
-            learned_at: new Date().toISOString()
-        };
-        json.push(newRecord);
+            feedback: sample.feedback || ''
+        }, { timeout: 30000 });
 
-        // Write back
-        await fs.promises.writeFile(filePath, JSON.stringify(json, null, 2), 'utf8');
-        console.log("✅ [AI Learning] Saved to learned_data.json");
-
-        // 2. CALL AI HTTP ENDPOINT (for real-time hot-reload)
-        try {
-            const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
-            await require('axios').post(`${AI_SERVICE_URL}/learn/from-correction`, {
-                student_answer: sample.student_answer,
-                model_answer: sample.model_answer,
-                old_score: Number(sample.ai_score || 0),
-                new_score: Number(sample.score),
-                max_points: Number(sample.max_points || 10),
-                feedback: sample.feedback || ''
-            }, { timeout: 5000 });
-            console.log("✅ [AI Learning] Called AI /learn/from-correction endpoint");
-        } catch (httpErr) {
-            // Non-critical - file save already succeeded
-            console.warn("⚠️ [AI Learning] HTTP call failed (non-critical):", httpErr.message);
-        }
-
+        console.log("✅ [AI Learning] Successfully notified AI service of correction");
     } catch (err) {
-        console.error("❌ Failed to save to AI Learned Data:", err.message);
+        console.error("⚠️ [AI Learning] Notification failed:", err.message);
     }
 }

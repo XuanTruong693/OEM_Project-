@@ -5,6 +5,7 @@ class GradeRequest(BaseModel):
     student_answer: str
     model_answer: str
     max_points: float
+    question_text: Optional[str] = None
     grading_mode: Optional[str] = "general"
 
 class GradeResponse(BaseModel):

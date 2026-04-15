@@ -20,6 +20,11 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.j
 // Supported file extensions
 const SUPPORTED_EXTENSIONS = ['.xlsx', '.xls', '.docx', '.pdf'];
 
+// ========== REGEX PATTERNS ==========
+const scorePattern = /[([]?\s*(\d+(?:[.,]\d+)?)\s*(?:points?|đ|pts)?\s*[)\]]?\s*[:.]?\s*$/i;
+const questionPrefixPattern = /^(?:Câu|Question|Q)?\s*\d+\s*[:.]?\s*/i;
+const optionPrefixPattern = /^[*]?\s*([A-Z]|[1-4]|[a-z])\s*[.):-]\s*/i;
+
 // ========== TEXT CONTENT PARSER (for Word/PDF) ==========
 const parseTextContent = (text) => {
   const lines = text.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0);
@@ -28,20 +33,23 @@ const parseTextContent = (text) => {
   let hasMCQMarker = false;
   let hasEssayMarker = false;
   let i = 0;
+  let contextText = "";
 
   while (i < lines.length) {
     const line = lines[i];
-
-    // Check for section markers
     const lowerLine = line.toLowerCase();
-    if (lowerLine.includes("trắc nghiệm") && lowerLine.includes("mcq")) {
+
+    // Section detection
+    if (lowerLine.includes("trắc nghiệm") || lowerLine.includes("mcq")) {
       currentSection = "MCQ";
       hasMCQMarker = true;
+      contextText = "";
       i++;
       continue;
-    } else if (lowerLine.includes("tự luận") && lowerLine.includes("essay")) {
+    } else if (lowerLine.includes("tự luận") || lowerLine.includes("essay")) {
       currentSection = "Essay";
       hasEssayMarker = true;
+      contextText = "";
       i++;
       continue;
     }
@@ -51,147 +59,152 @@ const parseTextContent = (text) => {
       continue;
     }
 
-    // Parse MCQ: Question line followed by 4 option lines
     if (currentSection === "MCQ") {
-      // Check if this line looks like a question (starts with Câu or contains question pattern)
-      const questionPattern = /^(?:Câu\s*\d+[:.]?|\d+[:.]?)\s*.+/i;
-      if (questionPattern.test(line) || (line.length > 10 && !line.endsWith('*'))) {
-        // This is a question line
-        let questionText = line.replace(/^(?:Câu|Question)?\s*\d+[:.]?\s*/i, "").trim();
+      const pointOnLineMatch = line.match(scorePattern);
+      let points = pointOnLineMatch ? parseFloat(pointOnLineMatch[1].replace(",", ".")) : null;
 
-        // Extract points from question
-        const pointMatch = questionText.match(/\((\d+(?:[.,]\d+)?)đ\)/i);
-        const points = pointMatch ? parseFloat(pointMatch[1].replace(",", ".")) : null;
-
-        const errors = [];
-        const options = [];
-        let correctOption = null;
-
-        // Read next 4 lines as options
-        for (let j = 1; j <= 4 && (i + j) < lines.length; j++) {
-          let optLine = lines[i + j];
-          if (!optLine) continue;
-
-          // Skip if this looks like another question or marker
-          if (optLine.includes("Trắc nghiệm") || optLine.includes("Tự luận") ||
-            /^(?:Câu\s*\d+[:.]?)/.test(optLine)) {
-            break;
-          }
-
-          // Check for correct answer marker (*)
-          if (optLine.trim().endsWith('*')) {
-            correctOption = options.length;
-            optLine = optLine.trim().replace(/\*+$/, "").trim();
-          }
-
-          // Remove option prefix (A., B., etc.)
-          optLine = optLine.replace(/^[A-Da-d][.):]\s*/, "").trim();
-
-          if (optLine) {
-            options.push(optLine);
-          }
-        }
-
-        // Validation
-        if (options.length < 2) {
-          errors.push("Câu hỏi trắc nghiệm phải có ít nhất 2 đáp án");
-        }
-        if (correctOption === null && options.length > 0) {
-          errors.push("Không tìm thấy đáp án đúng (cần đánh dấu * ở cuối đáp án)");
-        }
-
-        questions.push({
-          row: questions.filter(q => q.type === "MCQ").length + 1,
-          question_text: questionText,
-          original_question_text: line,
-          type: "MCQ",
-          options: options,
-          correct_option: correctOption,
-          points: points,
-          errors: errors
-        });
-
-        i += 1 + options.length; // Skip question + options
-        continue;
+      let questionLineIndex = i;
+      if (pointOnLineMatch && line.length < 25 && !line.includes("?")) {
+        questionLineIndex = i + 1;
       }
-    }
 
-    // Parse Essay
-    if (currentSection === "Essay") {
-      const isNewQuestion = /^(?:Câu|Question)\s*\d+[:.]?|^(?:Câu hỏi)[:.]?/i.test(line);
-      const answerMatchInline = line.match(/(?:Câu trả lời|Đáp án)\s*[:.]?\s*(.*)$/i);
-      
-      if (isNewQuestion) {
-        const pointMatch = line.match(/\((\d+(?:[.,]\d+)?)đ\)/i);
-        const points = pointMatch ? parseFloat(pointMatch[1].replace(",", ".")) : null;
+      if (questionLineIndex < lines.length) {
+        const qLine = lines[questionLineIndex];
 
-        let questionText = line.replace(/^(?:Câu|Question)?\s*\d+[:.]?\s*/i, "").replace(/^(?:Câu hỏi|Câu hỏi:)[:.]?\s*/i, "").trim();
-        if (answerMatchInline) {
-            questionText = questionText.split(/(?:Câu trả lời|Đáp án)\s*[:.]?/i)[0].trim();
+        // Improved question detection
+        const isQuestion = questionPrefixPattern.test(qLine) || (!optionPrefixPattern.test(qLine) && qLine.length > 10);
+
+        if (isQuestion) {
+          let questionText = qLine;
+
+          // Extract points for calculation, but do NOT strip them from the text
+          const innerPointMatch = questionText.match(scorePattern);
+          if (innerPointMatch) {
+            points = parseFloat(innerPointMatch[1].replace(",", "."));
+          }
+
+          // Only strip the question prefix (Câu 1:) as requested earlier
+          questionText = questionText.replace(questionPrefixPattern, "").trim();
+
+          const options = [];
+          let correctOption = null;
+          let nextI = questionLineIndex + 1;
+
+          while (nextI < lines.length && options.length < 10) {
+            let optLine = lines[nextI];
+
+            if (optionPrefixPattern.test(optLine)) {
+              if (optLine.trim().startsWith("*") || optLine.trim().endsWith("*")) {
+                correctOption = options.length;
+                optLine = optLine.replace(/\*/g, "").trim();
+              }
+
+              const cleanOpt = optLine.replace(optionPrefixPattern, "").trim();
+              options.push(cleanOpt);
+              nextI++;
+            } else {
+              break;
+            }
+          }
+
+          if (options.length >= 2) {
+            const qErrors = [];
+            if (correctOption === null) qErrors.push("Thiếu đáp án đúng (đánh dấu *)");
+            if (points === null) qErrors.push("Thiếu điểm câu hỏi (ví dụ: (0.1đ))");
+
+            questions.push({
+              row: questions.length + 1,
+              question_text: questionText,
+              original_question_text: qLine,
+              type: "MCQ",
+              options: options,
+              correct_option: correctOption,
+              points: points,
+              errors: qErrors
+            });
+            i = nextI;
+            continue;
+          }
         }
-        
-        let modelAnswer = "";
-        const errors = [];
-        
-        if (answerMatchInline) {
-           modelAnswer = answerMatchInline[1].trim();
-           if (!modelAnswer) errors.push('Không tìm thấy "Câu trả lời:" trong văn bản');
-        } else {
-           errors.push('Không tìm thấy "Câu trả lời:" trong văn bản');
-        }
+      }
+    } else if (currentSection === "Essay") {
+      // 1. Detect Short Essay: Question text... → {Answer}(Point)
+      const shortMatch = line.match(/(.+?)\s*→\s*\{(.*?)\}\s*\((\d+(?:[.,]\d+)?)\s*(?:points?|đ)\)/i);
+      if (shortMatch) {
+        let qText = shortMatch[1].replace(/^\d+[:.]?\s*/, "").trim();
+        const ans = shortMatch[2].replace(/^\*/, "").trim();
+        const pts = parseFloat(shortMatch[3].replace(",", "."));
+
+        const qErrors = [];
+        if (pts === null || isNaN(pts)) qErrors.push("Thiếu điểm câu hỏi (ví dụ: (0.1đ))");
 
         questions.push({
-          row: questions.filter(q => q.type === "Essay").length + 1,
-          question_text: questionText,
+          row: questions.length + 1,
+          question_text: (contextText ? contextText + "\n" : "") + line.replace(/(.+?)\s*→.+/, "$1").replace(/^\d+[:.]?\s*/, "").trim(),
           original_question_text: line,
           type: "Essay",
-          model_answer: modelAnswer,
-          points: points,
-          errors: errors
+          model_answer: ans,
+          points: pts,
+          errors: qErrors
         });
-      } else if (answerMatchInline && questions.length > 0 && questions[questions.length - 1].type === "Essay") {
-        const lastQ = questions[questions.length - 1];
-        lastQ.model_answer = answerMatchInline[1].trim();
-        lastQ.errors = lastQ.errors.filter(e => e !== 'Không tìm thấy "Câu trả lời:" trong văn bản');
-      } else if (questions.length > 0 && questions[questions.length - 1].type === "Essay") {
-        const lastQ = questions[questions.length - 1];
-        
-        const pointMatch = line.match(/\((\d+(?:[.,]\d+)?)đ\)/i);
-        if (pointMatch && lastQ.points === null) {
-           lastQ.points = parseFloat(pointMatch[1].replace(",", "."));
+        contextText = "";
+        i++;
+        continue;
+      }
+
+      // 2. Detect Long Essay: Question... (Point)
+      const longMatch = line.match(/(.+?)\s*\((\d+(?:[.,]\d+)?)\s*(?:points?|đ)\)\s*$/i);
+      if (longMatch && !optionPrefixPattern.test(line)) {
+        let qText = longMatch[1].replace(/^\d+[:.]?\s*/, "").trim();
+        const pts = parseFloat(longMatch[2].replace(",", "."));
+
+        let modelAnswer = "";
+        let nextI = i + 1;
+
+        while (nextI < lines.length) {
+          const nextLine = lines[nextI];
+          if (nextLine.toLowerCase().startsWith("đáp án")) {
+            nextI++;
+            while (nextI < lines.length) {
+              const ansLine = lines[nextI];
+              if (scorePattern.test(ansLine) || questionPrefixPattern.test(ansLine) ||
+                ansLine.toLowerCase().includes("trắc nghiệm") ||
+                ansLine.toLowerCase().includes("tự luận")) {
+                break;
+              }
+              modelAnswer += (modelAnswer ? "\n" : "") + ansLine;
+              nextI++;
+            }
+            break;
+          }
+          if (scorePattern.test(nextLine) || questionPrefixPattern.test(nextLine)) break;
+          nextI++;
         }
-        
-        if (lastQ.errors.includes('Không tìm thấy "Câu trả lời:" trong văn bản')) {
-           lastQ.question_text += "\n" + line;
-           lastQ.original_question_text += "\n" + line;
-        } else {
-           lastQ.model_answer += (lastQ.model_answer ? "\n" : "") + line;
-           if (lastQ.model_answer.trim()) {
-              lastQ.errors = lastQ.errors.filter(e => e !== 'Không tìm thấy "Câu trả lời:" trong văn bản');
-           }
-        }
+
+        questions.push({
+          row: questions.length + 1,
+          question_text: (contextText ? contextText + "\n" : "") + line.replace(/^\d+[:.]?\s*/, "").trim(),
+          original_question_text: line,
+          type: "Essay",
+          model_answer: modelAnswer.trim(),
+          points: pts,
+          errors: modelAnswer.trim() ? [] : ["Thiếu câu trả lời mẫu (Đáp án)"]
+        });
+        contextText = "";
+        i = nextI;
+        continue;
+      }
+
+      if (!lowerLine.includes("tự luận") && !lowerLine.includes("trắc nghiệm")) {
+        contextText += (contextText ? "\n" : "") + line;
       }
     }
 
     i++;
   }
 
-  // Check for markers
-  if (!hasMCQMarker && !hasEssayMarker) {
-    throw new Error(
-      "❌ File thiếu marker phân loại!\n\n" +
-      "File của bạn PHẢI có ít nhất 1 trong 2 marker sau:\n" +
-      "• 'Trắc nghiệm (MCQ)' - cho phần câu hỏi trắc nghiệm\n" +
-      "• 'Tự luận (Essay)' - cho phần câu hỏi tự luận"
-    );
-  }
-
-  // Check if no questions parsed
   if (questions.length === 0) {
-    throw new Error(
-      "⚠️ File có marker nhưng không tìm thấy câu hỏi!\n\n" +
-      "Kiểm tra lại format câu hỏi trong file."
-    );
+    throw new Error("⚠️ Không tìm thấy câu hỏi hợp lệ trong file. Vui lòng kiểm tra lại định dạng.");
   }
 
   // Sort and number questions
@@ -200,12 +213,10 @@ const parseTextContent = (text) => {
 
   mcqQuestions.forEach((q, idx) => {
     q.autoNumber = idx + 1;
-    q.question_text = `Câu ${idx + 1}: ${q.question_text}`;
   });
 
   essayQuestions.forEach((q, idx) => {
     q.autoNumber = idx + 1;
-    q.question_text = `Câu ${idx + 1}: ${q.question_text}`;
   });
 
   const sortedQuestions = [...mcqQuestions, ...essayQuestions];
@@ -518,7 +529,7 @@ const AssignExam = () => {
             /(?:Câu hỏi|Câu\s*\d+)\s*[:.]?\s*(.+?)(?=Câu trả lời|Đáp án|$)/ims
           ) || cleanedFullText.match(/(.+?)(?=Câu trả lời|Đáp án|$)/ims); // Thêm cờ 's' (dotAll) để regex match được xuống dòng
           const answerMatch = cleanedFullText.match(/(?:Câu trả lời|Đáp án)\s*[:.]?\s*(.+)/ims);
-          
+
           const pointMatch = cleanedFullText.match(/\((\d+(?:[.,]\d+)?)đ\)/i);
           const points = pointMatch ? parseFloat(pointMatch[1].replace(",", ".")) : null;
 
@@ -764,24 +775,20 @@ const AssignExam = () => {
       return;
     }
 
-    // Final validation check
-    const mcqCount = previewData.summary.mcq;
-    const essayCount = previewData.summary.essay;
-    const totalCount = previewData.summary.total;
+    // ✅ Frontend Point Validation: Tổng điểm phải bằng 10
+    const totalPoints = previewData.preview.reduce((sum, q) => {
+      // Sử dụng trực tiếp giá trị points đã được parser bóc tách
+      const point = parseFloat(q.points) || 0;
+      return sum + point;
+    }, 0);
 
-    if (mcqCount > 50) {
-      setError(
-        `❌ Số câu trắc nghiệm không được vượt quá 50 câu (hiện có ${mcqCount} câu)`
-      );
+    // ✅ Tổng điểm phải đúng 10 (không sai số)
+    const tolerance = 0.00001;
+    if (Math.abs(totalPoints - 10) > tolerance) {
+      setError(`❌ Tổng điểm phải bằng chính xác 10đ (Hiện tại: ${totalPoints.toFixed(3)}đ). Vui lòng điều chỉnh lại điểm các câu hỏi.`);
       return;
     }
 
-    if (essayCount > 10) {
-      setError(
-        `❌ Số câu tự luận không được vượt quá 10 câu (hiện có ${essayCount} câu)`
-      );
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
@@ -830,12 +837,12 @@ const AssignExam = () => {
     const fileInput = document.getElementById("fileInput");
     if (fileInput) fileInput.value = "";
   };
+
   const renderQuestionText = (q) => {
-    const scorePattern = /\((\d+(?:[.,]\d+)?)đ\)/i;
-    const match = q.question_text.match(scorePattern);
-    const point = match ? match[1].replace(",", ".") : q.points || "?";
-    const textWithoutPoint = q.question_text.replace(scorePattern, "").trim();
-    return `${textWithoutPoint} (${point}đ)`;
+    // Chỉ thêm số câu (Câu N:) và giữ nguyên nội dung câu hỏi (đã có sẵn điểm từ file)
+    // Dọn dẹp số thứ tự cũ nếu còn sót lại để tránh "Câu 1: Câu 1:"
+    const cleanBody = q.question_text.replace(questionPrefixPattern, "").trim();
+    return `Câu ${q.row}: ${cleanBody}`;
   };
   return (
     <div className="p-6 max-lg:p-4 max-sm:p-0 bg-gray-50 min-h-screen">
@@ -1045,41 +1052,19 @@ const AssignExam = () => {
                 <p className="text-xs text-blue-600">Tổng cộng</p>
               </div>
               <div className="text-center px-4 py-2 bg-green-50 rounded-lg">
-                <p
-                  className={`text-2xl font-bold ${previewData.summary.mcq > 50
-                    ? "text-red-600"
-                    : "text-green-600"
-                    }`}
-                >
+                <p className="text-2xl font-bold text-green-600">
                   {previewData.summary.mcq}
                 </p>
-                <p
-                  className={`text-xs ${previewData.summary.mcq > 50
-                    ? "text-red-600"
-                    : "text-green-600"
-                    }`}
-                >
-                  Trắc nghiệm{" "}
-                  {previewData.summary.mcq > 50 ? "(Vượt giới hạn!)" : ""}
+                <p className="text-xs text-green-600">
+                  Trắc nghiệm
                 </p>
               </div>
               <div className="text-center px-4 py-2 bg-purple-50 rounded-lg">
-                <p
-                  className={`text-2xl font-bold ${previewData.summary.essay > 10
-                    ? "text-red-600"
-                    : "text-purple-600"
-                    }`}
-                >
+                <p className="text-2xl font-bold text-purple-600">
                   {previewData.summary.essay}
                 </p>
-                <p
-                  className={`text-xs ${previewData.summary.essay > 10
-                    ? "text-red-600"
-                    : "text-purple-600"
-                    }`}
-                >
-                  Tự luận{" "}
-                  {previewData.summary.essay > 10 ? "(Vượt giới hạn!)" : ""}
+                <p className="text-xs text-purple-600">
+                  Tự luận
                 </p>
               </div>
               {previewData.summary.errors > 0 && (

@@ -104,8 +104,8 @@ const AdminDashboard = () => {
   const [recentUsers, setRecentUsers] = useState([]);
 
   const formatDateTime = (dateStr) => {
-    if (!dateStr) return 'Chưa đặt';
-    return new Date(dateStr).toLocaleString('vi-VN', {
+    if (!dateStr) return language === 'vi' ? 'Chưa đặt' : 'Not set';
+    return new Date(dateStr).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US', {
       day: '2-digit',
       month: '2-digit',
       hour: '2-digit',

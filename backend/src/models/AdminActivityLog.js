@@ -18,7 +18,11 @@ const AdminActivityLog = adminSequelize.define('AdminActivityLog', {
         comment: 'Email admin (denormalized)'
     },
     action_type: {
-        type: DataTypes.ENUM('login', 'logout', 'create', 'update', 'delete', 'backup', 'restore', 'view'),
+        type: DataTypes.ENUM(
+            'login', 'logout', 'create', 'update', 'delete', 
+            'backup', 'restore', 'view', 'admin_retry_ai_grade', 
+            'admin_score_edit', 'admin_view_logs'
+        ),
         allowNull: false
     },
     target_table: {

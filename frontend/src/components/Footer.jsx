@@ -9,7 +9,7 @@ export default function Footer() {
       <ol className="list-decimal ml-6 space-y-1">
         <li>
           <strong>Mục đích dịch vụ:</strong> <br></br>
-          OEM Mini cung cấp nền tảng quản lý kỳ thi trực tuyến, cho phép giảng
+          OEM cung cấp nền tảng quản lý kỳ thi trực tuyến, cho phép giảng
           viên tạo khóa học, tải lên đề thi, và chấm điểm tự động; học sinh có
           thể đăng ký khóa học, tham gia kỳ thi và tra cứu kết quả.
         </li>
@@ -25,8 +25,10 @@ export default function Footer() {
         </li>
         <li>
           <strong>Giới hạn dịch vụ:</strong>
-          <br></br>
-          Mỗi kỳ thi hỗ trợ tối đa 50 câu hỏi trắc nghiệm.<br></br>
+          <p className="text-gray-400 text-sm mt-3 lg:mt-0">
+          Mỗi kỳ thi hỗ trợ không giới hạn số lượng câu hỏi trắc nghiệm.<br></br>
+          (Yêu cầu tổng điểm của tất cả các câu phải bằng 10).
+        </p>
           Dịch vụ chấm tự luậnsử dụng gợi ý từ AI, nhưng điểm chính thức phải
           được giảng viên xác nhận. <br></br>
           Hệ thống không bao gồm hội thảo trực tuyến, video bài giảng hay các

@@ -57,7 +57,7 @@ export default function VerifyRoom() {
         if (duration_minutes) sessionStorage.setItem('pending_exam_duration', String(duration_minutes));
         try {
           sessionStorage.setItem('exam_flags', JSON.stringify({ face: !!require_face_check, card: !!require_student_card, monitor: !!monitor_screen }));
-        } catch(e) {}
+        } catch (e) { }
         if (time_open) sessionStorage.setItem('exam_time_open', String(time_open));
         if (time_close) sessionStorage.setItem('exam_time_close', String(time_close));
         // Lưu code cũ để tương thích các flow tồn tại
@@ -65,8 +65,13 @@ export default function VerifyRoom() {
         localStorage.setItem('verifiedRoomCode', roomCode.trim());
 
         setSuccess('✅ Mã phòng thi hợp lệ! Đang chuyển hướng...');
+        const token = localStorage.getItem('token');
         setTimeout(() => {
-          navigate('/login', { state: { role, fromVerifyRoom: true } });
+          if (token) {
+            navigate(`/exam/${exam_id}/prepare`);
+          } else {
+            navigate('/login', { state: { role, fromVerifyRoom: true } });
+          }
         }, 800);
         return;
       }
@@ -76,9 +81,16 @@ export default function VerifyRoom() {
       console.log("[DEV] Verify room (legacy) response:", res.data);
       if (res.data.valid) {
         setSuccess("✅ Mã phòng thi hợp lệ! Đang chuyển hướng...");
-        localStorage.setItem("verifiedRoomId", res.data.examCode);
-        localStorage.setItem("verifiedRoomCode", res.data.examCode);
-        setTimeout(() => navigate('/login', { state: { role, fromVerifyRoom: true } }), 800);
+        localStorage.setItem('verifiedRoomId', res.data.examCode);
+        localStorage.setItem('verifiedRoomCode', res.data.examCode);
+        const token = localStorage.getItem('token');
+        setTimeout(() => {
+          if (token) {
+            navigate('/login', { state: { role, fromVerifyRoom: true } });
+          } else {
+            navigate('/login', { state: { role, fromVerifyRoom: true } });
+          }
+        }, 800);
       } else {
         setError(res.data.message || "Mã phòng không hợp lệ");
         setSuccess("");
@@ -98,7 +110,14 @@ export default function VerifyRoom() {
           localStorage.setItem("verifiedRoomId", res.data.examCode);
           localStorage.setItem("verifiedRoomCode", res.data.examCode);
           setSuccess("✅ Mã phòng thi hợp lệ! Đang chuyển hướng...");
-          setTimeout(() => navigate('/login', { state: { role, fromVerifyRoom: true } }), 800);
+          const token = localStorage.getItem('token');
+          setTimeout(() => {
+            if (token) {
+              navigate('/login', { state: { role, fromVerifyRoom: true } });
+            } else {
+              navigate('/login', { state: { role, fromVerifyRoom: true } });
+            }
+          }, 800);
         } else {
           setError(res.data?.message || "Mã phòng không hợp lệ");
         }
@@ -153,12 +172,12 @@ export default function VerifyRoom() {
               {/* Decorative elements */}
               <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl"></div>
               <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full -ml-12 -mb-12 blur-2xl"></div>
-              
+
               <div className="relative z-10">
                 <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white backdrop-blur-xl mb-4 border-2 border-white/40 shadow-2xl overflow-hidden">
-                  <img 
-                    src="/Logo.png" 
-                    alt="OEM Logo" 
+                  <img
+                    src="/Logo.png"
+                    alt="OEM Logo"
                     className="w-24 h-24 object-contain filter brightness-110 contrast-110"
                   />
                 </div>
@@ -253,11 +272,10 @@ export default function VerifyRoom() {
               <button
                 onClick={handleVerify}
                 disabled={loading || !roomCode.trim()}
-                className={`w-full py-3 rounded-2xl font-bold text-white flex items-center justify-center gap-2 transition-all shadow-lg transform ${
-                  loading || !roomCode.trim()
+                className={`w-full py-3 rounded-2xl font-bold text-white flex items-center justify-center gap-2 transition-all shadow-lg transform ${loading || !roomCode.trim()
                     ? "bg-slate-300 cursor-not-allowed"
                     : "bg-gradient-to-r from-blue-500 via-indigo-600 to-purple-600 hover:from-blue-600 hover:via-indigo-700 hover:to-purple-700 active:scale-[0.97] hover:shadow-2xl hover:shadow-blue-500/30 hover:-translate-y-0.5"
-                }`}
+                  }`}
               >
                 {loading ? (
                   <>
@@ -293,7 +311,7 @@ export default function VerifyRoom() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <span className="text-slate-600">Cần hỗ trợ?</span>
-                <button 
+                <button
                   onClick={() => {
                     const subject = encodeURIComponent('Yêu cầu hỗ trợ - Xác minh phòng thi');
                     const body = encodeURIComponent(

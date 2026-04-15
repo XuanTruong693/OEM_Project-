@@ -1,9 +1,29 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { motion } from "framer-motion";
+import AboutUs from "./AboutUs.jsx";
+import Features from "./Features.jsx";
+import News from "./News.jsx";
+import Contact from "./Contract.jsx";
 
 export default function LandingPage() {
+  const navigate = useNavigate();
   const [apiInfo, setApiInfo] = useState(null);
   const [apiError, setApiError] = useState(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const role = localStorage.getItem("role");
+    if (token && role) {
+      const dashboardPath = role === "student"
+        ? "/student-dashboard"
+        : role === "admin"
+          ? "/admin-dashboard"
+          : "/instructor-dashboard";
+      navigate(dashboardPath);
+    }
+  }, [navigate]);
 
   // useEffect(() => {
   //   axios
@@ -21,14 +41,24 @@ export default function LandingPage() {
   // }, []);
 
   return (
-    <section className="w-full min-h-[calc(100vh-60px)] p-6 ">
-      <div className="max-w-[1400px] mx-auto px-4 md:px-10 rounded-3xl">
-        <section className="mt-10 min-h-screen h-auto">
+    <div className="w-full flex flex-col gap-10">
+      {/* Hero Section */}
+      <section id="home" className="w-full min-h-[calc(100vh-80px)] p-6 pt-20 md:pt-32 flex flex-col justify-start">
+        <div className="max-w-[1400px] mx-auto px-4 md:px-10 rounded-3xl w-full">
           <div className="grid lg:grid-cols-2 gap-8 items-center">
-            <div className="relative pt-16 lg:pt-0">
-              <div className="inline-block border-[3px] border-[#005fbd] text-[#0097e9] px-6 py-3 rounded-lg -rotate-6 font-black text-lg mb-6 shadow-md">
+            <motion.div
+              className="relative pt-16 lg:pt-0"
+              initial={{ opacity: 0, x: -50 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.8 }}
+            >
+              <motion.div
+                className="inline-block border-[3px] border-[#005fbd] text-[#0097e9] px-6 py-3 rounded-lg -rotate-6 font-black text-lg mb-6 shadow-md"
+                whileHover={{ scale: 1.1, rotate: 0 }}
+              >
                 OEM Mini
-              </div>
+              </motion.div>
               <h1 className="text-3xl md:text-5xl font-extrabold text-[#023e8a] leading-tight mb-4">
                 Hệ thống đắc lực hỗ trợ
                 <br />
@@ -48,19 +78,72 @@ export default function LandingPage() {
                   ⚠️ {apiError}
                 </p>
               )}
-            </div>
+            </motion.div>
             <div className="flex justify-center items-center">
               <div className="w-full max-w-[500px] relative">
-                <img
-                  src="/process.png"
+                <motion.img
+                  src="/icons/UI Image/process.png"
                   alt="Process Illustration"
-                  className="w-full h-auto rounded-lg"
+                  className="w-full h-auto"
+                  style={{ mixBlendMode: 'multiply' }}
+                  initial={{ y: 0, opacity: 0, scale: 0.8 }}
+                  whileInView={{
+                    y: [0, -20, 0],
+                    opacity: 1,
+                    scale: 1
+                  }}
+                  viewport={{ once: true }}
+                  transition={{
+                    y: {
+                      duration: 4,
+                      repeat: Infinity,
+                      ease: "easeInOut"
+                    },
+                    opacity: { duration: 0.8 },
+                    scale: { duration: 0.8 }
+                  }}
                 />
               </div>
             </div>
           </div>
-        </section>
-      </div>
-    </section>
+        </div>
+      </section>
+
+      {/* Other Sections with Reveal Animation */}
+      <SectionWrapper id="about">
+        <AboutUs />
+      </SectionWrapper>
+
+      <SectionWrapper id="features">
+        <Features />
+      </SectionWrapper>
+
+      <SectionWrapper id="news">
+        <News />
+      </SectionWrapper>
+
+      <SectionWrapper id="contact">
+        <Contact />
+      </SectionWrapper>
+    </div>
+  );
+}
+
+// Helper component for scrolling reveal
+function SectionWrapper({ children, id }) {
+  return (
+    <motion.section
+      id={id}
+      initial={{ opacity: 0, y: 150 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: false, amount: 0.2 }}
+      transition={{
+        duration: 0.8,
+        ease: "easeOut"
+      }}
+      className="w-full"
+    >
+      {children}
+    </motion.section>
   );
 }

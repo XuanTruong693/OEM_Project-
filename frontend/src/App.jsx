@@ -38,6 +38,8 @@ import Result from "./pages/instructorPage/Result.jsx";
 import Setting from "./pages/instructorPage/Setting.jsx";
 import EditExam from "./pages/instructorPage/EditExam.jsx";
 import InstructorOverlay from "./pages/instructorPage/InstructorOverlay.jsx";
+import RoomManagement from "./pages/instructorPage/RoomManagement.jsx";
+import RoomDetailManagement from "./pages/instructorPage/RoomDetailManagement.jsx";
 
 import StudentDashboard from "./pages/studentPage/StudentDashboard.jsx";
 import PrepareExam from "./pages/studentPage/PrepareExam.jsx";
@@ -49,8 +51,9 @@ import SupportPage from "./pages/studentPage/SupportPage.jsx";
 import InstructorSidebar from "./components/instructor/InstructorSidebar.jsx";
 import { UiProvider } from "./context/UiContext.jsx";
 import { ExamProvider } from "./context/ExamContext.jsx";
-import { LanguageProvider } from "./context/LanguageContext.jsx";
+import { LanguageProvider, useLanguage } from "./context/LanguageContext.jsx";
 import Profile from "./pages/instructorPage/Profile.jsx"; // Shared for both roles
+import TranslationBar from "./components/common/TranslationBar.jsx";
 
 // Admin Pages
 import AdminDashboard from "./pages/adminPage/AdminDashboard.jsx";
@@ -66,8 +69,16 @@ import UpdateStudentCardPhotos from "./pages/adminPage/UpdateStudentCardPhotos.j
 
 function ProtectedRoute({ children, requiredRole }) {
   const location = useLocation();
-  const role = localStorage.getItem("role");
-  const token = localStorage.getItem("token");
+  const { language, applyGoogleTranslate } = useLanguage();
+  const role = sessionStorage.getItem("role") || localStorage.getItem("role");
+  const token = sessionStorage.getItem("token") || localStorage.getItem("token");
+
+  // Harden Admin Translation Exclusion: Sync cookie on every route change
+  React.useEffect(() => {
+    if (applyGoogleTranslate) {
+      applyGoogleTranslate(language);
+    }
+  }, [location.pathname, language, applyGoogleTranslate]);
 
   if (!token) {
     return <Navigate to="/login" replace state={{ from: location }} />;
@@ -82,23 +93,42 @@ function ProtectedRoute({ children, requiredRole }) {
 
 function InstructorLayout() {
   return (
-    <UiProvider>
-      <div className="flex h-screen bg-gray-50 overflow-hidden">
-        <InstructorSidebar />
-        <main className="flex-1 overflow-y-auto p-6 bg-gray-50">
-          <InstructorOverlay />
-          <Outlet />
-        </main>
-      </div>
-    </UiProvider>
+    <div className="flex h-screen bg-gray-50 overflow-hidden relative">
+      <InstructorSidebar />
+      <main className="flex-1 overflow-y-auto p-6 bg-gray-50">
+        <TranslationBar />
+        <InstructorOverlay />
+        <Outlet />
+      </main>
+    </div>
   );
 }
 
 const App = () => {
+  React.useEffect(() => {
+    // 🔄 Sync session from localStorage to sessionStorage on fresh tab load
+    const ssToken = sessionStorage.getItem("token");
+    if (!ssToken) {
+      const lsToken = localStorage.getItem("token");
+      if (lsToken) {
+        console.log("🔗 [Auth] Hydrating sessionStorage from localStorage");
+        sessionStorage.setItem("token", lsToken);
+        sessionStorage.setItem("refreshToken", localStorage.getItem("refreshToken") || "");
+        sessionStorage.setItem("role", localStorage.getItem("role") || "");
+        sessionStorage.setItem("user", localStorage.getItem("user") || "");
+        sessionStorage.setItem("fullname", localStorage.getItem("fullname") || "");
+        sessionStorage.setItem("avatar", localStorage.getItem("avatar") || "");
+        sessionStorage.setItem("verifiedRoomId", localStorage.getItem("verifiedRoomId") || "");
+        sessionStorage.setItem("selectedRole", localStorage.getItem("selectedRole") || "");
+      }
+    }
+  }, []);
+
   return (
     <LanguageProvider>
-      <ExamProvider>
-        <Router>
+      <UiProvider>
+        <ExamProvider>
+          <Router>
           <Routes>
             <Route
               path="/"
@@ -281,6 +311,8 @@ const App = () => {
               <Route path="/results-exams" element={<PublishedResultsList />} />
               <Route path="/result" element={<Result />} />
               <Route path="/setting" element={<Setting />} />
+              <Route path="/room-management" element={<RoomManagement />} />
+              <Route path="/room-management/:examId" element={<RoomDetailManagement />} />
               <Route path="/instructor/exams/:id/edit" element={<EditExam />} />
               <Route path="/instructor/profile" element={<Profile />} />
             </Route>
@@ -342,6 +374,7 @@ const App = () => {
           </Routes>
         </Router>
       </ExamProvider>
+      </UiProvider>
     </LanguageProvider>
   );
 };

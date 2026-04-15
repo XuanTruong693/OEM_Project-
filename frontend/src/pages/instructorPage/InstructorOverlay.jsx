@@ -4,6 +4,7 @@ import { useParams, useLocation } from "react-router-dom";
 import { useExamContext } from "../../context/ExamContext";
 import { SOCKET_URL } from "../../api/config";
 import io from "socket.io-client";
+import { getDynamicViolationTitle, getDynamicViolationReason } from "../../utils/violationDictionary";
 
 export default function InstructorOverlay() {
   const { examId: routeExamId } = useParams();
@@ -42,7 +43,7 @@ export default function InstructorOverlay() {
     const fetchInstructorExams = async () => {
       try {
         const res = await axiosClient.get("/instructor/exams/my");
-        const exams = res.data || [];
+        const exams = Array.isArray(res.data) ? res.data : [];
         const ids = exams.map((e) => e.id).filter((id) => id);
         console.log("📚 [InstructorOverlay] Fetched instructor exams:", ids);
         setExamIds(ids);
@@ -261,19 +262,7 @@ export default function InstructorOverlay() {
     }
 
     try {
-      const eventTypeMap = {
-        blocked_key: "Phím bị chặn",
-        visibility_hidden: "Rời tab",
-        fullscreen_lost: "Thoát fullscreen",
-        fullscreen_exit_attempt: "Cố thoát fullscreen",
-        window_blur: "Rời cửa sổ",
-        tab_switch: "Chuyển tab",
-        alt_tab: "Alt+Tab",
-        inactivity: "Không thao tác",
-        split_screen: "Chia màn hình",
-      };
-
-      const eventTypeText = eventTypeMap[data.eventType] || data.eventType;
+      const eventTypeText = getDynamicViolationTitle(data.eventType, data.eventDetails?.key) || data.eventType;
       const severityEmoji = data.severity === "high" ? "🔴" : data.severity === "medium" ? "🟡" : "🟠";
 
       const notification = new Notification("🚨 GIAN LẬN - " + data.studentName, {
@@ -297,70 +286,76 @@ export default function InstructorOverlay() {
   };
 
   // ===== Format Event Type Display =====
-  const getEventTypeDisplay = (eventType) => {
+  const getEventTypeDisplay = (eventType, details) => {
+    const dynamicTitle = getDynamicViolationTitle(eventType, details?.key);
+    if (dynamicTitle) return dynamicTitle;
+
     const typeMap = {
-      blocked_key: "Phím bị chặn",
-      visibility_hidden: "Rời tab / ẩn cửa sổ",
-      fullscreen_lost: "Thoát toàn màn hình",
-      fullscreen_exit_attempt: "Cố thoát fullscreen", // 🆕
-      window_blur: "Rời cửa sổ",
-      tab_switch: "Chuyển tab",
-      alt_tab: "Alt + Tab",
-      multiple_faces: "Phát hiện nhiều khuôn mặt",
-      no_face_detected: "Không phát hiện khuôn mặt",
-      copy_paste: "Copy / Paste",
-      inactivity: "Không thao tác, không làm bài", // 🆕
-      split_screen: "Chia đôi màn hình", // 🆕
+      copy_attempt: "[AI PHÁT HIỆN] SAO CHÉP NỘI DUNG",
+      paste_attempt: "[AI PHÁT HIỆN] DÁN DỮ LIỆU",
+      drag_drop_in: "[AI PHÁT HIỆN] KÉO THẢ TÀI LIỆU",
+      screenshot_attempt: "[AI PHÁT HIỆN] CỐ TÌNH CHỤP ẢNH",
+      blocked_key: "[AI PHÁT HIỆN] DÙNG PHÍM CẤM",
+      visibility_hidden: "[AI PHÁT HIỆN] ẨN HOẶC ĐỔI TAB BÀI THI",
+      fullscreen_lost: "[AI PHÁT HIỆN] THOÁT TOÀN MÀN HÌNH",
+      window_blur: "[AI PHÁT HIỆN] RỜI BỎ KHU VỰC THI (MẤT FOCUS)",
+      tab_switch: "[AI PHÁT HIỆN] LIÊN TỤC ĐỔI TAB",
+      alt_tab: "[AI PHÁT HIỆN] CHUYỂN ỨNG DỤNG (ALT+TAB)",
+      multiple_faces: "[AI PHÁT HIỆN] CÓ NGƯỜI LẠ TRONG CAMERA",
+      no_face_detected: "[AI PHÁT HIỆN] KHÔNG THẤY THÍ SINH",
+      inactivity: "[AI PHÁT HIỆN] BỎ MÁY TRONG THỜI GIAN DÀI",
+      split_screen: "[AI PHÁT HIỆN] CHIA ĐÔI MÀN HÌNH",
+      ai_detected_cheating: "[AI PHÁT HIỆN] TỔNG HỢP HÀNH VI ĐÁNG NGỜ",
+      devtools_attempt: "[AI PHÁT HIỆN] MỞ CÔNG CỤ LẬP TRÌNH (DEVTOOLS)",
+      multi_monitor_attempt: "[AI PHÁT HIỆN] DÙNG NHIỀU MÀN HÌNH",
+      mouse_outside: "[AI PHÁT HIỆN] CHUỘT RỜI KHU VỰC BÀI THI",
+      typing_speed_violation: "[AI PHÁT HIỆN] TỐC ĐỘ GÕ PHÍM BẤT THƯỜNG (DÙNG TOOL)",
+      screen_share_stopped: "[AI PHÁT HIỆN] NGẮT CHIA SẺ MÀN HÌNH GỌI THI",
+      prolonged_away: "[AI PHÁT HIỆN] VẮNG MẶT QUÁ LÂU (>15 GIÂY)"
     };
-    return typeMap[eventType] || eventType;
+    return typeMap[eventType] || eventType.replace(/_/g, ' ').toUpperCase();
   };
 
   // ===== Get detailed description of what student did =====
   const getDetailedDescription = (eventType, details = {}) => {
+    // Luôn ưu tiên hiển thị lý do chi tiết từ AI Dictionary (nếu có)
+    if (details.message) {
+      return details.message;
+    }
+
+    const dictFallback = getDynamicViolationReason(eventType, details.key);
+    if (dictFallback) return dictFallback;
+
     const descriptions = {
       blocked_key: () => {
         const key = details.key || "F11";
         const stage = details.stage || "exam";
-        return `Sinh viên đã nhấn phím ${key} ${stage === 'prepare' ? 'trong giai đoạn chuẩn bị' : ''} - cố gắng thoát fullscreen hoặc refresh trang`;
+        return `Thí sinh nhấn phím tắt bị chặn (${key}) ${stage === 'prepare' ? 'ngay từ giai đoạn chuẩn bị' : ''} - cố gắng can thiệp vào chế độ làm bài của trình duyệt.`;
       },
-      fullscreen_lost: () => {
-        return `Sinh viên đã thoát chế độ toàn màn hình - có thể xem nội dung khác`;
-      },
-      fullscreen_exit_attempt: () => { // 🆕
-        const stage = details.stage || "exam";
-        return `Sinh viên cố gắng thoát fullscreen ${stage === 'prepare' ? 'trong PrepareExam' : 'trong TakeExam'} - Hệ thống đã tự động khôi phục`;
-      },
-      visibility_hidden: () => {
-        return `Sinh viên đã chuyển qua tab khác hoặc ẩn cửa sổ trình duyệt`;
-      },
-      window_blur: () => {
-        return `Sinh viên đã click ra ngoài cửa sổ bài thi - mất tập trung`;
-      },
-      tab_switch: () => {
-        return `Sinh viên đã chuyển tab trong trình duyệt`;
-      },
-      alt_tab: () => {
-        return `Sinh viên đã sử dụng Alt+Tab để chuyển ứng dụng`;
-      },
-      copy_paste: () => {
-        return `Sinh viên đã cố gắng copy/paste nội dung`;
-      },
-      multiple_faces: () => {
-        return `Phát hiện nhiều khuôn mặt trong camera - có thể có người khác`;
-      },
-      no_face_detected: () => {
-        return `Không phát hiện khuôn mặt sinh viên - có thể rời khỏi vị trí`;
-      },
-      inactivity: () => { // 🆕
-        return `Sinh viên không thao tác trên hệ thống quá 1 phút - có thể đang tra cứu tài liệu hoặc rời khỏi vị trí`;
-      },
-      split_screen: () => { // 🆕
-        return `Sinh viên đang chia đôi màn hình hoặc thu nhỏ cửa sổ - có thể xem nội dung khác`;
-      },
+      fullscreen_lost: () => `Thí sinh đã thoát chế độ toàn màn hình - hành vi này có thể để xem tài liệu hoặc ứng dụng hỗ trợ khác.`,
+      fullscreen_exit_attempt: () => `Thí sinh cố ý thực hiện thao tác thoát fullscreen - Hệ thống giám sát đã tự động thực hiện khôi phục.`,
+      visibility_hidden: () => `Thí sinh đã chuyển sang tab trình duyệt khác hoặc ẩn hoàn toàn cửa sổ bài thi.`,
+      window_blur: () => `Thí sinh tương tác ngoài vùng làm bài hoặc đang sử dụng một ứng dụng khác ngoài trình duyệt.`,
+      tab_switch: () => `Thí sinh thực hiện thao tác chuyển các tab trong trình duyệt (nghi ngờ tìm kiếm tài liệu).`,
+      alt_tab: () => `Thí sinh sử dụng tổ hợp Alt+Tab để chuyển đổi nhanh sang ứng dụng khác.`,
+      copy: () => `Thí sinh thực hiện thao tác sao chép (Copy) nội dung bài thi.`,
+      paste: () => `Thí sinh cố gắng dán (Paste) dữ liệu từ bên ngoài vào vùng làm bài.`,
+      multiple_faces: () => `Phát hiện có nhiều người xuất hiện trong khung hình camera - nghi vấn có sự hỗ trợ từ bên ngoài.`,
+      no_face_detected: () => `Không phát hiện thấy thí sinh trước camera - có thể thí sinh đã rời khỏi vị trí làm bài.`,
+      inactivity: () => `Thí sinh không có bất kỳ thao tác chuột hay phím bấm nào trong thời gian dài.`,
+      split_screen: () => `Thí sinh đang sử dụng chế độ chia đôi màn hình trên hệ điều hành để xem tài liệu song song.`,
+      mouse_outside: () => `Chuột thí sinh rời khỏi vùng làm bài (nghi ngờ thao tác trên màn hình phụ hoặc ứng dụng ngoài).`,
+      ai_detected_cheating: () => `AI PHÂN TÍCH: Tổng hợp nhiều hành vi bất thường (Rời cam, mất tiêu điểm, phím tắt) với xác suất vi phạm quy chế rất cao.`,
+      screenshot_attempt: () => `Thí sinh cố gắng chụp ảnh màn hình bài thi (PrintScreen, Snipping Tool, hoặc phím tắt hệ thống).`,
+      screen_share_stopped: () => `Thí sinh đã chủ động ngắt chia sẻ màn hình - hành vi vi phạm bắt buộc đối với giám sát từ xa.`,
+      devtools_attempt: () => `Thí sinh cố gắng mở bộ công cụ dành cho nhà phát triển (F12/Inspect) để can thiệp vào mã nguồn bài thi.`,
+      multi_monitor_attempt: () => `Thí sinh đang sử dụng nhiều màn hình hoặc thiết bị hiển thị phụ bên ngoài.`,
+      drag_drop_attempt: () => `Thí sinh thực hiện kéo thả tập tin hoặc nội dung từ bên ngoài vào khu vực làm bài.`,
     };
 
     const descFunc = descriptions[eventType];
-    return descFunc ? descFunc() : `Phát hiện vi phạm: ${eventType}`;
+    const baseDesc = descFunc ? descFunc() : `Hành vi bất thường ghi nhận: ${eventType}`;
+    return details.message ? `${baseDesc} (${details.message})` : baseDesc;
   };
 
   // ===== Format Severity Badge =====
@@ -435,7 +430,7 @@ export default function InstructorOverlay() {
               Loại vi phạm
             </p>
             <p className="text-lg font-semibold text-red-700 mb-2">
-              {getEventTypeDisplay(event.eventType)}
+              {getEventTypeDisplay(event.eventType, event.details)}
             </p>
             <p className="text-sm text-slate-700 leading-relaxed bg-white p-3 rounded border border-slate-100">
               📋 {getDetailedDescription(event.eventType, event.details)}
@@ -481,7 +476,7 @@ export default function InstructorOverlay() {
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
               Thời gian phát hiện
             </p>
-            <p className="text-sm text-slate-700 font-mono">
+            <p className="text-sm text-slate-700 font-mono mb-3">
               {new Date(event.timestamp).toLocaleString("vi-VN")}
             </p>
           </div>

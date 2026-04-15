@@ -1,11 +1,15 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
+import { SOCKET_URL } from "../../api/config";
+import { useUi } from "../../context/UiContext";
+import io from "socket.io-client";
 
 export default function PrepareExam() {
   const { examId } = useParams();
   const [search] = useSearchParams();
   const navigate = useNavigate();
+  const { setToast } = useUi();
 
   const [theme, setTheme] = useState(
     () => localStorage.getItem("examTheme") || "dark"
@@ -13,6 +17,7 @@ export default function PrepareExam() {
   const [faceOk, setFaceOk] = useState(false);
   const [cardOk, setCardOk] = useState(false);
   const [monitorOk, setMonitorOk] = useState(false);
+  const [isBypassed, setIsBypassed] = useState(false);
   const [reqs, setReqs] = useState({
     face: false,
     card: false,
@@ -254,18 +259,69 @@ export default function PrepareExam() {
           `/submissions/${submissionId}/status`
         );
         if (subRes.data) {
-          if (subRes.data.face_image_url || subRes.data.face_verified) {
+          if (subRes.data.is_bypassed) {
             setFaceOk(true);
-            setFaceErr("");
-          }
-          if (subRes.data.student_card_url || subRes.data.card_verified) {
             setCardOk(true);
+            setFaceErr("");
             setCardErr("");
+            setIsBypassed(true);
+          } else {
+            if (subRes.data.face_image_url || subRes.data.face_verified) {
+              setFaceOk(true);
+              setFaceErr("");
+            }
+            if (subRes.data.student_card_url || subRes.data.card_verified) {
+              setCardOk(true);
+              setCardErr("");
+            }
           }
         }
       } catch (error) { }
     })();
   }, [examId, submissionId]);
+
+  // WebSocket for real-time bypass
+  useEffect(() => {
+    if (!submissionId) return;
+    
+    const socket = io(SOCKET_URL || window.location.origin, {
+      transports: ["websocket", "polling"],
+    });
+
+    socket.on("connect", () => {
+      const user = JSON.parse(localStorage.getItem("user") || "{}");
+      const savedFullName = localStorage.getItem("fullname");
+      const studentName = user.full_name || savedFullName || "Student";
+
+      socket.emit("student:register-submission", {
+        submissionId: parseInt(submissionId),
+        studentId: parseInt(user.id),
+        examId: parseInt(examId),
+        studentName,
+      });
+    });
+
+    socket.on(`student:bypass-granted:${submissionId}`, () => {
+      console.log("✅ [Socket] Bypass granted by instructor");
+      setFaceOk(true);
+      setCardOk(true);
+      setFaceErr("");
+      setCardErr("");
+      setIsBypassed(true);
+      // Không cần alert nữa vì ta sẽ hiển thị trực tiếp ở phần Actions
+    });
+    
+    socket.on(`student:kicked:${submissionId}`, (data) => {
+      setToast({ message: data.message || "Bạn đã bị giảng viên mời ra khỏi phòng thi.", type: "error" });
+      setTimeout(() => {
+        navigate("/student-dashboard");
+      }, 3000);
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [submissionId, examId]);
 
   // 🆕 Fullscreen lock - Tự động trở lại fullscreen khi thoát
   useEffect(() => {
@@ -553,10 +609,30 @@ export default function PrepareExam() {
   };
 
   const verifyCardByCode = async () => {
-    if (!studentCode.trim() || !submissionId) {
+    if (isSearchingCard) return;
+
+    const code = studentCode.trim();
+    if (!code || !submissionId) {
       setCardErr("Vui lòng nhập MSSV!");
       return;
     }
+
+    // Quy tắc: 5-15 ký tự
+    if (code.length < 5 || code.length > 15) {
+      const msg = "MSSV phải có độ dài từ 5 đến 15 ký tự!";
+      setCardErr(msg);
+      setCardVerifyLog(`❌ ${msg}`);
+      return;
+    }
+
+    // Quy tắc: Không cho phép toàn chữ (phải có ít nhất 1 số nếu có chữ, hoặc toàn số)
+    if (/^[a-zA-Z]+$/.test(code)) {
+      const msg = "Mã sinh viên không hợp lý (không được chỉ chứa toàn chữ cái)!";
+      setCardErr(msg);
+      setCardVerifyLog(`❌ ${msg}`);
+      return;
+    }
+
     setIsSearchingCard(true);
     setCardVerifyLog("⏳ Đang tìm kiếm thẻ sinh viên...");
     setCardErr("");
@@ -564,7 +640,7 @@ export default function PrepareExam() {
     try {
       const res = await axiosClient.post(
         `/submissions/${submissionId}/verify-student-code`,
-        { student_code: studentCode }
+        { student_code: code }
       );
 
       if (res?.data?.ok && res.data.valid) {
@@ -1607,12 +1683,14 @@ export default function PrepareExam() {
   );
 
   const faceStepDone = useMemo(() => {
+    if (isBypassed) return true;
     if (!reqs.face) return false;
     if (needFaceCardMatch) return faceOk && !!uploadSuccessMsg;
     return faceOk;
-  }, [reqs.face, needFaceCardMatch, faceOk, uploadSuccessMsg]);
+  }, [isBypassed, reqs.face, needFaceCardMatch, faceOk, uploadSuccessMsg]);
 
   const monitorBlockers = useMemo(() => {
+    if (isBypassed) return [];
     if (!reqs.monitor) return [];
 
     const blockers = [];
@@ -1631,6 +1709,7 @@ export default function PrepareExam() {
 
     return blockers;
   }, [
+    isBypassed,
     reqs.monitor,
     reqs.card,
     reqs.face,
@@ -1793,22 +1872,29 @@ export default function PrepareExam() {
                         : "text-slate-500"
                     }`}
                 >
-                  {cardOk
-                    ? "✅ Đã xác minh"
-                    : cardErr
-                      ? "❌ Lỗi"
-                      : "⏳ Chưa xác minh"}
+                  {isBypassed
+                    ? "✅ Được bỏ qua"
+                    : cardOk
+                      ? "✅ Đã xác minh"
+                      : cardErr
+                        ? "❌ Lỗi"
+                        : "⏳ Chưa xác minh"}
                 </span>
               </div>
 
               {/* Upload button BỊ ẨN, CHUYỂN THÀNH FORM MỚI */}
-              {!cardUploaded && (
+              {!cardUploaded && !isBypassed && (
                 <div className="flex flex-col gap-2">
                   <input
                     type="text"
                     value={studentCode}
-                    onChange={(e) => setStudentCode(e.target.value)}
-                    placeholder="Nhập MSSV của bạn (Ví dụ: 21110001)"
+                    onChange={(e) => {
+                      // Chỉ cho phép chữ và số, không cho nhập ký tự đặc biệt
+                      const val = e.target.value.replace(/[^a-zA-Z0-9]/g, "");
+                      setStudentCode(val);
+                    }}
+                    maxLength={15}
+                    placeholder="Nhập MSSV (5-15 ký tự)"
                     disabled={!allowCard || isSearchingCard}
                     className={`px-3 py-2 rounded-lg border w-full focus:outline-none focus:ring-2 focus:ring-blue-500
                     ${theme === "dark"
@@ -1904,7 +1990,7 @@ export default function PrepareExam() {
               )}
 
               {/* Nút nhập lại nếu bị lỗi hoặc muốn reset - THAY CHO UPLOAD LẠI */}
-              {(cardUploaded || cardErr) && (
+              {(cardUploaded || cardErr) && !isBypassed && (
                 <div className="mt-3">
                   <button
                     onClick={() => {
@@ -1923,7 +2009,19 @@ export default function PrepareExam() {
                 </div>
               )}
 
-              {!cardUploaded && !cardErr && (
+              {isBypassed && (
+                <div className={`mt-3 p-3 rounded-lg border flex items-center gap-3 ${theme === "dark" ? "bg-emerald-500/10 border-emerald-500/30" : "bg-emerald-50 border-emerald-200"}`}>
+                   <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xl shadow-lg shadow-emerald-500/20">
+                      ✓
+                   </div>
+                   <div>
+                      <p className={`font-bold ${theme === "dark" ? "text-emerald-400" : "text-emerald-700"}`}>Bước này đã được bỏ qua</p>
+                      <p className={`text-xs ${theme === "dark" ? "text-slate-400" : "text-slate-600"}`}>Giảng viên đã phê duyệt quyền vào thi cho bạn.</p>
+                   </div>
+                </div>
+              )}
+
+              {!cardUploaded && !cardErr && !isBypassed && (
                 <p
                   className={`${theme === "dark" ? "text-slate-400" : "text-slate-500"
                     } text-xs mt-2`}
@@ -1974,16 +2072,18 @@ export default function PrepareExam() {
                         : "text-slate-500"
                     }`}
                 >
-                  {faceStepDone
-                    ? "✅ Đã hoàn thành"
-                    : faceErr
-                      ? "❌ Lỗi"
-                      : "⏳ Chưa hoàn thành"}
+                  {isBypassed
+                    ? "✅ Được bỏ qua"
+                    : faceStepDone
+                      ? "✅ Đã hoàn thành"
+                      : faceErr
+                        ? "❌ Lỗi"
+                        : "⏳ Chưa hoàn thành"}
                 </span>
               </div>
 
               {/* Camera preview */}
-              {!faceUploaded && (
+              {!faceUploaded && !isBypassed && (
                 <>
                   <div
                     className={`relative rounded-xl overflow-hidden border ${theme === "dark" ? "border-white/10" : "border-slate-200"
@@ -2137,7 +2237,7 @@ export default function PrepareExam() {
               )}
 
               {/* Preview ảnh đã chụp - hiện khi có preview nhưng chưa upload */}
-              {facePreviewUrl && !faceUploaded && (
+              {facePreviewUrl && !faceUploaded && !isBypassed && (
                 <div className="mt-3">
                   <img
                     src={facePreviewUrl}
@@ -2175,18 +2275,19 @@ export default function PrepareExam() {
                 </div>
               )}
 
-              {/* Preview ảnh đã upload và verify */}
-              {facePreviewUrl && faceUploaded && (
-                <div className="mt-3">
-                  <img
-                    src={facePreviewUrl}
-                    alt="preview"
-                    className="w-full max-w-md rounded-lg border border-white/10"
-                  />
+              {/* Nút so sánh - Hiện sau khi verify pass */}
+              {isBypassed && (
+                <div className={`mt-3 p-4 rounded-xl border flex items-center gap-4 ${theme === "dark" ? "bg-indigo-500/10 border-indigo-500/30" : "bg-indigo-50 border-indigo-200"}`}>
+                   <div className="w-12 h-12 rounded-2xl bg-indigo-500 flex items-center justify-center text-white text-2xl shadow-xl shadow-indigo-500/20">
+                      🛡️
+                   </div>
+                   <div>
+                      <p className={`text-lg font-bold ${theme === "dark" ? "text-indigo-300" : "text-indigo-800"}`}>Xác minh được miễn trừ</p>
+                      <p className={`text-sm ${theme === "dark" ? "text-slate-300" : "text-slate-600"}`}>Bạn không cần thực hiện bước xác minh khuôn mặt này.</p>
+                   </div>
                 </div>
               )}
 
-              {/* Nút so sánh - Hiện sau khi verify pass */}
               {faceVerified &&
                 faceUploaded &&
                 cardVerified &&
@@ -2449,8 +2550,6 @@ export default function PrepareExam() {
                           F11
                         </kbd>{" "}
                         - Toggle fullscreen
-                      </li>
-                      <li>
                         <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
                           F5
                         </kbd>{" "}
@@ -2543,9 +2642,25 @@ export default function PrepareExam() {
         <section className="flex items-center justify-between">
           <div
             className={`${theme === "dark" ? "text-slate-400" : "text-slate-600"
-              } text-sm`}
+              } text-sm flex-1`}
           >
-            Vui lòng hoàn tất các bước yêu cầu trước khi bắt đầu làm bài.
+            {isBypassed ? (
+               <span className="text-emerald-500 font-bold flex items-center gap-2">
+                  <span className="text-xl">✅</span> Bạn đã được giảng viên phê duyệt vào thi. 
+                  {reqs.monitor && !monitorOk && " Vui lòng hoàn tất Bước 3 để bắt đầu."}
+               </span>
+            ) : (!reqs.face || faceOk) && (!reqs.card || cardOk) && reqs.monitor && !monitorOk ? (
+                <span className="text-blue-500 font-bold animate-pulse">
+                    ⚠️ Bạn đã hoàn thành xác minh (hoặc được cho phép). Hãy nhấn "Bật toàn màn hình" ở Bước 3 để vào thi.
+                </span>
+            ) : (
+                "Vui lòng hoàn tất các bước yêu lại trước khi bắt đầu làm bài."
+            )}
+            {(faceOk || cardOk || isBypassed) && (
+                 <p className="text-[10px] text-emerald-500 mt-1 uppercase font-black tracking-widest">
+                    ℹ️ Trạng thái: {isBypassed ? "Được miễn trừ xác minh" : "Đã xác minh danh tính"}
+                 </p>
+            )}
           </div>
           <button
             disabled={!submissionId || !canStart}

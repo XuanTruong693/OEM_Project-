@@ -20,7 +20,7 @@ export default function AboutUs() {
           <div className="bg-gradient-to-r from-blue-100 to-pink-100 p-8 rounded-3xl shadow-md hover:shadow-lg transition-shadow duration-300">
             <p className="text-gray-800 text-base md:text-lg mb-6 leading-relaxed">
               Với quy trình phát triển bài bản, áp dụng công nghệ tiên tiến vào
-              giao diện thân thiện, <b>OEM Mini</b> đã giúp nhiều giảng viên và
+              giao diện thân thiện, <b>OEM</b> đã giúp nhiều giảng viên và
               trung tâm đào tạo tổ chức các kỳ thi trực tuyến hiệu quả với các
               ưu điểm sau:
             </p>
@@ -33,7 +33,7 @@ export default function AboutUs() {
 
             <p className="text-gray-800 text-base md:text-lg leading-relaxed">
               Bên cạnh việc cung cấp các phương pháp học tập hiệu quả,{" "}
-              <b>OEM Mini</b> còn mang lại sự tiện lợi trong việc tổ chức các kỳ
+              <b>OEM</b> còn mang lại sự tiện lợi trong việc tổ chức các kỳ
               thi trực tuyến.
             </p>
           </div>

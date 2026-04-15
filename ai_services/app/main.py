@@ -8,8 +8,12 @@ import uvicorn
 import os
 import json
 import threading
+import mysql.connector
+import logging
+import traceback
 from typing import List, Optional
 from datetime import datetime
+from fastapi.responses import Response
 
 # Import learning module
 try:
@@ -133,6 +137,18 @@ def _do_auto_retrain():
             _reload_learned_patterns()
         except Exception as e:
             print(f"[AutoRetrain] ⚠️ Dataset reload failed: {e}")
+            
+        # 🚀 NEW: Retrain Behavior Model with new features from CSV
+        try:
+            from app.nlp.behavior_detection import behavior_model
+            print("[AutoRetrain] 🧠 Đang huấn luyện lại Behavior Model với các feature mới...")
+            bm_success = behavior_model.train_model()
+            if bm_success:
+                print("[AutoRetrain] ✅ Behavior Model đã được huấn luyện lại thành công.")
+            else:
+                print("[AutoRetrain] ⚠️ Behavior Model training failed (check CSV path).")
+        except Exception as e:
+            print(f"[AutoRetrain] ⚠️ Error retraining Behavior Model: {e}")
         
         # Measure accuracy AFTER
         accuracy_after = _measure_accuracy_sample()
@@ -194,36 +210,36 @@ def startup_event():
         print("[Learning] Learning Engine initialized")
         print("[Learning] Loading synonyms from learned_synonyms.json...")
         try:
-             engine = get_learning_engine()
+            engine = get_learning_engine()
         except Exception as e:
-             print(f"[Learning] ⚠️ Error loading engine/patterns: {e}")
-             # Non-critical, continue
-             engine = None
+            print(f"[Learning] ⚠️ Error loading engine/patterns: {e}")
+            # Non-critical, continue
+            engine = None
         
         if engine:
-             print(f"[Learning] Loaded {len(engine.synonyms)} synonym groups from file")
-        
-        # Auto-load patterns from database
-        try:
-            import mysql.connector
-            db_config = {
-                "host": os.getenv("DB_HOST", "localhost"),
-                "user": os.getenv("DB_USER", "root"),
-                "password": os.getenv("DB_PASSWORD", "Truongdo123."),
-                "database": os.getenv("DB_NAME", "oem_mini"),
-                "charset": "utf8mb4"
-            }
-            print(f"[Learning] Connecting to database {db_config['database']}@{db_config['host']}...")
-            conn = mysql.connector.connect(**db_config)
-            count = engine.load_patterns_from_db(conn)
-            conn.close()
-            print(f"[Learning] ✅ Loaded {count} instructor-confirmed patterns from database")
-            # print("[Learning] ℹ️ DB loading temporarily disabled due to crash.")
-        except ImportError:
-            print("[Learning] ⚠️ mysql-connector not installed, skipping DB patterns")
-        except Exception as e:
-            print(f"[Learning] ⚠️ Could not load patterns from DB: {e}")
-            print("[Learning] ℹ️ Using file-based synonyms only")
+            print(f"[Learning] Loaded {len(engine.synonyms)} synonym groups from file")
+            
+            # Auto-load patterns from database
+            try:
+                db_config = {
+                    "host": os.getenv("DB_HOST", "localhost"),
+                    "user": os.getenv("DB_USER", "root"),
+                    "password": os.getenv("DB_PASSWORD", "Truongdo123."),
+                    "database": os.getenv("DB_NAME", "oem_mini"),
+                    "charset": "utf8mb4"
+                }
+                print(f"[Learning] Connecting to database {db_config['database']}@{db_config['host']}...")
+                conn = mysql.connector.connect(**db_config)
+                try:
+                    count = engine.load_patterns_from_db(conn)
+                    print(f"[Learning] ✅ Loaded {count} instructor-confirmed patterns from database")
+                finally:
+                    conn.close()
+            except ImportError:
+                print("[Learning] ⚠️ mysql-connector not installed, skipping DB patterns")
+            except Exception as e:
+                print(f"[Learning] ⚠️ Could not load patterns from DB: {e}")
+                print("[Learning] ℹ️ Using file-based synonyms only")
     
     print("[Ready] AI Service Ready!")
 
@@ -234,7 +250,8 @@ def grade_answer(request: GradeRequest):
             request.student_answer,
             request.model_answer,
             request.max_points,
-            request.grading_mode
+            request.grading_mode,
+            request.question_text
         )
         return result
     except Exception as e:
@@ -247,8 +264,6 @@ def health_check():
 
 @app.get("/favicon.ico")
 def favicon():
-    """Return 204 to prevent 404 spam in logs"""
-    from fastapi.responses import Response
     return Response(status_code=204)
 
 
@@ -263,8 +278,6 @@ def reload_learning_patterns(db_host: str = "localhost", db_user: str = "root",
         return {"status": "error", "message": "Learning module not available"}
     
     try:
-        import mysql.connector
-        
         db_config = {
             "host": os.getenv("DB_HOST", db_host),
             "user": os.getenv("DB_USER", db_user),
@@ -274,9 +287,16 @@ def reload_learning_patterns(db_host: str = "localhost", db_user: str = "root",
         }
         
         conn = mysql.connector.connect(**db_config)
-        engine = get_learning_engine()
-        count = engine.load_patterns_from_db(conn)
-        conn.close()
+        try:
+            engine = get_learning_engine()
+            count = engine.load_patterns_from_db(conn)
+            return {
+                "status": "ok",
+                "message": f"Reloaded {count} patterns",
+                "stats": engine.get_stats()
+            }
+        finally:
+            conn.close()
         
         return {
             "status": "ok",
@@ -338,6 +358,16 @@ class CorrectionRequest(BaseModel):
 @app.post("/learn/from-correction")
 def learn_from_correction(req: CorrectionRequest):
     try:
+        # GUARD: Skip if instructor didn't actually change the score
+        score_actually_changed = abs(req.new_score - req.old_score) > 0.05
+        if not score_actually_changed:
+            return {
+                "status": "skipped",
+                "message": "Score not changed (AI == GV), nothing to learn",
+                "old_score": req.old_score,
+                "new_score": req.new_score,
+            }
+        
         # 1. Save to dataset_learning.py (File-based, immediate)
         from app.dataset_learning import learn_correction as ds_learn
         ds_success = ds_learn(
@@ -345,7 +375,8 @@ def learn_from_correction(req: CorrectionRequest):
             model_text=req.model_answer,
             actual_score=req.new_score,
             max_points=req.max_points,
-            feedback=req.feedback if req.feedback else f"Instructor corrected: {req.old_score} → {req.new_score}"
+            feedback=req.feedback if req.feedback else f"Instructor corrected: {req.old_score} → {req.new_score}",
+            ai_score=req.old_score
         )
         
         # 2. LEGACY: Also update learning.py engine if available
@@ -357,7 +388,9 @@ def learn_from_correction(req: CorrectionRequest):
                     student_answer=req.student_answer,
                     model_answer=req.model_answer,
                     confirmed_score=req.new_score,
-                    max_points=req.max_points
+                    max_points=req.max_points,
+                    feedback=req.feedback,
+                    ai_score=req.old_score
                 )
                 
                 # Learn synonyms if score was increased
@@ -429,13 +462,20 @@ def batch_train(req: BatchTrainRequest):
     
     for i, sample in enumerate(req.samples):
         try:
+            # GUARD: Skip if score wasn't actually changed
+            if abs(sample.new_score - sample.old_score) <= 0.05:
+                print(f"[BatchTrain] Skipped sample {i} (no change): old={sample.old_score} == new={sample.new_score}")
+                results["success"] += 1  # Not an error, just no learning needed
+                continue
+            
             # 1. Save to dataset_learning.py
             ds_ok = ds_learn(
                 student_text=sample.student_answer,
                 model_text=sample.model_answer,
                 actual_score=sample.new_score,
                 max_points=sample.max_points,
-                feedback=sample.feedback or f"Batch train: {sample.old_score} → {sample.new_score}"
+                feedback=sample.feedback or f"Batch train: {sample.old_score} → {sample.new_score}",
+                ai_score=sample.old_score
             )
             if ds_ok:
                 results["dataset_saved"] += 1
@@ -448,7 +488,9 @@ def batch_train(req: BatchTrainRequest):
                         student_answer=sample.student_answer,
                         model_answer=sample.model_answer,
                         confirmed_score=sample.new_score,
-                        max_points=sample.max_points
+                        max_points=sample.max_points,
+                        feedback=sample.feedback or f"Batch train: {sample.old_score} → {sample.new_score}",
+                        ai_score=sample.old_score
                     )
                     
                     # Learn synonyms if score increased
@@ -542,6 +584,7 @@ class BehaviorEvent(BaseModel):
     timestamp: int
     event_type: str
     details: dict = {}
+    context: Optional[dict] = {}
 
 class DetectBehaviorRequest(BaseModel):
     student_id: int
@@ -549,8 +592,12 @@ class DetectBehaviorRequest(BaseModel):
     events: list[BehaviorEvent]
     window_duration_seconds: int = 10
 
+    class Config:
+        extra = "allow"
+
 @app.post("/api/ai/detect-behavior")
 async def detect_behavior(req: DetectBehaviorRequest):
+    """Detect potential cheating behavior from telemetry events."""
     try:
         from app.nlp.behavior_detection import behavior_model
         # Parse events to dict
@@ -560,12 +607,12 @@ async def detect_behavior(req: DetectBehaviorRequest):
             "success": True,
             "is_cheating": result["is_cheating"],
             "confidence": result["confidence"],
-            "cheating_type": result["reason"],
+            "reason": result["reason"],
             "features": result["features_extracted"]
         }
     except Exception as e:
-        import logging
-        logging.error(f"Error in detect_behavior: {e}")
+        logging.error(f"❌ Error in detect_behavior: {str(e)}")
+        logging.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 

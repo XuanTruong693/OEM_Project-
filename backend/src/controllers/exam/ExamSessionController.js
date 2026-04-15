@@ -11,30 +11,21 @@ async function startExam(req, res) {
         const userId = req.user.id;
 
         // 1) Lấy submission với verification status
-        let hasTC = false;
-        try { hasTC = await hasColumn("exams", "time_close"); } catch (e) {}
-
-        let subQ = `SELECT 
+        const [subRows] = await sequelize.query(
+            `SELECT 
         s.id, s.exam_id, s.user_id, s.status, s.submitted_at,
         (CASE WHEN s.face_image_url IS NOT NULL OR s.face_image_blob IS NOT NULL THEN 1 ELSE 0 END) AS face_verified,
         (CASE WHEN s.student_card_url IS NOT NULL OR s.student_card_blob IS NOT NULL THEN 1 ELSE 0 END) AS card_verified,
-        e.require_face_check, e.require_student_card, e.monitor_screen, e.intent_shuffle`;
-        
-        if (hasTC) subQ += `, e.time_close`;
-        
-        subQ += ` FROM submissions s
+        e.require_face_check, e.require_student_card, e.monitor_screen
+       FROM submissions s
        JOIN exams e ON e.id = s.exam_id
        WHERE s.id = ? AND s.user_id = ?
-       LIMIT 1`;
-
-        const [subRows] = await sequelize.query(subQ, { replacements: [submissionId, userId] });
+       LIMIT 1`,
+            { replacements: [submissionId, userId] }
+        );
         const sub =
             Array.isArray(subRows) && subRows.length > 0 ? subRows[0] : null;
         if (!sub) return res.status(404).json({ message: "Submission not found" });
-
-        if (sub.time_close && new Date().getTime() > new Date(sub.time_close).getTime()) {
-            return res.status(403).json({ message: "Đã hết giờ làm bài" });
-        }
 
         // 2) Kiểm tra verification requirements TRƯỚC KHI cho start
         if (sub.require_face_check && !sub.face_verified) {
@@ -81,7 +72,16 @@ async function startExam(req, res) {
             });
         }
 
-        // Bỏ block theo status vì có thể bị false positive từ trigger cũ, chỉ dựa vào submitted_at
+        // CHẶN nếu status là 'submitted' hoặc 'graded' (phải tạo submission mới)
+        if (["submitted", "graded"].includes(sub.status)) {
+            console.warn(`❌ [startExam] Cannot restart - status is ${sub.status}`);
+            return res.status(400).json({
+                message: `Bài thi này đã ${sub.status === "graded" ? "có kết quả" : "được nộp"
+                    }. Vui lòng tạo lần thi mới.`,
+                status: sub.status,
+                shouldCreateNewAttempt: true,
+            });
+        }
 
         // Kiểm tra các cột có tồn tại hay không
         let hasStartedAt = false,
@@ -129,18 +129,13 @@ async function startExam(req, res) {
             /* ignore */
         }
 
+        // Load questions + options
         let qSel = "SELECT q.id AS question_id, q.question_text, q.type, q.points";
         if (hasOrderIndex) qSel += ", q.order_index";
         qSel += " FROM exam_questions q WHERE q.exam_id = ?";
-        
-        if (sub.intent_shuffle) {
-            qSel += ` ORDER BY CASE WHEN q.type = 'MCQ' THEN 1 ELSE 2 END ASC, RAND(${parseInt(submissionId, 10)})`;
-        } else {
-            qSel += hasOrderIndex
-                ? " ORDER BY COALESCE(q.order_index, q.id) ASC"
-                : " ORDER BY q.id ASC";
-        }
-        
+        qSel += hasOrderIndex
+            ? " ORDER BY COALESCE(q.order_index, q.id) ASC"
+            : " ORDER BY q.id ASC";
         const [qRows] = await sequelize.query(qSel, {
             replacements: [sub.exam_id || sub.examId || sub.EXAM_ID],
         });
@@ -152,13 +147,12 @@ async function startExam(req, res) {
             .map((q) => q.question_id);
         let optionsByQ = {};
         if (ids.length > 0) {
-            let oSel = `SELECT question_id, id AS option_id, option_text FROM exam_options WHERE question_id IN (${ids.map(() => "?").join(",")})`;
-            if (sub.intent_shuffle) {
-                oSel += ` ORDER BY RAND(${parseInt(submissionId, 10)})`;
-            } else {
-                oSel += ` ORDER BY id ASC`;
-            }
-            const [oRows] = await sequelize.query(oSel, { replacements: ids });
+            const [oRows] = await sequelize.query(
+                `SELECT question_id, id AS option_id, option_text FROM exam_options WHERE question_id IN (${ids
+                    .map(() => "?")
+                    .join(",")}) ORDER BY id ASC`,
+                { replacements: ids }
+            );
             (Array.isArray(oRows) ? oRows : []).forEach((o) => {
                 if (!optionsByQ[o.question_id]) optionsByQ[o.question_id] = [];
                 optionsByQ[o.question_id].push({
@@ -181,11 +175,8 @@ async function startExam(req, res) {
             replacements: [sub.exam_id],
         });
         const ex = Array.isArray(exRows) ? exRows[0] : exRows || {};
-        const [nowRows] = await sequelize.query(
-            "SELECT NOW() as server_now, TIMESTAMPDIFF(SECOND, NOW(), ?) as seconds_until_close",
-            { replacements: [sub.time_close || null] }
-        );
-        const nowRow = nowRows[0];
+        const [tRows] = await sequelize.query(`SELECT NOW() AS server_now`);
+        const nowRow = Array.isArray(tRows) ? tRows[0] : tRows;
         // fetch started_at after update
         let started = nowRow.server_now;
         try {
@@ -203,15 +194,8 @@ async function startExam(req, res) {
             /* ignore */
         }
 
-        const [aRows] = await sequelize.query(
-            `SELECT question_id, selected_option_id, answer_text, score FROM student_answers WHERE submission_id = ?`,
-            { replacements: [submissionId] }
-        );
-        const answers = Array.isArray(aRows) ? aRows : [];
-
         return res.json({
             questions: enriched,
-            answers: answers,
             duration_minutes: ex.duration_minutes || sub.duration || 60,
             started_at: started,
             server_now: nowRow.server_now,
@@ -219,8 +203,6 @@ async function startExam(req, res) {
             instructor_name: ex.instructor_name || "",
             intent_shuffle: !!ex.intent_shuffle,
             monitor_screen: !!sub.monitor_screen,
-            time_close: sub.time_close || null,
-            seconds_until_close: nowRow.seconds_until_close !== null ? parseInt(nowRow.seconds_until_close, 10) : null,
         });
     } catch (err) {
         console.error("startExam error:", err);
@@ -255,30 +237,20 @@ async function saveAnswer(req, res) {
 
         // Guard by time
         try {
-            let hasTC = false;
-            try { hasTC = await hasColumn("exams", "time_close"); } catch (e) {}
-
-            let timingQ = `SELECT s.started_at, COALESCE(e.duration_minutes, e.duration) AS duration_minutes`;
-            if (hasTC) timingQ += `, (CASE WHEN NOW() > e.time_close + INTERVAL 15 SECOND THEN 1 ELSE 0 END) AS is_closed_by_time`;
-            timingQ += ` FROM submissions s JOIN exams e ON e.id = s.exam_id WHERE s.id = ? LIMIT 1`;
-
-            const [timing] = await sequelize.query(timingQ, { replacements: [submissionId] });
+            const [timing] = await sequelize.query(
+                `SELECT s.started_at, COALESCE(e.duration_minutes, e.duration) AS duration_minutes
+         FROM submissions s JOIN exams e ON e.id = s.exam_id WHERE s.id = ? LIMIT 1`,
+                { replacements: [submissionId] }
+            );
             const tm = Array.isArray(timing) ? timing[0] : timing;
-            
-            if (tm) {
-                if (tm.is_closed_by_time && Number(tm.is_closed_by_time) === 1) {
-                     return res.status(403).json({ message: "Hết thời gian làm bài" });
-                }
-                
-                if (tm.started_at && tm.duration_minutes) {
-                    const [chk] = await sequelize.query(
-                        `SELECT CASE WHEN NOW() > (TIMESTAMPADD(MINUTE, ?, ?)) THEN 1 ELSE 0 END AS overdue`,
-                        { replacements: [Number(tm.duration_minutes) + 0.25, tm.started_at] }
-                    );
-                    const over = Array.isArray(chk) ? chk[0]?.overdue : chk?.overdue;
-                    if (Number(over) === 1)
-                        return res.status(403).json({ message: "Hết thời gian làm bài" });
-                }
+            if (tm && tm.started_at && tm.duration_minutes) {
+                const [chk] = await sequelize.query(
+                    `SELECT CASE WHEN NOW() > (TIMESTAMPADD(MINUTE, ?, ?)) THEN 1 ELSE 0 END AS overdue`,
+                    { replacements: [Number(tm.duration_minutes) + 0.25, tm.started_at] }
+                );
+                const over = Array.isArray(chk) ? chk[0]?.overdue : chk?.overdue;
+                if (Number(over) === 1)
+                    return res.status(403).json({ message: "Hết thời gian làm bài" });
             }
         } catch (e) {
             /* ignore if columns missing */

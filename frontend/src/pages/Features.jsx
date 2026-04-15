@@ -48,7 +48,7 @@ export default function Features() {
   return (
     <section className="py-10 px-6">
       <h2 className="text-4xl font-bold text-blue-900 text-center mb-8">
-        Giới thiệu tính năng nổi bật của OEM Mini
+        Giới thiệu tính năng nổi bật của OEM
       </h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto">
         {features.map((feature, index) => (

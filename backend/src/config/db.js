@@ -12,6 +12,9 @@ const sequelize = new Sequelize(
     port: process.env.DB_PORT,
     logging: false,
     timezone: process.env.APP_TZ || "+07:00",
+    dialectOptions: {
+      charset: 'utf8mb4'
+    }
   }
 );
 
@@ -25,7 +28,8 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
-  timezone: process.env.APP_TZ || '+07:00'
+  timezone: process.env.APP_TZ || '+07:00',
+  charset: 'utf8mb4'
 });
 
 // Fix SQL mode ONLY_FULL_GROUP_BY issue at global level
@@ -61,6 +65,9 @@ const adminSequelize = new Sequelize(
     port: process.env.ADMIN_DB_PORT || process.env.DB_PORT,
     logging: false,
     timezone: process.env.APP_TZ || "+07:00",
+    dialectOptions: {
+      charset: 'utf8mb4'
+    }
   }
 );
 
@@ -74,7 +81,8 @@ const adminPool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 5,
   queueLimit: 0,
-  timezone: process.env.APP_TZ || '+07:00'
+  timezone: process.env.APP_TZ || '+07:00',
+  charset: 'utf8mb4'
 });
 
 // Test connections on startup

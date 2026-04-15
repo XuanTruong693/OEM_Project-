@@ -1,4 +1,4 @@
-# Dataset Learning Module for AI Grading (Rubric-based)
+# Dataset Learning Module for AI Grading
 import json
 import os
 from typing import Dict, List, Optional, Tuple
@@ -105,8 +105,6 @@ def find_similar_grading(
     max_points: float
 ) -> Optional[Dict]:
 
-    # Find a similar grading sample from the training data.
-    # Uses rubric-based matching for better accuracy.
     if _questions is None:
         load_data()
     
@@ -375,6 +373,7 @@ def load_all_datasets() -> Dict:
                     # Convert to grading_questions format for consistency
                     for item in learned_list:
                         # Create a pseudo question object
+                        current_feedback = item.get('feedback', 'Learned Pattern (Instructor Confirmed)')
                         q_obj = {
                             "id": "learned_" + str(hash(item.get('model_answer', ''))),
                             "model_answer": item.get('model_answer', ''),
@@ -382,7 +381,7 @@ def load_all_datasets() -> Dict:
                             "grading_samples": [{
                                 "student_answer": item.get('student_answer', ''),
                                 "score": item.get('confirmed_score', 0.0),
-                                "feedback": "Learned Pattern (Instructor Confirmed)",
+                                "feedback": current_feedback,
                                 "answer_type": "learned_pattern"
                             }]
                         }
@@ -412,9 +411,6 @@ def find_similar_to_grading(
     model_answer: str,
     max_points: float
 ) -> Optional[Dict]:
-
-    # PRIORITY LOOKUP: Find existing graded sample in ALL datasets.
-    # Returns result if match found, else None.
     if not _model_index:
         load_all_datasets()
         
@@ -484,13 +480,16 @@ def learn_correction(
     model_text: str,
     actual_score: float,
     max_points: float,
-    feedback: str = ""
+    feedback: str = "",
+    ai_score: float = None
 ) -> bool:
-    # Learn from teacher correction. Saves the correction to learned_data.json
-    # so AI repeats this grading for future similar answers.
     global _model_index, _questions
     
     if not student_text or not model_text:
+        return False
+    
+    if ai_score is not None and abs(actual_score - ai_score) <= 0.05:
+        print(f"[AI Learning] Skipped (no change): ai={ai_score} == gv={actual_score} for '{student_text[:30]}...'")
         return False
     
     # Calculate score ratio (0.0 to 1.0)
@@ -503,6 +502,7 @@ def learn_correction(
         "model_answer": model_text.strip(),
         "confirmed_score": actual_score,
         "max_points": max_points,
+        "ai_score": ai_score if ai_score is not None else 0.0,
         "score_ratio": score_ratio,
         "feedback": feedback if feedback else f"Teacher confirmed: {actual_score}/{max_points}",
         "learned_at": __import__('datetime').datetime.now().isoformat()

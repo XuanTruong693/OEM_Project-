@@ -5,7 +5,23 @@ const exceljs = require('exceljs');
 
 // Regex: chỉ cho phép chữ cái (bao gồm Unicode / tiếng Việt) và khoảng trắng
 const VALID_NAME_REGEX = /^[\p{L}\s]+$/u;
-const isValidStudentName = (name) => VALID_NAME_REGEX.test(name);
+const isValidStudentName = (name) => {
+    if (!name || typeof name !== 'string') return false;
+    const trimmed = name.trim();
+    return trimmed.length > 0 && trimmed.length <= 100 && VALID_NAME_REGEX.test(trimmed);
+};
+
+// Regex MSSV: chỉ chữ và số, 5-15 ký tự, CẤM toàn chữ
+const VALID_CODE_REGEX = /^[a-zA-Z0-9]{5,15}$/;
+const isValidStudentCode = (code) => {
+    if (!code || typeof code !== 'string') return false;
+    const trimmed = code.trim();
+    // Phải khớp regex alphanumeric + length 5-15
+    if (!VALID_CODE_REGEX.test(trimmed)) return false;
+    // Cấm toàn chữ cái (phải có ít nhất 1 số)
+    if (/^[a-zA-Z]+$/.test(trimmed)) return false;
+    return true;
+};
 
 /**
  * 1. GET /api/admin/student-cards
@@ -90,8 +106,18 @@ exports.createStudentCard = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Thiếu MSSV hoặc Tên sinh viên.' });
         }
 
-        if (!isValidStudentName(student_name.trim())) {
-            return res.status(400).json({ success: false, message: 'Tên sinh viên chỉ được chứa chữ cái và khoảng trắng (không có số hoặc ký tự đặc biệt).' });
+        if (!isValidStudentCode(student_code)) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'MSSV không hợp lệ (5-15 ký tự, chữ và số, không được chỉ chứa toàn chữ cái).' 
+            });
+        }
+
+        if (!isValidStudentName(student_name)) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Tên sinh viên không hợp lệ (tối đa 100 ký tự, chỉ chứa chữ cái và khoảng trắng).' 
+            });
         }
 
         const imageFile = req.files && req.files['card_image'] && req.files['card_image'][0];
@@ -134,26 +160,38 @@ exports.updateStudentCard = async (req, res) => {
         const updateData = {};
 
         // Cập nhật student_code nếu gửi lên và khác hiện tại
-        if (student_code && student_code.trim() !== card.student_code) {
-            // Check trùng với record KHÁC
-            const conflict = await StudentCard.findOne({
-                where: {
-                    student_code: student_code.trim(),
-                    id: { [Op.ne]: card.id }
+        if (student_code) {
+            const trimmedCode = student_code.trim();
+            if (trimmedCode !== card.student_code) {
+                if (!isValidStudentCode(trimmedCode)) {
+                    return res.status(400).json({ 
+                        success: false, 
+                        message: 'MSSV không hợp lệ (5-15 ký tự, chữ và số, không được chỉ chứa toàn chữ cái).' 
+                    });
                 }
-            });
-            if (conflict) {
-                return res.status(400).json({
-                    success: false,
-                    message: `MSSV "${student_code}" đã được dùng bởi sinh viên khác.`
+                // Check trùng với record KHÁC
+                const conflict = await StudentCard.findOne({
+                    where: {
+                        student_code: trimmedCode,
+                        id: { [Op.ne]: card.id }
+                    }
                 });
+                if (conflict) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `MSSV "${trimmedCode}" đã được dùng bởi sinh viên khác.`
+                    });
+                }
+                updateData.student_code = trimmedCode;
             }
-            updateData.student_code = student_code.trim();
         }
 
         if (student_name && student_name.trim()) {
-            if (!isValidStudentName(student_name.trim())) {
-                return res.status(400).json({ success: false, message: 'Tên sinh viên chỉ được chứa chữ cái và khoảng trắng (không có số hoặc ký tự đặc biệt).' });
+            if (!isValidStudentName(student_name)) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: 'Tên sinh viên không hợp lệ (tối đa 100 ký tự, chỉ chứa chữ cái và khoảng trắng).' 
+                });
             }
             updateData.student_name = student_name.trim();
         }
@@ -247,13 +285,13 @@ exports.batchUploadStudentCards = async (req, res) => {
             }
 
             if (!isValidStudentName(ten)) {
-                errorList.push({ mssv, ten, ly_do: 'Tên SV chỉ được chứa chữ cái và khoảng trắng (không có số/ký tự đặc biệt).' });
+                errorList.push({ mssv, ten, ly_do: 'Tên SV không hợp lệ (tối đa 100 ký tự, chỉ chứa chữ cái).' });
                 continue;
             }
 
-            // Validate MSSV === 11 ký tự
-            if (mssv.length !== 11) {
-                errorList.push({ mssv, ten, ly_do: 'MSSV không hợp lệ (phải nhập đúng 11 ký tự số/chữ).' });
+            // Validate MSSV
+            if (!isValidStudentCode(mssv)) {
+                errorList.push({ mssv, ten, ly_do: 'MSSV không hợp lệ (5-15 ký tự, chữ/số, không được toàn chữ).' });
                 continue;
             }
 

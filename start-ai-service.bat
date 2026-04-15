@@ -5,7 +5,7 @@ echo    OEM AI Service (Port 8000)
 echo ========================================
 echo.
 
-cd /d "C:\Users\Administrator\Documents\OEM_Project\ai_services"
+cd /d "%~dp0ai_services"
 
 echo Activating Python Virtual Environment...
 call .venv\Scripts\activate.bat

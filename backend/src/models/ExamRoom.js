@@ -45,6 +45,11 @@ const Exam = sequelize.define(
       allowNull: false,
       defaultValue: "general",
     },
+    allow_view_answers: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: false,
+    },
   },
   {
     tableName: "exams",

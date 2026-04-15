@@ -2,12 +2,6 @@ import re
 from typing import List
 
 def extract_propositions(text: str) -> List[str]:
-
-    # Split the Model Answer into atomic facts/propositions for granular Partial Credit scoring.
-    # Splits by:
-    # 1. Punctuation: . ? ! ;
-    # 2. Vietnamese Conjunctions (for long sentences): và, nhưng, tuy nhiên, mà, nên
-
     if not text:
         return []
 
@@ -32,13 +26,7 @@ def extract_propositions(text: str) -> List[str]:
             if part:
                 # Add valid content part
                 propositions.append(part)
-                
-    # User requested "if it is in model answer, don't remove it".
-    # Previous filter (len >= 2 words) was too aggressive for names like "Nam", "Pháp".
-    # Relaxed to len >= 1 word, but ensure it has some content chars.
     refined_props = [p for p in propositions if len(p.split()) >= 1 and any(c.isalnum() for c in p)]
-    
-    # Fallback: if refinement killed everything (e.g. "Đúng"), return original text as single prop
     if not refined_props and text.strip():
         return [text.strip()]
         

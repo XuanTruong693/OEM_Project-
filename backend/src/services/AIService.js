@@ -6,10 +6,10 @@ const { pool } = require("../config/db");
 // ═══════════════════════════════════════════════════════
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:8000";
 const MAX_CONCURRENT_JOBS = 20;       // Reduced to avoid overwhelming AI service
-const GRADING_TIMEOUT = 90000;       // 90 seconds per AI request
-const MAX_RETRIES = 10;               // Max retries per essay
-const RETRY_DELAY_BASE = 2000;       // 2 second base delay
-const RECOVERY_INTERVAL = 10000;     // Check for pending/failed every 10s
+const GRADING_TIMEOUT = 90000;       // 90 seconds per AI request (CPU inference can be slow)
+const MAX_RETRIES = 5;               // Max retries per essay
+const RETRY_DELAY_BASE = 2000;       // 2 second base delay (exponential backoff)
+const RECOVERY_INTERVAL = 10000;     // Check for pending/failed every 10s (was 30s)
 const STALE_TIMEOUT = 180000;        // 3 minutes - mark as stale if in_progress too long
 const IMMEDIATE_RETRY_DELAY = 3000;  // Retry failed submission after 3s
 
@@ -28,7 +28,7 @@ const initialize = () => {
     console.log("[AIService] 🚀 Initializing AI Grading Service...");
     console.log(`[AIService] ⚙️ Config: MAX_CONCURRENT=${MAX_CONCURRENT_JOBS}, TIMEOUT=${GRADING_TIMEOUT}ms, MAX_RETRIES=${MAX_RETRIES}, RECOVERY_INTERVAL=${RECOVERY_INTERVAL}ms`);
 
-    // Run recovery on startup
+    // Run recovery on startup (wait for DB to stabilize)
     setTimeout(() => {
         console.log("[AIService] 🔍 Running startup recovery check...");
         recoverPendingSubmissions();
@@ -227,12 +227,9 @@ const performGrading = async (submissionId, conn) => {
     // Fetch Essay Answers
     const [answers] = await conn.query(`
         SELECT sa.id, sa.answer_text, sa.question_id, sa.student_id,
-               q.model_answer, q.points AS max_points,
-               e.grading_mode
+               q.model_answer, q.points AS max_points
         FROM student_answers sa
         JOIN exam_questions q ON sa.question_id = q.id
-        JOIN submissions s ON sa.submission_id = s.id
-        JOIN exams e ON s.exam_id = e.id
         WHERE sa.submission_id = ? AND q.type = 'Essay'
     `, [submissionId]);
 
@@ -261,7 +258,7 @@ const performGrading = async (submissionId, conn) => {
         }
 
         try {
-            const aiResult = await callAIService(ans.answer_text, ans.model_answer, ans.max_points, ans.grading_mode);
+            const aiResult = await callAIService(ans.answer_text, ans.model_answer, ans.max_points);
 
             if (aiResult && aiResult.score !== undefined) {
                 let { score, confidence, explanation, type } = aiResult;
@@ -271,7 +268,7 @@ const performGrading = async (submissionId, conn) => {
                     console.warn(`[AIService] ⚠️ Invalid score from AI (NaN): Answer ${ans.id}, using 0`);
                     score = 0;
                 }
-
+                
                 // Clamp score to valid range [0, max_points]
                 if (score < 0) {
                     console.warn(`[AIService] ⚠️ AI returned negative score (${score}): Answer ${ans.id}, clamping to 0`);
@@ -359,13 +356,12 @@ const performGrading = async (submissionId, conn) => {
  * Call AI Service with retry and timeout.
  * On retryable errors, backs off exponentially.
  */
-const callAIService = async (studentAnswer, modelAnswer, maxPoints, gradingMode = 'general', retryCount = 0) => {
+const callAIService = async (studentAnswer, modelAnswer, maxPoints, retryCount = 0) => {
     try {
         const response = await axios.post(`${AI_SERVICE_URL}/grade`, {
             student_answer: studentAnswer,
             model_answer: modelAnswer,
-            max_points: maxPoints,
-            grading_mode: gradingMode
+            max_points: maxPoints
         }, {
             timeout: GRADING_TIMEOUT,
             headers: { 'Content-Type': 'application/json' }
@@ -381,7 +377,7 @@ const callAIService = async (studentAnswer, modelAnswer, maxPoints, gradingMode 
             const delay = RETRY_DELAY_BASE * Math.pow(2, retryCount);
             console.log(`[AIService] 🔄 Retry ${retryCount + 1}/${MAX_RETRIES} for AI call after ${delay}ms (${err.code || err.response?.status || 'unknown'})`);
             await new Promise(r => setTimeout(r, delay));
-            return callAIService(studentAnswer, modelAnswer, maxPoints, gradingMode, retryCount + 1);
+            return callAIService(studentAnswer, modelAnswer, maxPoints, retryCount + 1);
         }
 
         if (err.code === 'ECONNREFUSED') {

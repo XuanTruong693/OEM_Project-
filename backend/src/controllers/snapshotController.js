@@ -65,7 +65,6 @@ exports.mergeToVideo = async (req, res) => {
     try {
         const { submissionId } = req.params;
         const { violation_id: rawViolationId } = req.body; // Nếu undefined -> ghép toàn bộ frame của submission
-        // === FIX: Convert to string to prevent path.join TypeError when it's a number ===
         const violation_id = rawViolationId != null ? String(rawViolationId) : null;
 
         const submissionDir = path.join(SNAPSHOTS_DIR, String(submissionId));
@@ -77,10 +76,13 @@ exports.mergeToVideo = async (req, res) => {
             outputFileName = `submission_${submissionId}_violation_${violation_id}.mp4`;
         }
 
-        const outputPath = path.join(VIDEOS_DIR, outputFileName);
+        const outputPath = path.normalize(path.join(VIDEOS_DIR, outputFileName));
+
+        console.log(`[SnapshotController] 🔍 Checking existence of: ${outputPath}`);
 
         // Kiểm tra đã ghép chưa
         if (fs.existsSync(outputPath)) {
+            console.log(`[SnapshotController] ✅ Video already exists at: ${outputPath}`);
             return res.status(200).json({
                 success: true,
                 message: 'Video already exists',
@@ -88,8 +90,20 @@ exports.mergeToVideo = async (req, res) => {
             });
         }
 
+        console.log(`[SnapshotController] ⌛ Video NO found. Checking frames at: ${framesDir}`);
+
         if (!fs.existsSync(framesDir)) {
-            return res.status(404).json({ error: 'No snapshots found for this target' });
+            console.error(`[SnapshotController] ❌ Target frames directory NOT found for merge: ${framesDir}`);
+            if (violation_id && fs.existsSync(submissionDir)) {
+                console.warn(`[SnapshotController] ⚠️ Falling back to main submission directory for ID: ${submissionId}`);
+                framesDir = submissionDir;
+            } else {
+                return res.status(404).json({
+                    error: 'No snapshots found for this target',
+                    path: framesDir,
+                    hint: 'Ensure that snapshots were uploaded before merging'
+                });
+            }
         }
 
         // Lấy link tất cả webp (để đảm bảo có formated đúng)
@@ -151,6 +165,41 @@ exports.mergeToVideo = async (req, res) => {
 
     } catch (error) {
         console.error('[SnapshotController] merge error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+exports.deleteEvidence = async (req, res) => {
+    try {
+        const { submissionId, violationId } = req.params;
+
+        if (!submissionId || !violationId) {
+            return res.status(400).json({ error: 'Missing submissionId or violationId' });
+        }
+
+        const submissionDir = path.join(SNAPSHOTS_DIR, String(submissionId));
+        const violationDir = path.join(submissionDir, String(violationId));
+
+        // Xóa thư mục ảnh snapshot
+        if (fs.existsSync(violationDir)) {
+            fs.rmSync(violationDir, { recursive: true, force: true });
+        }
+
+        // Xóa video nếu đã được merge
+        const videoName = `submission_${submissionId}_violation_${violationId}.mp4`;
+        const videoPath = path.join(VIDEOS_DIR, videoName);
+        if (fs.existsSync(videoPath)) {
+            fs.unlinkSync(videoPath);
+        }
+
+        console.log(`[SnapshotController] 🗑️ Deleted evidence for violation: ${violationId}`);
+
+        return res.status(200).json({
+            success: true,
+            message: 'Evidence deleted successfully'
+        });
+    } catch (error) {
+        console.error('[SnapshotController] delete evidence error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

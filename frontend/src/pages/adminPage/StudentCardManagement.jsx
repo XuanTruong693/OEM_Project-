@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import axiosClient from '../../api/axiosClient';
 import AdminSidebar from '../../components/admin/AdminSidebar';
+import { useLanguage } from '../../context/LanguageContext';
 
 // Utility: đọc file Excel bằng SheetJS (lazy import)
 const readExcelFile = async (file) => {
@@ -33,6 +34,7 @@ const readExcelFile = async (file) => {
 // Component chính
 const StudentCardManagement = () => {
     const navigate = useNavigate();
+    const { t, language } = useLanguage();
     // --- State: danh sách & phân trang ---
     const [cards, setCards] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -85,7 +87,7 @@ const StudentCardManagement = () => {
             }
         } catch (err) {
             console.error('Lỗi tải danh sách thẻ SV:', err);
-            showToast('error', 'Lỗi khi tải danh sách thẻ sinh viên.');
+            showToast('error', t('error'));
         } finally {
             setLoading(false);
         }
@@ -121,7 +123,7 @@ const StudentCardManagement = () => {
                 setShowViewModal(true);
             }
         } catch (err) {
-            showToast('error', 'Lỗi khi tải chi tiết thẻ.');
+            showToast('error', t('error'));
         } finally {
             setDetailLoading(false);
         }
@@ -183,10 +185,32 @@ const StudentCardManagement = () => {
 
     // Submit Upload thủ công (Thêm mới / Sửa)
     const handleSaveUpload = async () => {
-        if (form.student_name && !VALID_NAME_REGEX.test(form.student_name.trim())) {
-            showToast('error', 'Tên sinh viên chỉ được chứa chữ cái và khoảng trắng (không có số hoặc ký tự đặc biệt).');
+        const code = form.student_code.trim();
+        const name = form.student_name.trim();
+
+        if (!code || !name) {
+            showToast('error', t('pleaseEnterFullInfo'));
             return;
         }
+
+        if (code.length < 5 || code.length > 15) {
+            showToast('error', t('invalidStudentCodeLength'));
+            return;
+        }
+        if (/^[a-zA-Z]+$/.test(code)) {
+            showToast('error', t('invalidStudentCode'));
+            return;
+        }
+
+        if (name.length > 100) {
+            showToast('error', t('studentNameTooLong'));
+            return;
+        }
+        if (!VALID_NAME_REGEX.test(name)) {
+            showToast('error', t('studentNameInvalidChars'));
+            return;
+        }
+
         try {
             setSaving(true);
             const fd = new FormData();
@@ -201,18 +225,18 @@ const StudentCardManagement = () => {
                 await axiosClient.post('/admin/student-cards', fd, {
                     headers: { 'Content-Type': 'multipart/form-data' }
                 });
-                showToast('success', 'Đã thêm thẻ sinh viên thành công!');
+                showToast('success', t('success'));
             } else {
                 await axiosClient.put(`/admin/student-cards/${selectedCard.id}`, fd, {
                     headers: { 'Content-Type': 'multipart/form-data' }
                 });
-                showToast('success', 'Đã cập nhật thẻ sinh viên thành công!');
+                showToast('success', t('success'));
             }
 
             setShowUploadModal(false);
             fetchCards(currentPage, searchTerm);
         } catch (err) {
-            const errMsg = err.response?.data?.message || 'Lỗi khi lưu thẻ sinh viên.';
+            const errMsg = err.response?.data?.message || t('errorSavingStudentCard');
             showToast('error', errMsg);
         } finally {
             setSaving(false);
@@ -229,11 +253,11 @@ const StudentCardManagement = () => {
         try {
             setSaving(true);
             await axiosClient.delete(`/admin/student-cards/${selectedCard.id}`);
-            showToast('success', `Đã xóa thẻ SV ${selectedCard.student_name} thành công!`);
+            showToast('success', t('success'));
             setShowDeleteModal(false);
             fetchCards(currentPage, searchTerm);
         } catch (err) {
-            showToast('error', 'Lỗi khi xóa thẻ sinh viên.');
+            showToast('error', t('error'));
         } finally {
             setSaving(false);
         }
@@ -248,14 +272,14 @@ const StudentCardManagement = () => {
             const rows = await readExcelFile(file);
             setExcelData(rows);
         } catch {
-            showToast('error', 'Không đọc được file Excel. Vui lòng kiểm tra định dạng.');
+            showToast('error', t('error'));
         }
     };
 
     // Batch Upload: Xác nhận upload
     const handleBatchSubmit = async () => {
         if (!batchExcelFile) {
-            showToast('error', 'Chưa chọn file Excel để upload.');
+            showToast('error', t('pleaseSelectExcelFile'));
             return;
         }
 
@@ -274,7 +298,7 @@ const StudentCardManagement = () => {
                 fetchCards(1, '');
             }
         } catch (err) {
-            showToast('error', err.response?.data?.message || 'Lỗi khi giải mã file Excel hoặc lưu dữ liệu.');
+            showToast('error', err.response?.data?.message || t('error'));
         } finally {
             setBatchLoading(false);
         }
@@ -306,7 +330,7 @@ const StudentCardManagement = () => {
 
     // Render
     return (
-        <div className="flex flex-col md:flex-row min-h-screen bg-gray-900">
+        <div className="flex flex-col md:flex-row min-h-screen bg-gray-900 [.light-theme_&]:bg-gray-50 transition-colors">
             <AdminSidebar activeTab="student-cards" />
 
             <main className="flex-1 p-4 pt-20 md:p-8 overflow-y-auto">
@@ -323,33 +347,33 @@ const StudentCardManagement = () => {
                 {/* Header */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-0 mb-8">
                     <div>
-                        <h1 className="text-3xl font-semibold text-white flex items-center gap-3">
-                            <CreditCard size={30} className="text-blue-400" />
-                            Quản lý Thẻ Sinh Viên
+                        <h1 className="text-3xl font-semibold text-white [.light-theme_&]:text-gray-900 flex items-center gap-3 transition-colors">
+                            <CreditCard size={30} className="text-blue-400 [.light-theme_&]:text-blue-600" />
+                            {t('studentCardManagementTitle')}
                         </h1>
-                        <p className="text-gray-400 mt-1">Quản lý kho ảnh thẻ sinh viên dùng để đối chiếu khi thi</p>
+                        <p className="text-gray-400 [.light-theme_&]:text-gray-600 mt-1 transition-colors">{t('studentCardManagementDesc')}</p>
                     </div>
                     <div className="flex flex-col sm:flex-row w-full md:w-auto gap-3">
                         <button
                             onClick={() => navigate('/admin/student-cards/update-photos')}
-                            className="flex items-center gap-2 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors font-medium"
+                            className="flex items-center gap-2 px-4 py-2.5 bg-amber-600 [.light-theme_&]:bg-amber-400 hover:bg-amber-700 [.light-theme_&]:hover:bg-amber-500 text-white [.light-theme_&]:text-gray-900 rounded-lg transition-colors font-bold shadow-sm"
                         >
                             <Camera size={18} />
-                            Cập nhật ảnh thẻ
+                            {t('batchUpdatePhotos')}
                         </button>
                         <button
                             onClick={handleOpenCreate}
-                            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
+                            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 [.light-theme_&]:bg-blue-500 hover:bg-blue-700 [.light-theme_&]:hover:bg-blue-600 text-white rounded-lg transition-colors font-bold shadow-sm"
                         >
                             <Upload size={18} />
-                            Upload thủ công
+                            {t('manualUpload')}
                         </button>
                         <button
                             onClick={() => { setShowBatchModal(true); setBatchStep(1); }}
-                            className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-colors font-medium"
+                            className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 [.light-theme_&]:bg-teal-400 hover:bg-teal-700 [.light-theme_&]:hover:bg-teal-500 text-white [.light-theme_&]:text-gray-900 rounded-lg transition-colors font-bold shadow-sm"
                         >
                             <FileSpreadsheet size={18} />
-                            Upload Excel
+                            {t('uploadExcel')}
                         </button>
                     </div>
                 </div>
@@ -360,111 +384,114 @@ const StudentCardManagement = () => {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                         <input
                             type="text"
-                            placeholder="Tìm kiếm theo Tên hoặc MSSV..."
+                            placeholder={t('searchPlaceholderStudent')}
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                            className="w-full pl-10 pr-4 py-2.5 bg-gray-800 [.light-theme_&]:bg-white border border-gray-700 [.light-theme_&]:border-gray-200 rounded-lg text-white [.light-theme_&]:text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 shadow-sm transition-colors"
                         />
                     </div>
                 </div>
 
                 {/* Bảng danh sách */}
-                <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+                <div className="bg-gray-800 [.light-theme_&]:bg-white border border-gray-700 [.light-theme_&]:border-gray-200 rounded-xl overflow-hidden shadow-sm transition-colors">
                     <div className="overflow-x-auto">
                         <table className="w-full min-w-[800px]">
-                            <thead className="bg-gray-700/50">
-                            <tr>
-                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">#ID</th>
-                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">MSSV</th>
-                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Tên Sinh Viên</th>
-                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Ngày tạo</th>
-                                <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Hành động</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-700">
-                            {loading ? (
+                            <thead className="bg-gray-700/50 [.light-theme_&]:bg-gray-50 border-b border-gray-700 [.light-theme_&]:border-gray-200 transition-colors">
                                 <tr>
-                                    <td colSpan="5" className="px-6 py-10 text-center text-gray-400">
-                                        <div className="flex items-center justify-center gap-2">
-                                            <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                                            Đang tải...
-                                        </div>
-                                    </td>
+                                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 [.light-theme_&]:text-gray-500 uppercase tracking-wider">#ID</th>
+                                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 [.light-theme_&]:text-gray-500 uppercase tracking-wider">MSSV</th>
+                                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 [.light-theme_&]:text-gray-500 uppercase tracking-wider">{t('studentName')}</th>
+                                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 [.light-theme_&]:text-gray-500 uppercase tracking-wider">{t('dateCreated')}</th>
+                                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 [.light-theme_&]:text-gray-500 uppercase tracking-wider">{t('actions')}</th>
                                 </tr>
-                            ) : cards.length === 0 ? (
-                                <tr>
-                                    <td colSpan="5" className="px-6 py-12 text-center">
-                                        <CreditCard size={40} className="mx-auto text-gray-600 mb-3" />
-                                        <p className="text-gray-400">Chưa có thẻ sinh viên nào. Hãy upload để bắt đầu!</p>
-                                    </td>
-                                </tr>
-                            ) : (
-                                cards.map(card => (
-                                    <tr key={card.id} className="hover:bg-gray-700/30 transition-colors">
-                                        <td className="px-6 py-4 text-sm text-gray-400">#{card.id}</td>
-                                        <td className="px-6 py-4">
-                                            <span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-600/20 text-blue-400 border border-blue-600/30">
-                                                {card.student_code}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 text-white font-medium">{card.student_name}</td>
-                                        <td className="px-6 py-4 text-sm text-gray-400">
-                                            {card.createdAt
-                                                ? new Date(card.createdAt).toLocaleDateString('vi-VN')
-                                                : '—'}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex justify-end gap-2">
-                                                <button
-                                                    onClick={() => handleView(card.id)}
-                                                    disabled={detailLoading}
-                                                    className="p-2 text-gray-400 hover:text-blue-400 hover:bg-blue-600/10 rounded-lg transition-colors"
-                                                    title="Xem chi tiết"
-                                                >
-                                                    <Eye size={16} />
-                                                </button>
-                                                <button
-                                                    onClick={() => handleEdit(card)}
-                                                    className="p-2 text-gray-400 hover:text-yellow-400 hover:bg-yellow-600/10 rounded-lg transition-colors"
-                                                    title="Chỉnh sửa"
-                                                >
-                                                    <Edit2 size={16} />
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDeleteClick(card)}
-                                                    className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-600/10 rounded-lg transition-colors"
-                                                    title="Xóa"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
+                            </thead>
+                            <tbody className="divide-y divide-gray-700 [.light-theme_&]:divide-gray-100">
+                                {loading ? (
+                                    <tr>
+                                        <td colSpan="5" className="px-6 py-10 text-center text-gray-400">
+                                            <div className="flex items-center justify-center gap-2">
+                                                <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                                                {t('loading')}
                                             </div>
                                         </td>
                                     </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
+                                ) : cards.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="5" className="px-6 py-12 text-center">
+                                            <CreditCard size={40} className="mx-auto text-gray-600 mb-3" />
+                                            <p className="text-gray-400 [.light-theme_&]:text-gray-500">{t('noStudentCardsFound')}</p>
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    cards.map(card => (
+                                        <tr key={card.id} className="hover:bg-gray-700/30 [.light-theme_&]:hover:bg-gray-50 transition-colors">
+                                            <td className="px-6 py-4 text-sm text-gray-400 [.light-theme_&]:text-gray-500">#{card.id}</td>
+                                            <td className="px-6 py-4">
+                                                <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap bg-blue-500/10 text-blue-400 border border-blue-500/20 shadow-sm [.light-theme_&]:bg-blue-50 [.light-theme_&]:text-blue-600 [.light-theme_&]:border-blue-200 transition-all duration-200 tracking-tighter sm:tracking-normal">
+                                                    {card.student_code}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-white [.light-theme_&]:text-gray-900 font-bold transition-colors">{card.student_name}</td>
+                                            <td className="px-6 py-4 text-sm text-gray-400 [.light-theme_&]:text-gray-500 transition-colors">
+                                                {card.createdAt
+                                                    ? new Date(card.createdAt).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')
+                                                    : '—'}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex justify-end gap-2">
+                                                    <button
+                                                        onClick={() => handleView(card.id)}
+                                                        disabled={detailLoading}
+                                                        className="p-2 text-gray-400 hover:text-blue-400 hover:bg-blue-600/10 rounded-lg transition-colors"
+                                                        title="Xem chi tiết"
+                                                    >
+                                                        <Eye size={16} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleEdit(card)}
+                                                        className="p-2 text-gray-400 hover:text-yellow-400 hover:bg-yellow-600/10 rounded-lg transition-colors"
+                                                        title="Chỉnh sửa"
+                                                    >
+                                                        <Edit2 size={16} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteClick(card)}
+                                                        className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-600/10 rounded-lg transition-colors"
+                                                        title="Xóa"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
                     </div>
 
                     {/* Phân trang */}
                     {totalPages > 1 && (
-                        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-700">
-                            <span className="text-sm text-gray-400">
-                                Đang xem {(currentPage - 1) * LIMIT + 1} - {Math.min(currentPage * LIMIT, totalItems)} trong {totalItems} sinh viên
+                        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-700 [.light-theme_&]:border-gray-100 transition-colors">
+                            <span className="text-sm text-gray-400 [.light-theme_&]:text-gray-600">
+                                {language === 'vi' 
+                                    ? `Đang xem ${(currentPage - 1) * LIMIT + 1} - ${Math.min(currentPage * LIMIT, totalItems)} trong ${totalItems} sinh viên`
+                                    : `Showing ${(currentPage - 1) * LIMIT + 1} - ${Math.min(currentPage * LIMIT, totalItems)} of ${totalItems} students`
+                                }
                             </span>
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                                     disabled={currentPage === 1}
-                                    className="p-2 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                                    className="p-2 text-gray-400 [.light-theme_&]:text-gray-500 hover:text-white [.light-theme_&]:hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                                 >
                                     <ChevronLeft size={18} />
                                 </button>
-                                <span className="text-white text-sm">Trang {currentPage} / {totalPages}</span>
+                                <span className="text-white [.light-theme_&]:text-gray-900 text-sm font-medium">{t('page')} {currentPage} / {totalPages}</span>
                                 <button
                                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                                     disabled={currentPage === totalPages}
-                                    className="p-2 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                                    className="p-2 text-gray-400 [.light-theme_&]:text-gray-500 hover:text-white [.light-theme_&]:hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                                 >
                                     <ChevronRight size={18} />
                                 </button>
@@ -475,19 +502,19 @@ const StudentCardManagement = () => {
 
                 {/* ==================== MODAL XEM CHI TIẾT ==================== */}
                 {showViewModal && selectedCard && (
-                    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-                        <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-md">
-                            <div className="flex justify-between items-center p-6 border-b border-gray-700">
-                                <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-                                    <Eye size={20} className="text-blue-400" /> Chi tiết Thẻ Sinh Viên
+                    <div className="fixed inset-0 bg-black/60 [.light-theme_&]:bg-gray-500/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-all">
+                        <div className="bg-gray-800 [.light-theme_&]:bg-white border border-gray-700 [.light-theme_&]:border-gray-200 rounded-xl w-full max-w-md shadow-2xl transition-colors">
+                            <div className="flex justify-between items-center p-6 border-b border-gray-700 [.light-theme_&]:border-gray-100 transition-colors">
+                                <h2 className="text-xl font-semibold text-white [.light-theme_&]:text-gray-900 flex items-center gap-2">
+                                    <Eye size={20} className="text-blue-400 [.light-theme_&]:text-blue-600" /> {t('viewStudentCardDetails')}
                                 </h2>
-                                <button onClick={() => setShowViewModal(false)} className="text-gray-400 hover:text-white">
+                                <button onClick={() => setShowViewModal(false)} className="text-gray-400 [.light-theme_&]:text-gray-500 hover:text-white [.light-theme_&]:hover:text-red-500 transition-colors">
                                     <X size={20} />
                                 </button>
                             </div>
                             <div className="p-6">
                                 {/* Ảnh thẻ */}
-                                <div className="mb-5 rounded-xl overflow-hidden bg-gray-700 border border-gray-600 flex items-center justify-center min-h-[180px]">
+                                <div className="mb-5 rounded-xl overflow-hidden bg-gray-700/50 [.light-theme_&]:bg-gray-50 border border-gray-600 [.light-theme_&]:border-gray-100 flex items-center justify-center min-h-[180px] transition-colors">
                                     {selectedCard.card_image_base64 ? (
                                         <img
                                             src={selectedCard.card_image_base64}
@@ -497,48 +524,48 @@ const StudentCardManagement = () => {
                                     ) : (
                                         <div className="flex flex-col items-center text-gray-500 py-8">
                                             <Image size={40} />
-                                            <p className="mt-2 text-sm">Không có ảnh thẻ</p>
+                                            <p className="mt-2 text-sm">{t('noCardImage')}</p>
                                         </div>
                                     )}
                                 </div>
                                 {/* Thông tin */}
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
-                                        <label className="text-xs text-gray-400 uppercase">MSSV</label>
-                                        <p className="text-white mt-1 font-medium">{selectedCard.student_code}</p>
+                                        <label className="text-xs text-gray-400 [.light-theme_&]:text-gray-500 uppercase font-bold tracking-wider">MSSV</label>
+                                        <p className="text-white [.light-theme_&]:text-gray-900 mt-1 font-bold">{selectedCard.student_code}</p>
                                     </div>
                                     <div>
-                                        <label className="text-xs text-gray-400 uppercase">ID</label>
-                                        <p className="text-white mt-1">#{selectedCard.id}</p>
+                                        <label className="text-xs text-gray-400 [.light-theme_&]:text-gray-500 uppercase font-bold tracking-wider">ID</label>
+                                        <p className="text-white [.light-theme_&]:text-gray-900 mt-1">#{selectedCard.id}</p>
                                     </div>
                                     <div className="col-span-2">
-                                        <label className="text-xs text-gray-400 uppercase">Tên Sinh Viên</label>
-                                        <p className="text-white mt-1 font-medium">{selectedCard.student_name}</p>
+                                        <label className="text-xs text-gray-400 [.light-theme_&]:text-gray-500 uppercase font-bold tracking-wider">{t('studentName')}</label>
+                                        <p className="text-white [.light-theme_&]:text-gray-900 mt-1 font-bold">{selectedCard.student_name}</p>
                                     </div>
                                     <div>
-                                        <label className="text-xs text-gray-400 uppercase">Ngày tạo</label>
-                                        <p className="text-white mt-1 text-sm">
+                                        <label className="text-xs text-gray-400 [.light-theme_&]:text-gray-500 uppercase font-bold tracking-wider">{t('dateCreated')}</label>
+                                        <p className="text-white [.light-theme_&]:text-gray-900 mt-1 text-sm font-medium">
                                             {selectedCard.createdAt
-                                                ? new Date(selectedCard.createdAt).toLocaleString('vi-VN')
+                                                ? new Date(selectedCard.createdAt).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US')
                                                 : '—'}
                                         </p>
                                     </div>
                                     <div>
-                                        <label className="text-xs text-gray-400 uppercase">Cập nhật lần cuối</label>
-                                        <p className="text-white mt-1 text-sm">
+                                        <label className="text-xs text-gray-400 [.light-theme_&]:text-gray-500 uppercase font-bold tracking-wider">{t('lastUpdated')}</label>
+                                        <p className="text-white [.light-theme_&]:text-gray-900 mt-1 text-sm font-medium">
                                             {selectedCard.updatedAt
-                                                ? new Date(selectedCard.updatedAt).toLocaleString('vi-VN')
+                                                ? new Date(selectedCard.updatedAt).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US')
                                                 : '—'}
                                         </p>
                                     </div>
                                 </div>
                             </div>
-                            <div className="flex justify-end p-6 border-t border-gray-700">
+                            <div className="flex justify-end p-6 border-t border-gray-700 [.light-theme_&]:border-gray-100 transition-colors">
                                 <button
                                     onClick={() => setShowViewModal(false)}
-                                    className="px-5 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                                    className="px-5 py-2 bg-gray-700 [.light-theme_&]:bg-gray-100 hover:bg-gray-600 [.light-theme_&]:hover:bg-gray-200 text-white [.light-theme_&]:text-gray-700 rounded-lg transition-colors font-bold"
                                 >
-                                    Đóng
+                                    {t('close')}
                                 </button>
                             </div>
                         </div>
@@ -552,7 +579,7 @@ const StudentCardManagement = () => {
                             <div className="flex justify-between items-center p-6 border-b border-gray-700">
                                 <h2 className="text-xl font-semibold text-white flex items-center gap-2">
                                     <Upload size={20} className="text-blue-400" />
-                                    {uploadMode === 'create' ? 'Thêm Thẻ Sinh Viên' : 'Sửa Thẻ Sinh Viên'}
+                                    {uploadMode === 'create' ? t('addStudentCard') : t('editStudentCard')}
                                 </h2>
                                 <button onClick={() => setShowUploadModal(false)} className="text-gray-400 hover:text-white">
                                     <X size={20} />
@@ -568,27 +595,35 @@ const StudentCardManagement = () => {
                                         type="text"
                                         placeholder="Ví dụ: 21110001"
                                         value={form.student_code}
-                                        onChange={e => setForm({ ...form, student_code: e.target.value })}
+                                        onChange={e => {
+                                            const val = e.target.value.replace(/[^a-zA-Z0-9]/g, "");
+                                            setForm({ ...form, student_code: val });
+                                        }}
+                                        maxLength={15}
                                         className="w-full px-4 py-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                                     />
                                 </div>
                                 {/* Tên SV */}
                                 <div>
                                     <label className="block text-sm text-gray-300 mb-1">
-                                        Tên Sinh Viên <span className="text-red-400">*</span>
+                                        {t('studentName')} <span className="text-red-400">*</span>
                                     </label>
                                     <input
                                         type="text"
-                                        placeholder="Ví dụ: Nguyễn Văn A"
+                                        placeholder={language === 'vi' ? 'Ví dụ: Nguyễn Văn A' : 'Ex: John Doe'}
                                         value={form.student_name}
-                                        onChange={e => setForm({ ...form, student_name: e.target.value })}
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            setForm({ ...form, student_name: val });
+                                        }}
+                                        maxLength={100}
                                         className="w-full px-4 py-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                                     />
                                 </div>
                                 {/* File ảnh */}
                                 <div>
                                     <label className="block text-sm text-gray-300 mb-1">
-                                        File Ảnh Thẻ <span className="text-gray-500 text-xs"> (không bắt buộc, có thể bổ sung sau)</span>
+                                        {t('cardImageFile')} <span className="text-gray-500 text-xs"> ({t('optionalSuffix')})</span>
                                     </label>
                                     <input
                                         type="file"
@@ -609,7 +644,7 @@ const StudentCardManagement = () => {
                                     onClick={() => setShowUploadModal(false)}
                                     className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
                                 >
-                                    Hủy
+                                    {t('cancel')}
                                 </button>
                                 <button
                                     onClick={handleSaveUpload}
@@ -617,7 +652,7 @@ const StudentCardManagement = () => {
                                     className="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
                                 >
                                     <Save size={16} />
-                                    {saving ? 'Đang lưu...' : 'Lưu'}
+                                    {saving ? t('saving') : t('save')}
                                 </button>
                             </div>
                         </div>
@@ -631,7 +666,7 @@ const StudentCardManagement = () => {
                             <div className="flex justify-between items-center p-6 border-b border-gray-700">
                                 <h2 className="text-xl font-semibold text-white flex items-center gap-2">
                                     <FileSpreadsheet size={20} className="text-teal-400" />
-                                    Upload Hàng Loạt (Excel + Ảnh)
+                                    {t('batchUploadTitle')}
                                 </h2>
                                 <button onClick={closeBatchModal} className="text-gray-400 hover:text-white"><X size={20} /></button>
                             </div>
@@ -640,8 +675,8 @@ const StudentCardManagement = () => {
                                 {/* Bước tiến trình */}
                                 <div className="flex items-center gap-2 text-sm">
                                     {[
-                                        { step: 1, label: 'Chọn Excel' },
-                                        { step: 2, label: 'Kết quả' },
+                                        { step: 1, label: t('selectExcelStep') },
+                                        { step: 2, label: t('resultStep') },
                                     ].map(({ step, label }) => (
                                         <React.Fragment key={step}>
                                             <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium
@@ -710,7 +745,7 @@ const StudentCardManagement = () => {
                                                     disabled={batchLoading}
                                                     className="mt-4 w-full py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-medium transition-colors"
                                                 >
-                                                    {batchLoading ? 'Đang trích xuất ảnh và upload...' : 'Bắt đầu Upload →'}
+                                                    {batchLoading ? t('processing') : language === 'vi' ? 'Bắt đầu Upload →' : 'Start Upload →'}
                                                 </button>
                                             </div>
                                         )}
@@ -723,15 +758,15 @@ const StudentCardManagement = () => {
                                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
                                             <div className="bg-gray-700 rounded-lg p-4 text-center">
                                                 <div className="text-2xl font-bold text-white">{batchResult.total}</div>
-                                                <div className="text-xs text-gray-400 mt-1">Tổng</div>
+                                                <div className="text-xs text-gray-400 mt-1">{t('total')}</div>
                                             </div>
                                             <div className="bg-green-600/20 border border-green-600/30 rounded-lg p-4 text-center">
                                                 <div className="text-2xl font-bold text-green-400">{batchResult.successCount}</div>
-                                                <div className="text-xs text-green-400 mt-1">Thành công</div>
+                                                <div className="text-xs text-green-400 mt-1">{t('success')}</div>
                                             </div>
                                             <div className="bg-red-600/20 border border-red-600/30 rounded-lg p-4 text-center">
                                                 <div className="text-2xl font-bold text-red-400">{batchResult.errorCount}</div>
-                                                <div className="text-xs text-red-400 mt-1">Lỗi</div>
+                                                <div className="text-xs text-red-400 mt-1">{t('failed')}</div>
                                             </div>
                                         </div>
 
@@ -765,7 +800,7 @@ const StudentCardManagement = () => {
                                             onClick={closeBatchModal}
                                             className="mt-5 w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
                                         >
-                                            Hoàn thành
+                                            {t('complete')}
                                         </button>
                                     </div>
                                 )}
@@ -782,26 +817,26 @@ const StudentCardManagement = () => {
                                 <div className="w-16 h-16 rounded-full bg-red-600/20 flex items-center justify-center mx-auto mb-4">
                                     <AlertTriangle size={32} className="text-red-400" />
                                 </div>
-                                <h2 className="text-xl font-semibold text-white mb-2">Xác nhận Xóa</h2>
+                                <h2 className="text-xl font-semibold text-white mb-2">{t('confirmDelete')}</h2>
                                 <p className="text-gray-400 mb-2">
-                                    Bạn có chắc chắn muốn xóa thẻ sinh viên:
+                                    {t('deleteConfirmText')}
                                 </p>
                                 <p className="text-white font-medium mb-1">{selectedCard.student_name}</p>
                                 <p className="text-blue-400 font-mono text-sm mb-5">MSSV: {selectedCard.student_code}</p>
-                                <p className="text-red-400 text-xs mb-6">⚠️ Hành động này không thể hoàn tác.</p>
+                                <p className="text-red-400 text-xs mb-6">⚠️ {t('cannotUndo')}</p>
                                 <div className="flex justify-center gap-3">
                                     <button
                                         onClick={() => setShowDeleteModal(false)}
                                         className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
                                     >
-                                        Hủy
+                                        {t('cancel')}
                                     </button>
                                     <button
                                         onClick={confirmDelete}
                                         disabled={saving}
                                         className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50"
                                     >
-                                        {saving ? 'Đang xóa...' : 'Xóa'}
+                                        {saving ? t('deleting') : t('delete')}
                                     </button>
                                 </div>
                             </div>

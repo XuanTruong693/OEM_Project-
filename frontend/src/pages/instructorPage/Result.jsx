@@ -20,6 +20,7 @@ import {
 } from "react-icons/hi";
 import Toast from "../../components/common/Toast";
 import ConfirmModal from "../../components/common/ConfirmModal";
+import { getDynamicViolationTitle, getDynamicViolationReason } from "../../utils/violationDictionary";
 
 const cls = (...a) => a.filter(Boolean).join(" ");
 
@@ -106,6 +107,96 @@ const fmtDuration = (seconds, minutes) => {
   }
 
   return "-";
+};
+
+const VIOLATION_MAP = {
+  copy_attempt: "[AI PHÁT HIỆN] SAO CHÉP NỘI DUNG",
+  paste_attempt: "[AI PHÁT HIỆN] DÁN DỮ LIỆU",
+  drag_drop_in: "[AI PHÁT HIỆN] KÉO THẢ TÀI LIỆU",
+  screenshot_attempt: "[AI PHÁT HIỆN] CỐ TÌNH CHỤP ẢNH",
+  blocked_key: "[AI PHÁT HIỆN] DÙNG PHÍM CẤM",
+  visibility_hidden: "[AI PHÁT HIỆN] ẨN HOẶC ĐỔI TAB BÀI THI",
+  fullscreen_lost: "[AI PHÁT HIỆN] THOÁT TOÀN MÀN HÌNH",
+  window_blur: "[AI PHÁT HIỆN] RỜI BỎ KHU VỰC THI (MẤT FOCUS)",
+  tab_switch: "[AI PHÁT HIỆN] LIÊN TỤC ĐỔI TAB",
+  alt_tab: "[AI PHÁT HIỆN] CHUYỂN ỨNG DỤNG (ALT+TAB)",
+  multiple_faces: "[AI PHÁT HIỆN] CÓ NGƯỜI LẠ TRONG CAMERA",
+  no_face_detected: "[AI PHÁT HIỆN] KHÔNG THẤY THÍ SINH",
+  inactivity: "[AI PHÁT HIỆN] BỎ MÁY TRONG THỜI GIAN DÀI",
+  split_screen: "[AI PHÁT HIỆN] CHIA ĐÔI MÀN HÌNH",
+  ai_detected_cheating: "[AI PHÁT HIỆN] TỔNG HỢP HÀNH VI ĐÁNG NGỜ",
+  devtools_attempt: "[AI PHÁT HIỆN] MỞ CÔNG CỤ LẬP TRÌNH (DEVTOOLS)",
+  multi_monitor_attempt: "[AI PHÁT HIỆN] DÙNG NHIỀU MÀN HÌNH",
+  mouse_outside: "[AI PHÁT HIỆN] CHUỘT RỜI KHU VỰC BÀI THI",
+  typing_speed_violation: "[AI PHÁT HIỆN] TỐC ĐỘ GÕ PHÍM BẤT THƯỜNG (DÙNG TOOL)",
+  screen_share_stopped: "[AI PHÁT HIỆN] NGẮT CHIA SẺ MÀN HÌNH GỌI THI",
+  prolonged_away: "[AI PHÁT HIỆN] VẮNG MẶT QUÁ LÂU (>15 GIÂY)"
+};
+
+const VIOLATION_DESC_MAP = {
+  copy: "Thí sinh thực hiện thao tác sao chép (Copy) nội dung bài thi.",
+  paste: "Thí sinh cố gắng dán (Paste) dữ liệu từ bên ngoài vào vùng làm bài.",
+  screenshot_attempt: "Thí sinh cố gắng chụp ảnh màn hình bài thi (PrintScreen, Snipping Tool, hoặc phím tắt hệ thống).",
+  screen_share_stopped: "Thí sinh đã chủ động ngắt chia sẻ màn hình - hành vi vi phạm bắt buộc đối với giám sát từ xa.",
+  blocked_key: "Thí sinh nhấn phím tắt bị chặn - cố gắng can thiệp vào chế độ làm bài của trình duyệt.",
+  visibility_hidden: "Thí sinh đã chuyển sang tab trình duyệt khác hoặc ẩn hoàn toàn cửa sổ bài thi.",
+  fullscreen_lost: "Thí sinh đã thoát chế độ toàn màn hình - hành vi này có thể để xem tài liệu hoặc ứng dụng hỗ trợ khác.",
+  fullscreen_exit_attempt: "Thí sinh cố ý thực hiện thao tác thoát fullscreen - Hệ thống giám sát đã tự động thực hiện khôi phục.",
+  window_blur: "Thí sinh tương tác ngoài vùng làm bài hoặc đang sử dụng một ứng dụng khác ngoài trình duyệt.",
+  tab_switch: "Thí sinh thực hiện thao tác chuyển các tab trong trình duyệt (nghi ngờ tìm kiếm tài liệu).",
+  alt_tab: "Thí sinh sử dụng tổ hợp Alt+Tab để chuyển đổi nhanh sang ứng dụng khác.",
+  multiple_faces: "Phát hiện có nhiều người xuất hiện trong khung hình camera - nghi vấn có sự hỗ trợ từ bên ngoài.",
+  no_face_detected: "Không phát hiện thấy thí sinh trước camera - có thể thí sinh đã rời khỏi vị trí làm bài.",
+  inactivity: "Thí sinh không có bất kỳ thao tác chuột hay phím bấm nào trong thời gian dài.",
+  split_screen: "Thí sinh đang sử dụng chế độ chia đôi màn hình trên hệ điều hành để xem tài liệu song song.",
+  ai_detected_cheating: "AI PHÂN TÍCH: Tổng hợp nhiều hành vi bất thường (Rời cam, mất tiêu điểm, phím tắt) với xác suất vi phạm quy chế rất cao.",
+  mouse_outside: "Chuột thí sinh rời khỏi vùng làm bài (nghi ngờ thao tác trên màn hình phụ hoặc ứng dụng ngoài).",
+  devtools_attempt: "Thí sinh cố gắng mở bộ công cụ dành cho nhà phát triển (F12/Inspect) để can thiệp vào mã nguồn bài thi.",
+  multi_monitor_attempt: "Thí sinh đang sử dụng nhiều màn hình hoặc thiết bị hiển thị phụ bên ngoài.",
+  drag_drop_attempt: "Thí sinh thực hiện kéo thả tập tin hoặc nội dung từ bên ngoài vào khu vực làm bài.",
+  typing_speed_violation: "Hệ thống ghi nhận tốc độ gõ phím bất thường - nghi ngờ sử dụng script hoặc phần mềm hỗ trợ."
+};
+
+const renderViolationDetail = (log) => {
+  const type = log.event_type || "";
+  const details = typeof log.event_details === "string"
+    ? JSON.parse(log.event_details)
+    : (log.event_details || {});
+
+  let detailStr = "";
+
+  // 1. Ưu tiên cao nhất là lý do trả về từ Từ Điển AI (details.message)
+  if (details.message) {
+    if (!details.message.startsWith("[AI")) {
+      detailStr = `[AI QUYẾT ĐỊNH]: ${details.message}`;
+    } else {
+      detailStr = details.message;
+    }
+  }
+  // 2. Fallback: Dùng HARD_RULES_DICT → cụ thể tới từng phím
+  else if (details.key) {
+    const dictReason = getDynamicViolationReason(type, details.key);
+    detailStr = dictReason
+      ? `[AI THEO DÕI]: ${dictReason}`
+      : `[AI THEO DÕI]: Sử dụng phím/tổ hợp phím bị cấm: ${details.key}`;
+  }
+  // 3. Fallback bản đồ tĩnh
+  else if (VIOLATION_DESC_MAP[type]) {
+    detailStr = `[AI PHÂN TÍCH QUY TẮC MỀM]: ${VIOLATION_DESC_MAP[type]}`;
+  }
+
+  return (
+    <div className="mt-1 flex flex-col gap-0.5">
+      <div className="font-bold text-slate-800 text-[13px] uppercase">
+        {getDynamicViolationTitle(type, details?.key) || VIOLATION_MAP[type] || type.replace(/_/g, " ")}
+      </div>
+      {detailStr && (
+        <div className="text-slate-500 italic text-[11px] leading-tight mt-0.5">
+          {detailStr}
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default function Result() {
@@ -859,8 +950,12 @@ export default function Result() {
     const r = drawer.row;
     if (!r) return;
 
-    const newTotalScore = Number(r.total_score ?? 0);
-    const newAiScore = Number(r.ai_score ?? 0);
+    // ✅ Use live scores from memoized values (which include unsaved essay edits)
+    const newMcq = Number(liveMcqScore || 0);
+    const newAi = Number(liveAiScore || 0);
+
+    const newTotalScore = newMcq;
+    const newAiScore = newAi;
 
     // Validation 0: Không cho điểm âm
     if (newTotalScore < 0 || newAiScore < 0) {
@@ -915,40 +1010,19 @@ export default function Result() {
     setScoreError("");
 
     try {
-      // Save all pending essay scores first
-      const submissionId = r.submission_id;
-      if (submissionId && Object.keys(essayScores).length > 0) {
-        const savePromises = [];
-        for (const [answerId, score] of Object.entries(essayScores)) {
-          const numScore = Number(score);
-          if (!isNaN(numScore) && numScore >= 0) {
-            savePromises.push(
-              axiosClient.put(
-                `/instructor/submissions/${submissionId}/answers/${answerId}/score`,
-                { score: numScore }
-              ).catch(err => {
-                console.warn(`Failed to save essay score for answer ${answerId}:`, err);
-                return null; // Continue with other saves
-              })
-            );
-          }
-        }
-
-        if (savePromises.length > 0) {
-          const results = await Promise.all(savePromises);
-          // Recalculate ai_score from the last successful response
-          const lastSuccess = results.filter(r => r?.data?.new_ai_score !== undefined).pop();
-          if (lastSuccess?.data?.new_ai_score !== undefined) {
-            newAiScore = lastSuccess.data.new_ai_score;
-          }
-        }
-      }
-
-      // ✅ Payload: total_score = MCQ, ai_score = Essay
+      // ✅ Payload: mcq_score (Total MCQ), ai_score (Total Essay), per_question_scores (Individual edits)
       const payload = {
-        total_score: newTotalScore, // MCQ Score → saved to submissions.total_score
-        ai_score: newAiScore,       // Essay Score → saved to submissions.ai_score
+        submission_id: r.submission_id,
+        mcq_score: newTotalScore, 
+        ai_score: newAiScore,     
         student_name: r.student_name,
+        per_question_scores: (submissionQuestions || [])
+          .filter(q => q.answer?.id && (essayScores[q.answer.id] !== undefined || essayFeedback[q.answer.id] !== undefined))
+          .map(q => ({
+            answer_id: q.answer.id, // ✅ Identify by primary key for 100% precision
+            score: essayScores[q.answer.id] !== undefined ? Number(essayScores[q.answer.id]) : (q.answer?.score || 0),
+            feedback: essayFeedback[q.answer.id] !== undefined ? essayFeedback[q.answer.id] : (q.answer?.instructor_feedback || "")
+          }))
       };
 
       // ✅ Use backend response to get accurate values from DB
@@ -957,10 +1031,7 @@ export default function Result() {
         payload
       );
 
-      showToast("success", "✅ Lưu điểm thành công!");
-
-      // Clear pending essay scores
-      setEssayScores({});
+      showToast("success", "Lưu điểm thành công!");
 
       // ✅ Use values from DB response if available, otherwise use submitted values
       const dbRow = response.data;
@@ -968,7 +1039,40 @@ export default function Result() {
       const updatedAi = dbRow?.ai_score ?? newAiScore;
       const updatedSuggested = dbRow?.suggested_total_score ?? ((updatedMcq || 0) + (updatedAi || 0));
 
-      // Update local state with DB values
+      // ✅ 1. Update correctedQuestions so the "AI Learned" badges appear immediately
+      const newCorrections = { ...correctedQuestions };
+      payload.per_question_scores.forEach(p => {
+        const matchingQ = (submissionQuestions || []).find(sq => sq.answer?.id === p.answer_id);
+        if (matchingQ && matchingQ.answer?.id) {
+          newCorrections[matchingQ.answer.id] = {
+            oldScore: matchingQ.answer.score ?? 0,
+            newScore: p.score,
+            aiLearned: true,
+            correctedAt: new Date().toLocaleTimeString("vi-VN")
+          };
+        }
+      });
+      setCorrectedQuestions(newCorrections);
+
+      // ✅ 2. Update submissionQuestions to reflect new scores precisely
+      const updatedQuestions = (submissionQuestions || []).map(q => {
+        const modified = payload.per_question_scores.find(p => p.answer_id === q.answer?.id);
+        if (modified) {
+          return {
+            ...q,
+            answer: { 
+              ...(q.answer || {}), 
+              score: modified.score, 
+              instructor_feedback: modified.feedback,
+              status: 'confirmed'
+            }
+          };
+        }
+        return q;
+      });
+      setSubmissionQuestions(updatedQuestions);
+
+      // ✅ 3. Update main summary/list states
       setRows((prevRows) =>
         prevRows.map((row) => {
           if (row.student_id === r.student_id) {
@@ -985,7 +1089,6 @@ export default function Result() {
         })
       );
 
-      // Update drawer row with DB values
       setDrawer((prev) => ({
         ...prev,
         row: {
@@ -998,7 +1101,11 @@ export default function Result() {
         },
       }));
 
-      setTimeout(() => closeDrawer(), 1000);
+      // ✅ 4. LAST: Clear temporary state
+      setEssayScores({});
+      setEssayFeedback({});
+
+      setTimeout(() => closeDrawer(), 1500);
     } catch (err) {
       console.error("Save score error:", err);
       showToast("error", "❌ Lỗi khi lưu điểm!");
@@ -1070,8 +1177,27 @@ export default function Result() {
     const submissionId = drawer.row?.submission_id;
     if (!submissionId || !answerId) return;
 
-    const newScore = Number(essayScores[answerId] ?? 0);
-    const feedback = essayFeedback[answerId] || "";
+    const currentQuestion = submissionQuestions?.find(q => q.answer?.id === answerId);
+    const existingScore = Number(currentQuestion?.answer?.score ?? 0);
+    const existingFeedback = currentQuestion?.answer?.instructor_feedback || "";
+
+    // Lấy điểm mới: Nếu ô nhập trống hoặc chưa chạm tới thì dùng điểm cũ
+    const rawInput = essayScores[answerId];
+    const newScore = (rawInput === undefined || rawInput === "")
+      ? existingScore
+      : Number(rawInput);
+
+    // Lấy feedback mới: Nếu chưa chạm tới thì dùng feedback cũ
+    const feedback = essayFeedback[answerId] === undefined ? existingFeedback : essayFeedback[answerId];
+
+    // Kiểm tra xem có thay đổi gì không
+    const isScoreChanged = Math.abs(newScore - existingScore) > 0.001;
+    const isFeedbackChanged = feedback !== existingFeedback;
+
+    if (!isScoreChanged && !isFeedbackChanged) {
+      showToast("info", "Điểm và nhận xét không có gì thay đổi!");
+      return;
+    }
 
     // Validation
     if (isNaN(newScore) || newScore < 0) {
@@ -1105,8 +1231,8 @@ export default function Result() {
       showToast(
         "success",
         res.data?.ai_learned
-          ? "✅ Điểm đã cập nhật — 🧠 AI đã học từ correction này!"
-          : "✅ Đã cập nhật điểm!"
+          ? " Điểm đã cập nhật — AI đã học từ correction này!"
+          : " Đã cập nhật điểm!"
       );
 
       // Update the drawer row's ai_score with new total
@@ -1634,7 +1760,7 @@ export default function Result() {
         {/* Drawer */}
         {drawer.open && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="w-full max-w-7xl max-h-[95vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+            <div className="w-full max-w-[90%] max-h-[95vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col">
               <div className="flex items-center justify-between bg-slate-800 p-6 flex-shrink-0">
                 <div>
                   <h4 className="text-xl font-bold text-white">
@@ -2005,9 +2131,7 @@ export default function Result() {
                                             : "text-yellow-600"
                                           }`}
                                       >
-                                        {log.event_type
-                                          .replace(/_/g, " ")
-                                          .toUpperCase()}
+                                        {renderViolationDetail(log)}
                                       </span>
                                       <div className="flex items-center gap-2">
                                         <span className="text-slate-500">
@@ -2051,16 +2175,11 @@ export default function Result() {
                                           disabled={violationVideoLoading}
                                           className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded hover:bg-purple-200 disabled:opacity-50 whitespace-nowrap"
                                         >
-                                          {violationVideoLoading ? "⏳" : "🎥"} Xem video
+                                          {violationVideoLoading ? "⏳" : "🎥"} Xem đoạn này
                                         </button>
                                       </div>
                                     </div>
-                                    {log.event_details &&
-                                      typeof log.event_details === "object" && (
-                                        <div className="text-slate-600 text-xs mt-1">
-                                          {JSON.stringify(log.event_details)}
-                                        </div>
-                                      )}
+                                    {/* Event details moved into renderViolationDetail */}
                                   </div>
                                 ))}
                               </div>
@@ -2159,7 +2278,8 @@ export default function Result() {
                             {submissionQuestions.map((q, idx) => (
                               <div
                                 key={q.question_id}
-                                className="bg-white border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                                className="notranslate bg-white border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                                translate="no"
                               >
                                 {/* Question Header */}
                                 <div className="flex items-start gap-3 mb-3">

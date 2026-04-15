@@ -95,7 +95,7 @@ export default function StudentExamDetail() {
   if (loading) return <div>Loading...</div>;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 max-w-[90%] mx-auto space-y-6">
       <h1 className="text-2xl font-bold">
         Chi tiết Sinh viên: {detail.submission.student_name}
       </h1>

@@ -13,7 +13,8 @@ async function myResults(req, res) {
                 `SELECT 
                     submission_id, exam_id, exam_title,
                     mcq_score, essay_score, suggested_total_score,
-                    display_score, score_status, status, submitted_at, duration
+                    display_score, score_status, status, submitted_at, duration,
+                    allow_view_answers
                  FROM v_student_results 
                  WHERE student_id = ? 
                  ORDER BY submitted_at DESC`,
@@ -25,7 +26,8 @@ async function myResults(req, res) {
             const [rows] = await sequelize.query(
                 `SELECT s.id AS submission_id, s.exam_id, e.title AS exam_title,
                     s.total_score AS mcq_score, s.ai_score AS essay_score,
-                    s.suggested_total_score, s.status, s.submitted_at
+                    s.suggested_total_score, s.status, s.submitted_at,
+                    e.allow_view_answers
                  FROM submissions s 
                  JOIN exams e ON e.id = s.exam_id
                  WHERE s.user_id = ? 
@@ -73,12 +75,13 @@ async function getSubmissionStatus(req, res) {
         // Kiểm tra submission tồn tại và thuộc về user
         const [rows] = await sequelize.query(
             `SELECT 
-        id, exam_id, user_id, status, submitted_at,
-        face_image_url, student_card_url,
-        CASE WHEN face_image_blob IS NOT NULL OR face_image_url IS NOT NULL THEN TRUE ELSE FALSE END as face_verified,
-        CASE WHEN student_card_blob IS NOT NULL OR student_card_url IS NOT NULL THEN TRUE ELSE FALSE END as card_verified
-       FROM submissions 
-       WHERE id = ? AND user_id = ?
+        s.id, s.exam_id, s.user_id, s.status, s.submitted_at,
+        s.face_image_url, s.student_card_url,
+        CASE WHEN s.face_image_blob IS NOT NULL OR s.face_image_url IS NOT NULL THEN TRUE ELSE FALSE END as face_verified,
+        CASE WHEN s.student_card_blob IS NOT NULL OR s.student_card_url IS NOT NULL THEN TRUE ELSE FALSE END as card_verified,
+        (SELECT COUNT(*) FROM cheating_logs cl WHERE cl.submission_id = s.id AND cl.event_type = 'admin_bypass') > 0 as is_bypassed
+       FROM submissions s
+       WHERE s.id = ? AND s.user_id = ?
        LIMIT 1`,
             { replacements: [submissionId, userId] }
         );
@@ -97,6 +100,7 @@ async function getSubmissionStatus(req, res) {
             student_card_url: submission.student_card_url,
             face_verified: !!submission.face_verified,
             card_verified: !!submission.card_verified,
+            is_bypassed: !!submission.is_bypassed,
         });
     } catch (err) {
         console.error("getSubmissionStatus error:", err);
@@ -104,8 +108,63 @@ async function getSubmissionStatus(req, res) {
     }
 }
 
+async function getSubmissionDetail(req, res) {
+    try {
+        const submissionId = req.params.id;
+        const userId = req.user.id;
+
+        const [subRows] = await sequelize.query(
+            `SELECT s.id, s.exam_id, e.allow_view_answers, e.title as exam_title
+             FROM submissions s
+             JOIN exams e ON e.id = s.exam_id
+             WHERE s.id = ? AND s.user_id = ?
+             LIMIT 1`,
+            { replacements: [submissionId, userId] }
+        );
+
+        const sub = subRows?.[0];
+        if (!sub) return res.status(404).json({ message: "Không tìm thấy bài làm." });
+        if (!sub.allow_view_answers) return res.status(403).json({ message: "Giảng viên chưa cho phép xem đáp án." });
+
+        // 2. Lấy câu hỏi, options và câu trả lời của sinh viên
+        const [questions] = await sequelize.query(
+            `SELECT id as question_id, question_text, type, points, order_index, model_answer 
+             FROM exam_questions 
+             WHERE exam_id = ? 
+             ORDER BY CASE WHEN type = 'MCQ' THEN 0 ELSE 1 END, COALESCE(order_index, 0) ASC, id ASC`,
+            { replacements: [sub.exam_id] }
+        );
+
+        const [options] = await sequelize.query(
+            `SELECT eo.id as option_id, eo.question_id, eo.option_text, eo.is_correct
+             FROM exam_options eo
+             JOIN exam_questions eq ON eo.question_id = eq.id
+             WHERE eq.exam_id = ?`,
+            { replacements: [sub.exam_id] }
+        );
+
+        const [answers] = await sequelize.query(
+            `SELECT question_id, answer_text, selected_option_id, score, instructor_feedback
+             FROM student_answers
+             WHERE submission_id = ? AND student_id = ?`,
+            { replacements: [submissionId, userId] }
+        );
+
+        res.json({
+            exam_title: sub.exam_title,
+            questions,
+            options,
+            answers
+        });
+    } catch (err) {
+        console.error("getSubmissionDetail error:", err);
+        res.status(500).json({ message: "Server error" });
+    }
+}
+
 module.exports = {
     myResults,
     getExamPublicInfo,
     getSubmissionStatus,
+    getSubmissionDetail,
 };

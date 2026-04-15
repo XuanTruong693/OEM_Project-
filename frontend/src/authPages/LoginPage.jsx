@@ -18,16 +18,16 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [showMaxAttemptsModal, setShowMaxAttemptsModal] = useState(false);
   const [maxAttemptsInfo, setMaxAttemptsInfo] = useState(null);
-  const role = localStorage.getItem("selectedRole") || "";
+  const role = sessionStorage.getItem("selectedRole") || localStorage.getItem("selectedRole") || "";
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     const fromRoleSelection = location.state?.fromRoleSelection;
 
-    // Nếu đã đăng nhập thì chuyển thẳng vào dashboard
-    if (!fromRoleSelection) {
-      const token = localStorage.getItem("token");
-      const userRole = localStorage.getItem("role");
+    // Nếu đã đăng nhập thì chuyển thẳng vào dashboard (trừ khi đang vào phòng thi)
+    if (!fromRoleSelection && !location.state?.fromVerifyRoom) {
+      const token = sessionStorage.getItem("token") || localStorage.getItem("token");
+      const userRole = sessionStorage.getItem("role") || localStorage.getItem("role");
       if (token && userRole) {
         const dashboardPath = userRole === "student"
           ? "/student-dashboard"
@@ -104,21 +104,33 @@ const LoginPage = () => {
       setSuccess("🎉 Đăng nhập thành công! Đang chuyển hướng...");
 
       setTimeout(() => {
-        localStorage.setItem("token", res.data.token);
-        if (res.data.refreshToken) {
-          localStorage.setItem("refreshToken", res.data.refreshToken);
-        }
-        localStorage.setItem("role", res.data.user.role);
-        localStorage.setItem(
-          "fullname",
-          res.data.user.full_name || "Người dùng"
-        );
-        localStorage.setItem(
-          "avatar",
-          res.data.user.avatar || "/icons/UI Image/default-avatar.png"
-        );
+        const token = res.data.token;
+        const refreshToken = res.data.refreshToken;
+        const user = res.data.user;
+        const userRole = user.role;
+        const fullName = user.full_name || "Người dùng";
+        const avatar = user.avatar || "/icons/UI Image/default-avatar.png";
 
-        const userRole = res.data.user.role;
+        // Save to BOTH localStorage (persistence) and sessionStorage (tab isolation)
+        localStorage.setItem("token", token);
+        sessionStorage.setItem("token", token);
+        
+        if (refreshToken) {
+          localStorage.setItem("refreshToken", refreshToken);
+          sessionStorage.setItem("refreshToken", refreshToken);
+        }
+        
+        localStorage.setItem("user", JSON.stringify(user));
+        sessionStorage.setItem("user", JSON.stringify(user));
+        
+        localStorage.setItem("role", userRole);
+        sessionStorage.setItem("role", userRole);
+        
+        localStorage.setItem("fullname", fullName);
+        sessionStorage.setItem("fullname", fullName);
+        
+        localStorage.setItem("avatar", avatar);
+        sessionStorage.setItem("avatar", avatar);
         // If student came from /join with room_token, auto-join and go to prepare
         if (userRole === 'student') {
           const roomToken = sessionStorage.getItem('room_token');
@@ -236,21 +248,33 @@ const LoginPage = () => {
       setSuccess("🎉 Đăng nhập Google thành công! Đang chuyển hướng...");
 
       setTimeout(() => {
-        localStorage.setItem("token", res.data.token);
-        if (res.data.refreshToken) {
-          localStorage.setItem("refreshToken", res.data.refreshToken);
-        }
-        localStorage.setItem("role", res.data.user.role);
-        localStorage.setItem(
-          "fullname",
-          res.data.user.full_name || "Người dùng"
-        );
-        localStorage.setItem(
-          "avatar",
-          res.data.user.avatar || "/icons/UI Image/default-avatar.png"
-        );
+        const token = res.data.token;
+        const refreshToken = res.data.refreshToken;
+        const user = res.data.user;
+        const userRole = user.role;
+        const fullName = user.full_name || "Người dùng";
+        const avatar = user.avatar || "/icons/UI Image/default-avatar.png";
 
-        const userRole = res.data.user.role;
+        // Save to BOTH localStorage (persistence) and sessionStorage (tab isolation)
+        localStorage.setItem("token", token);
+        sessionStorage.setItem("token", token);
+        
+        if (refreshToken) {
+          localStorage.setItem("refreshToken", refreshToken);
+          sessionStorage.setItem("refreshToken", refreshToken);
+        }
+        
+        localStorage.setItem("user", JSON.stringify(user));
+        sessionStorage.setItem("user", JSON.stringify(user));
+
+        localStorage.setItem("role", userRole);
+        sessionStorage.setItem("role", userRole);
+        
+        localStorage.setItem("fullname", fullName);
+        sessionStorage.setItem("fullname", fullName);
+        
+        localStorage.setItem("avatar", avatar);
+        sessionStorage.setItem("avatar", avatar);
         if (userRole === 'student') {
           // Nếu đến từ /verify-room và đã có room_token → auto join và chuyển thẳng vào prepare
           const roomToken = sessionStorage.getItem('room_token');

@@ -21,7 +21,7 @@ const processQueue = (error, token = null) => {
 };
 
 axiosClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
+  const token = sessionStorage.getItem("token") || localStorage.getItem("token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -53,7 +53,7 @@ axiosClient.interceptors.response.use(
         isRefreshing = true;
 
         try {
-          const refreshToken = localStorage.getItem("refreshToken");
+          const refreshToken = sessionStorage.getItem("refreshToken") || localStorage.getItem("refreshToken");
           if (!refreshToken) {
             throw new Error("No refresh token");
           }
@@ -63,6 +63,7 @@ axiosClient.interceptors.response.use(
           });
 
           const newToken = res.data.accessToken;
+          sessionStorage.setItem("token", newToken);
           localStorage.setItem("token", newToken);
 
           processQueue(null, newToken);
@@ -77,6 +78,8 @@ axiosClient.interceptors.response.use(
 
           // Refresh failed - clear tokens and redirect to login
           console.log("❌ [Auth] Refresh failed, logging out");
+          sessionStorage.removeItem("token");
+          sessionStorage.removeItem("refreshToken");
           localStorage.removeItem("token");
           localStorage.removeItem("refreshToken");
 
@@ -92,6 +95,8 @@ axiosClient.interceptors.response.use(
       // Token revoked (logout from another device)
       if (data?.tokenRevoked) {
         console.log("🚫 [Auth] Token revoked, logging out");
+        sessionStorage.removeItem("token");
+        sessionStorage.removeItem("refreshToken");
         localStorage.removeItem("token");
         localStorage.removeItem("refreshToken");
         window.location.href = "/";

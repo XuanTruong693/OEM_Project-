@@ -28,9 +28,20 @@ const {
   updateStudentExamScore,
 } = require("../controllers/instructor");
 const submissionController = require("../controllers/submissionController");
+const roomManagementController = require("../controllers/instructor/RoomManagementController");
 
 // Middleware shorthand
 const auth = [verifyToken, authorizeRole(["instructor"])];
+
+// ==============================
+// 🏛️ Room Management APIs
+// ==============================
+router.get("/rooms/active", ...auth, roomManagementController.getActiveRooms);
+router.get("/rooms/:examId", ...auth, roomManagementController.getRoomDetail);
+router.post("/rooms/:examId/close", ...auth, roomManagementController.closeRoom);
+router.patch("/rooms/:examId/config", ...auth, roomManagementController.updateRoomConfig);
+router.get("/rooms/:examId/students", ...auth, roomManagementController.getRoomStudents);
+router.post("/rooms/students/:submissionId/action", ...auth, roomManagementController.performStudentAction);
 
 // ==============================
 // 📊 Dashboard APIs
@@ -112,7 +123,7 @@ router.post(
 );
 
 // PUT /api/instructor/exams/:examId/students/:studentId/score
-// RESTORED: Exact original inline handler
+
 router.put(
   "/exams/:examId/students/:studentId/score",
   verifyToken,
@@ -121,7 +132,7 @@ router.put(
     try {
       const examId = parseInt(req.params.examId, 10);
       const studentId = parseInt(req.params.studentId, 10);
-      const { total_score, ai_score, student_name } = req.body || {};
+      const { mcq_score, total_score, ai_score, student_name, per_question_scores, submission_id } = req.body || {};
 
       if (!Number.isFinite(examId) || !Number.isFinite(studentId))
         return res.status(400).json({ message: "invalid ids" });
@@ -132,11 +143,147 @@ router.put(
         return res.status(403).json({ message: "Not owner of exam" });
       }
 
-      const mcq = total_score != null ? Number(total_score) : null;
+      // Use mcq_score if provided, otherwise use total_score for backward compatibility
+      const mcq = mcq_score != null ? Number(mcq_score) : (total_score != null ? Number(total_score) : null);
       const ai = ai_score != null ? Number(ai_score) : null;
       if ((mcq != null && isNaN(mcq)) || (ai != null && isNaN(ai)))
         return res.status(400).json({ message: "score must be number" });
 
+      //STEP 1: Save individual question scores (the key fix!)
+      if (per_question_scores && Array.isArray(per_question_scores) && per_question_scores.length > 0) {
+        // Determine the submission_id to use
+        let subId = submission_id;
+        if (!subId) {
+          // Fallback: find the submission for this student/exam
+          const [[sub]] = await sequelize.query(
+            `SELECT id FROM submissions WHERE exam_id = ? AND user_id = ? ORDER BY id DESC LIMIT 1`,
+            { replacements: [examId, studentId] }
+          );
+          subId = sub?.id;
+        }
+
+        if (subId) {
+          // Collect old scores BEFORE updating to ensure accurate AI learning data
+          const changeLog = [];
+
+          for (const item of per_question_scores) {
+            const answerId = item.answer_id;
+            const newScore = Number(item.score);
+            const feedback = item.feedback || null;
+
+            if (!answerId) continue;
+
+            // Get question info and AI's original suggestion from logs
+            const [[oldInfo]] = await sequelize.query(
+              `SELECT sa.answer_text, q.question_text, q.model_answer, q.points, q.type,
+                      (SELECT ai_suggested_score FROM ai_logs 
+                       WHERE question_id = sa.question_id AND student_id = sa.student_id 
+                       ORDER BY created_at DESC LIMIT 1) as ai_suggested_score
+               FROM student_answers sa
+               JOIN exam_questions q ON sa.question_id = q.id
+               WHERE sa.id = ? AND sa.submission_id = ?`,
+              { replacements: [answerId, subId] }
+            );
+
+            // Update score in DB (same logic as individual "Lưu điểm" button)
+            await sequelize.query(
+              `UPDATE student_answers 
+               SET score = ?, instructor_feedback = ?, status = 'confirmed', graded_at = NOW()
+               WHERE id = ? AND submission_id = ?`,
+              { replacements: [newScore, feedback, answerId, subId] }
+            );
+
+            // Track change for AI learning (relative to AI's suggestion)
+            if (oldInfo) {
+              changeLog.push({
+                answer_id: answerId,
+                old_score: Number(oldInfo.ai_suggested_score ?? 0),
+                new_score: newScore,
+                answer_text: oldInfo.answer_text,
+                model_answer: oldInfo.model_answer,
+                question_text: oldInfo.question_text,
+                max_points: Number(oldInfo.points || 10),
+                type: oldInfo.type,
+                feedback: feedback
+              });
+            }
+          }
+
+          // STEP 1b: Recalculate ai_score from DB after individual updates
+          const [[aiCalc]] = await sequelize.query(
+            `SELECT COALESCE(SUM(sa.score), 0) as essay_sum
+             FROM student_answers sa
+             JOIN exam_questions q ON sa.question_id = q.id
+             WHERE sa.submission_id = ? AND q.type != 'MCQ'`,
+            { replacements: [subId] }
+          );
+          const recalculatedAi = Number(aiCalc?.essay_sum || 0);
+
+          // STEP 1c: Recalculate mcq_score from DB  
+          const [[mcqCalc]] = await sequelize.query(
+            `SELECT COALESCE(SUM(sa.score), 0) as mcq_sum
+             FROM student_answers sa
+             JOIN exam_questions q ON sa.question_id = q.id
+             WHERE sa.submission_id = ? AND q.type = 'MCQ'`,
+            { replacements: [subId] }
+          );
+          const recalculatedMcq = Number(mcqCalc?.mcq_sum || 0);
+
+          // Use recalculated values for the total update
+          const finalMcq = recalculatedMcq;
+          const finalAi = recalculatedAi;
+          const finalTotal = finalMcq + finalAi;
+
+          // Update submission totals with recalculated values
+          await sequelize.query(
+            `UPDATE submissions 
+             SET total_score = ?, ai_score = ?, suggested_total_score = ?,
+                 instructor_confirmed = 1, status = 'graded', updated_at = NOW()
+             WHERE id = ?`,
+            { replacements: [finalMcq, finalAi, finalTotal, subId] }
+          );
+
+          console.log(`✅ [Bulk Save] Updated ${changeLog.length} answers, MCQ=${finalMcq}, Essay=${finalAi}, Total=${finalTotal}`);
+
+          //STEP 2: Trigger AI learning with accurate old_score data (fire-and-forget)
+          try {
+            const axios = require('axios');
+            const aiUrl = process.env.AI_SERVICE_URL || "http://127.0.0.1:8000";
+            for (const change of changeLog) {
+              if (change.type === 'MCQ') continue; // Only learn from Essay corrections
+              if (Math.abs(change.old_score - change.new_score) < 0.001) continue; // Skip unchanged
+
+              axios.post(`${aiUrl}/learn/from-correction`, {
+                student_answer: change.answer_text,
+                model_answer: change.model_answer,
+                old_score: change.old_score,
+                new_score: change.new_score,
+                max_points: change.max_points,
+                feedback: change.feedback || `Instructor corrected: ${change.old_score} → ${change.new_score}`
+              }, { timeout: 5000 }).catch(e => console.warn("[AI] Learning error:", e.message));
+            }
+          } catch (e) {
+            console.warn("[AI Learning] Trigger error:", e.message);
+          }
+
+          // Return updated row from DB
+          try {
+            const [rows] = await sequelize.query(
+              `CALL sp_get_exam_results(?, 'instructor', ?);`,
+              { replacements: [examId, req.user.id] }
+            );
+            const data = Array.isArray(rows) ? rows : [];
+            const row = data.find(
+              (r) => Number(r.student_id) === Number(studentId)
+            );
+            return res.json(row || { ok: true });
+          } catch {
+            return res.json({ ok: true });
+          }
+        }
+      }
+
+      // No per_question_scores — just update totals (legacy behavior)
       try {
         await sequelize.query(
           `CALL sp_update_student_exam_record(?, ?, ?, ?, ?);`,

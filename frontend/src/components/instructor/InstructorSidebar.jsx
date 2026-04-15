@@ -157,7 +157,7 @@ const InstructorSidebar = () => {
                 {item.hasDropdown && openDropdown === item.label && (
                   <div
                     ref={dropdownRef}
-                    className="ml-6 bg-white shadow-lg rounded-xl border border-gray-200 py-2 w-44 md:absolute md:left-full md:top-0 z-50"
+                    className="ml-6 bg-white shadow-lg rounded-xl border border-gray-200 py-2 w-60 md:absolute md:left-full md:top-0 z-50"
                     onMouseEnter={() => {
                       // user moved into dropdown — cancel any scheduled close
                       if (closeTimeoutRef.current) {
@@ -173,23 +173,23 @@ const InstructorSidebar = () => {
                   >
                     <button
                       onClick={() => {
-                        navigate("/exam-bank");
+                        navigate("/room-management");
                         setOpenDropdown(null);
                         setMobileOpen(false);
                       }}
-                      className="flex items-center gap-3 px-4 py-2 hover:bg-[#E8F5FF] text-gray-700 hover:text-[#0080FF] w-full text-left"
+                      className="flex items-center gap-3 px-4 py-2 hover:bg-[#E8F5FF] text-gray-700 hover:text-[#0080FF] w-full text-left whitespace-nowrap"
                     >
-                      <FiFileText className="w-5 h-5" />
-                      {t("exam_bank", "Ngân hàng đề", "Exam Bank")}
+                      <FiClipboard className="w-5 h-5" />
+                      {t("room_management", "Quản lý phòng thi", "Room Management")}
                     </button>
-
+ 
                     <button
                       onClick={() => {
                         navigate("/open-exam");
                         setOpenDropdown(null);
                         setMobileOpen(false);
                       }}
-                      className="flex items-center gap-3 px-4 py-2 hover:bg-[#E8F5FF] text-gray-700 hover:text-[#0080FF] w-full text-left"
+                      className="flex items-center gap-3 px-4 py-2 hover:bg-[#E8F5FF] text-gray-700 hover:text-[#0080FF] w-full text-left whitespace-nowrap"
                     >
                       <FiEdit3 className="w-5 h-5" />
                       {t("open_room", "Mở phòng thi", "Open Room")}

@@ -3,22 +3,41 @@ const { broadcastCheatingEvent } = require("../services/socketService");
 const axios = require("axios");
 
 const CHEATING_TYPES = {
+  // === Updated Precise Events ===
+  copy_attempt: "high",
+  paste_attempt: "high",
+  drag_drop_in: "high",
+  screenshot_attempt: "high",
   blocked_key: "high",
   visibility_hidden: "medium",
   fullscreen_lost: "high",
-  fullscreen_exit_attempt: "high",
   window_blur: "medium",
   tab_switch: "high",
   alt_tab: "high",
   multiple_faces: "high",
   no_face_detected: "medium",
-  copy_paste: "high",
-  inactivity: "low", // Không thao tác quá 1 phút
+  inactivity: "low",
   split_screen: "medium",
+  ai_detected_cheating: "high",
+  devtools_attempt: "high",
+  multi_monitor_attempt: "medium",
+  mouse_outside: "low",
+  typing_speed_violation: "medium",
+  screen_share_stopped: "high",
+  prolonged_away: "high",
+
+  // === Legacy Events (Kept for backwards compatibility) ===
+  copy: "high",
+  paste: "high",
+  drag_drop_attempt: "high",
+  fullscreen_exit_attempt: "high",
+  copy_paste: "high"
 };
 
 const recentEvents = new Map();
 const DEDUP_WINDOW = 500;
+const SHARED_FOCUS_EVENTS = ["visibility_hidden", "window_blur", "fullscreen_lost", "split_screen"];
+const SHARED_FOCUS_WINDOW = 3000;
 
 exports.postProctorEvent = async (req, res) => {
   const submissionId = req.params.submissionId || req.params.id;
@@ -39,15 +58,23 @@ exports.postProctorEvent = async (req, res) => {
   const lastEventTime = recentEvents.get(eventKey);
   const now = Date.now();
 
+  // Check individual event throttling (DEDUP_WINDOW)
   if (lastEventTime && now - lastEventTime < DEDUP_WINDOW) {
     console.log(
-      `⏸️ [Proctor] DUPLICATE EVENT THROTTLED: ${eventKey} (${now - lastEventTime
-      }ms since last)`
+      `⏸️ [Proctor] DUPLICATE EVENT THROTTLED: ${eventKey} (${now - lastEventTime}ms since last)`
     );
     return res.status(429).json({
       error: "Event throttled - duplicate within window",
       throttledMs: DEDUP_WINDOW,
     });
+  }
+
+  // ✅ SHARED FOCUS GROUP DEDUPLICATION
+  // Deprecated strict throttling block here to ensure client 5/5 syncs with database precisely.
+  // The Client and AI Engine already handle duplicate suppression inherently.
+  if (SHARED_FOCUS_EVENTS.includes(event_type)) {
+    const sharedKey = `${submissionId}-_shared_focus`;
+    recentEvents.set(sharedKey, now);
   }
 
   recentEvents.set(eventKey, now);
@@ -90,6 +117,22 @@ exports.postProctorEvent = async (req, res) => {
         );
         const studentName =
           studentRows?.[0]?.full_name || `Student ${studentId}`;
+
+        // ✅ [Context-Aware AI] Bypass logging if it's a legitimate system event
+        const context = details?.context || {};
+        const isBatteryCritical = context.battery_level !== undefined && context.battery_level < 0.1;
+        const isNetworkLagging = context.network_rtt !== undefined && context.network_rtt > 500;
+
+        const LEGITIMATE_PRONE_EVENTS = ["window_blur", "visibility_hidden", "tab_switch"];
+
+        if (LEGITIMATE_PRONE_EVENTS.includes(event_type) && (isBatteryCritical || isNetworkLagging)) {
+          console.log(`🛡️ [Proctor] Bypassing log for ${event_type} due to context: Battery=${context.battery_level}, RTT=${context.network_rtt}`);
+          return res.status(200).json({
+            success: true,
+            is_cheating: false,
+            message: "Legitimate system context detected. Event ignored."
+          });
+        }
 
         // ✅ Insert into cheating_logs table WITHOUT transaction (to avoid deadlock)
         let insertSuccessful = false;
@@ -183,6 +226,70 @@ exports.postProctorEvent = async (req, res) => {
     res
       .status(500)
       .json({ error: "Failed to log proctor event", details: err.message });
+  }
+};
+
+exports.deleteProctorEvent = async (req, res) => {
+  const { submissionId, snapshotId } = req.params;
+
+  if (!submissionId || !snapshotId) {
+    return res.status(400).json({ error: "Missing submissionId or snapshotId" });
+  }
+
+  let conn;
+  try {
+    conn = await pool.getConnection();
+
+    // Tìm record log dựa vào snapshot_id trong JSON event_details
+    const [logs] = await conn.query(
+      `SELECT id FROM cheating_logs WHERE submission_id = ? AND event_details LIKE ? LIMIT 1`,
+      [submissionId, `%${snapshotId}%`]
+    );
+
+    if (logs.length > 0) {
+      const logId = logs[0].id;
+      // Trừ cheating_count
+      await conn.query(
+        `UPDATE submissions 
+         SET cheating_count = GREATEST(0, cheating_count - 1) 
+         WHERE id = ?`,
+        [submissionId]
+      );
+
+      // Xóa log
+      await conn.query(`DELETE FROM cheating_logs WHERE id = ?`, [logId]);
+
+      console.log(`[Proctor] 🗑️ Removed false positive cheating log (ID: ${logId}) for snapshot: ${snapshotId}`);
+    }
+
+    conn.release();
+
+    // Call snapshotController to delete physical files
+    try {
+      const path = require('path');
+      const fs = require('fs');
+      const SNAPSHOTS_DIR = path.join(__dirname, '../../uploads/snapshots');
+      const VIDEOS_DIR = path.join(__dirname, '../../uploads/videos');
+
+      const violationDir = path.join(SNAPSHOTS_DIR, String(submissionId), String(snapshotId));
+      if (fs.existsSync(violationDir)) {
+        fs.rmSync(violationDir, { recursive: true, force: true });
+      }
+
+      const videoName = `submission_${submissionId}_violation_${snapshotId}.mp4`;
+      const videoPath = path.join(VIDEOS_DIR, videoName);
+      if (fs.existsSync(videoPath)) {
+        fs.unlinkSync(videoPath);
+      }
+    } catch (e) {
+      console.warn("Failed to delete physical evidence:", e.message);
+    }
+
+    res.status(200).json({ success: true, message: "False positive event deleted" });
+  } catch (error) {
+    if (conn) conn.release();
+    console.error("❌ [Proctor] Delete event error:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -343,7 +450,7 @@ exports.approveStudentScores = async (req, res) => {
         for (const p of per_question_scores) {
           const qid = p.question_id;
           const newScore = p.score;
-          
+
           const [qRows] = await conn.query(
             `SELECT sa.answer_text, q.model_answer, q.points, sa.score as old_score, q.type, sa.submission_id
              FROM student_answers sa
@@ -352,32 +459,32 @@ exports.approveStudentScores = async (req, res) => {
              WHERE sa.question_id = ? AND sub.user_id = ? AND sub.exam_id = ? LIMIT 1`,
             [qid, studentId, examId]
           );
-          
+
           if (qRows.length > 0) {
             const qInfo = qRows[0];
             await conn.query(
               `UPDATE student_answers SET score = ? WHERE question_id = ? AND submission_id = ?`,
               [newScore, qid, qInfo.submission_id]
             );
-            
+
             // Gửi dữ liệu training cho AI
             if (qInfo.type === 'Essay') {
-               try {
-                   const aiUrl = process.env.AI_SERVICE_URL || "http://127.0.0.1:8000";
-                   // Async fire-And-forget (Không block luồng save điểm)
-                   axios.post(`${aiUrl}/learn/from-correction`, {
-                       student_answer: qInfo.answer_text,
-                       model_answer: qInfo.model_answer,
-                       old_score: parseFloat(qInfo.old_score || 0),
-                       new_score: parseFloat(newScore),
-                       max_points: parseFloat(qInfo.points),
-                       feedback: "Sửa bài bởi giảng viên"
-                   }, { timeout: 3000 }).then(() => {
-                       console.log(`[AI Learning] ✅ Sent correction to AI for QID ${qid}`);
-                   }).catch(e => {
-                       console.log(`[AI Learning] ⚠️ Error sending correction to AI:`, e.message);
-                   });
-               } catch (e) {}
+              try {
+                const aiUrl = process.env.AI_SERVICE_URL || "http://127.0.0.1:8000";
+                // Async fire-And-forget (Không block luồng save điểm)
+                axios.post(`${aiUrl}/learn/from-correction`, {
+                  student_answer: qInfo.answer_text,
+                  model_answer: qInfo.model_answer,
+                  old_score: parseFloat(qInfo.old_score || 0),
+                  new_score: parseFloat(newScore),
+                  max_points: parseFloat(qInfo.points),
+                  feedback: "Sửa bài bởi giảng viên"
+                }, { timeout: 3000 }).then(() => {
+                  console.log(`[AI Learning] ✅ Sent correction to AI for QID ${qid}`);
+                }).catch(e => {
+                  console.log(`[AI Learning] ⚠️ Error sending correction to AI:`, e.message);
+                });
+              } catch (e) { }
             }
           }
         }

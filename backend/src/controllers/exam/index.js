@@ -30,4 +30,5 @@ module.exports = {
     myResults: StudentResultController.myResults,
     getExamPublicInfo: StudentResultController.getExamPublicInfo,
     getSubmissionStatus: StudentResultController.getSubmissionStatus,
+    getSubmissionDetail: StudentResultController.getSubmissionDetail,
 };

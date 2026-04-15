@@ -18,6 +18,11 @@ import difflib
 import logging
 from typing import Tuple, Dict, Any, Optional, List, Set
 
+from .tokenizer import (
+    normalize_synonyms, deep_clean_text, PLEADING_NOISE,
+    normalize_code_snippets, expand_abbreviations
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -60,18 +65,39 @@ class CodeAnalyzer:
         
         # SQL PATTERNS
         self.sql_indicators = [
-            r"\bSELECT\b.*\bFROM\b",
-            r"\bINSERT\s+INTO\b",
-            r"\bUPDATE\b.*\bSET\b",
-            r"\bDELETE\s+FROM\b",
+            r"\bSELECT\b", r"\bINSERT\b", r"\bUPDATE\b", r"\bDELETE\b", 
+            r"\bCREATE\b", r"\bDROP\b", r"\bALTER\b", r"\bJOIN\b",
+            r"\bWHERE\b", r"\bGROUP\s+BY\b", r"\bORDER\s+BY\b", r"\bHAVING\b",
+            r"\bSELECT\b.*\bFROM\b", r"\bINSERT\s+INTO\b", r"\bUPDATE\b.*\bSET\b",
+            r"\bWITH\b", r"\bTOP\b", r"\bLIMIT\b", r"\bUNION\b", r"\bEXCEPT\b"
+        ]
+        
+        self.sql_procedural_indicators = [
+            r"\bCREATE\s+TRIGGER\b",
+            r"\bCREATE\s+PROCEDURE\b",
+            r"\bCREATE\s+FUNCTION\b",
+            r"\bCREATE\s+VIEW\b",
+            r"\bFOR\s+EACH\s+ROW\b",
+            r"\bBEGIN\b.*\bEND\b",
+            r"\bDECLARE\b",
+            r"\bIF\b.*\bTHEN\b",
+            r"\bRETURNS\b",
+            r"\bAS\s+\$?\w+\$?\s+BEGIN\b",
+            r"\bAFTER\b", r"\bBEFORE\b", r"\bINSTEAD\s+OF\b", r"\bFOR\b"
+        ]
+
+        self.sql_ddl_indicators = [
             r"\bCREATE\s+TABLE\b",
-            r"\bDROP\s+TABLE\b",
             r"\bALTER\s+TABLE\b",
-            r"\bJOIN\b.*\bON\b",
-            r"\bWHERE\b",
-            r"\bGROUP\s+BY\b",
-            r"\bORDER\s+BY\b",
-            r"\bHAVING\b",
+            r"\bPRIMARY\s+KEY\b",
+            r"\bFOREIGN\s+KEY\b",
+            r"\bREFERENCES\b",
+            r"\bCONSTRAINT\b",
+            r"\bDEFAULT\b",
+            r"\bUNIQUE\b",
+            r"\bNOT\s+NULL\b",
+            r"\bON\s+DELETE\b",
+            r"\bON\s+UPDATE\b",
         ]
         
         # MATH PATTERNS
@@ -197,9 +223,9 @@ class CodeAnalyzer:
         if not text:
             return "text"
         
-        # Check SQL first
+        # Check SQL first (Strong indicator: 1 keyword is enough for SQL queries)
         sql_score = sum(1 for p in self.sql_indicators if re.search(p, text, re.IGNORECASE))
-        if sql_score >= 2:
+        if sql_score >= 1:
             return "sql"
         
         # Check code patterns
@@ -222,6 +248,16 @@ class CodeAnalyzer:
     def is_technical_answer(self, text: str) -> bool:
         """Check if answer is technical (code/sql/math)."""
         return self.detect_answer_type(text) != "text"
+
+    def _is_short_tech_typo(self, model: str, student: str) -> bool:
+        """Kiểm tra xem có phải lỗi chính tả của một thuật ngữ kỹ thuật ngắn không."""
+        m_c = re.sub(r'[^A-Z0-9]', '', model.upper()).strip()
+        s_c = re.sub(r'[^A-Z0-9]', '', student.upper()).strip()
+        if not m_c or len(m_c) > 20: return False
+        
+        import difflib
+        sim = difflib.SequenceMatcher(None, m_c, s_c).ratio()
+        return sim >= 0.6 or m_c in s_c
     
     # CODE ANALYSIS METHODS
     
@@ -332,9 +368,9 @@ class CodeAnalyzer:
         if m_classes > 0:
             class_score = min(1.0, s_classes / m_classes)
         elif s_classes > 0:
-            class_score = 1.0 # Model ko có class, student có -> Thưởng nhẹ hoặc giữ nguyên
+            class_score = 1.0
         else:
-            class_score = 1.0 # Cả 2 đều ko có class -> pass
+            class_score = 1.0
             
         # 2. So sánh số lượng Hàm (Methods/Functions)
         m_funcs = len(m_struct.get("functions", [])) + len(m_struct.get("constructors", []))
@@ -358,14 +394,13 @@ class CodeAnalyzer:
         else:
             attr_score = 1.0
             
-        # Tính Base Score cho Interface (Tối đa 0.3 -> 0.4 điểm)
-        # Tức là nếu viết đúng interface 100%, được vớt khoảng 30% - 40% số điểm của phần code structure
+        # Tính Base Score cho Interface
         if m_classes > 0:
             interface_score = (class_score * 0.4) + (func_score * 0.4) + (attr_score * 0.2)
         else:
             interface_score = (func_score * 0.7) + (attr_score * 0.3)
             
-        # Điều chỉnh tỷ lệ rớt: Interface đúng hoàn toàn -> 0.35 * max_points
+        # đúng hoàn toàn -> 0.35 * max_points
         return interface_score * 0.35
     
     def _universal_sanitize(self, code: str) -> str:
@@ -431,8 +466,7 @@ class CodeAnalyzer:
             if t in control_flow or t in logic_ops or t in math_ops or t == '<STR>':
                 final_tokens.append(t)
             elif t in declarations:
-                # final_tokens.append('<DECL>') # Avoid polluting the sequence with too many DECLs
-                pass # Eliminating declaration noise completely works even better
+                pass
             elif t in ('0', '1', '-1'): 
                 final_tokens.append(t)
             elif re.match(r'^-?\d+(\.\d+)?$', t):
@@ -459,14 +493,11 @@ class CodeAnalyzer:
         
         penalties = []
         multiplier = 1.0
-        
-        # Allow 15% slack for acceptable structural deviations
         if coverage < 0.85:
             missing_segments = []
             for tag, i1, i2, j1, j2 in matcher.get_opcodes():
                 if tag in ('delete', 'replace'):
                     missing_segment = m_tokens[i1:i2]
-                    # Filter out purely noisy/non-informative tokens for error display
                     filtered_segment = [t for t in missing_segment if t not in (',', ';', '{', '}', '(', ')', '.', ':', '<VAR>', '<NUM>', '<STR>')]
                     
                     if filtered_segment:
@@ -579,15 +610,11 @@ class CodeAnalyzer:
         struct_sim = max(token_score * 0.85, (strict_score * 0.6) + (skeleton_score * 0.4))
         
         # === INTERFACE BASE SCORE ===
-        # Điểm vớt nếu sinh viên viết đúng cấu trúc OOP/Hàm nhưng trống rỗng
         interface_base_score = self._grade_interface_only(m_struct, s_struct)
         
         # === UNIVERSAL TOKENIZER (BLOCK MATCHING) ===
-        # Sử dụng Tokenizer để phân tích cú pháp trừu tượng, tìm kiếm block bị thiếu
         block_multiplier, block_penalties, block_coverage = self._grade_algorithm_block(model, student)
         
-        # Mã Hóa Vạn Năng: Nếu Tokenizer xác nhận thuật toán khớp (coverage cao), 
-        # dùng nó làm điểm base đè lên mọi điểm số string/skeleton cũ vốn thiếu chính xác
         if block_coverage >= 0.85 and block_multiplier == 1.0:
             struct_sim = max(struct_sim, block_coverage)
             
@@ -604,7 +631,6 @@ class CodeAnalyzer:
             if avg_line_len > 100 and len(s_lines_clean) <= 4 and len(m_struct.get("functions", [])) > 0:
                 struct_sim *= 0.95
                 penalties.append("Lỗi Code Style: Code rối, dài dòng trên một hàng, khó đọc")
-
         # Áp dụng điểm vớt nếu struct_sim tụt xuống quá thấp do thiếu thuật toán lõi hoặc bị phạt
         if struct_sim < interface_base_score and interface_base_score > 0.1:
             logger.info(f"Rescue: struct_sim ({struct_sim:.2f}) < interface_base_score ({interface_base_score:.2f}). Bumping score.")
@@ -615,55 +641,286 @@ class CodeAnalyzer:
     
     # SQL ANALYSIS METHODS
     
-    def extract_sql_elements(self, sql: str) -> Dict[str, str]:
-        #Extract key elements from SQL query.
-        sql_upper = sql.upper()
-        elements = {}
-        
-        for name, pattern in self.sql_elements.items():
-            match = re.search(pattern, sql_upper, re.IGNORECASE | re.DOTALL)
-            if match:
-                elements[name] = match.group(1).strip() if match.groups() else ""
-        
-        return elements
-    
-    def compare_sql_queries(self, model: str, student: str) -> Tuple[float, str]:
-        #Compare two SQL queries for logical equivalence.
-        m_elements = self.extract_sql_elements(model)
-        s_elements = self.extract_sql_elements(student)
-        
-        def normalize_sql_val(text):
-            if not text: return ""
-            text = text.lower().strip()
-            text = re.sub(r'\b\w+\.', '', text)
-            text = re.sub(r'\s+as\s+\w+', '', text)
-            text = re.sub(r'\s+', ' ', text)
-            return text
+    def extract_balanced_parentheses(self, text: str, start_index: int) -> str:
+        count = 0
+        for i in range(start_index, len(text)):
+            if text[i] == '(': count += 1
+            elif text[i] == ')':
+                count -= 1
+                if count == 0: return text[start_index:i+1]
+        return ""
 
-        m_table = m_elements.get("from_table", "").lower()
-        s_table = s_elements.get("from_table", "").lower()
+    def extract_sql_elements(self, sql: str) -> Dict[str, str]:
+        sql_u = sql.upper(); elements = {}
+        m = re.search(r"SELECT\s+", sql_u)
+        if m:
+            start = m.end(); depth, f_from = 0, -1
+            for i in range(start, len(sql_u)):
+                if sql_u[i] == '(': depth += 1
+                elif sql_u[i] == ')': depth -= 1
+                elif depth == 0 and sql_u[i:i+6] == " FROM ": f_from = i; break
+            if f_from != -1: 
+                select_text = sql_u[start:f_from].strip()
+                top_m = re.search(r"\bTOP\s+(\d+)\b", select_text)
+                if top_m:
+                    elements["limit_clause"] = f"LIMIT {top_m.group(1)}"
+                    select_text = re.sub(r"\bTOP\s+\d+\b", "", select_text).strip()
+                elements["select_cols"] = select_text
+
+        others = {
+            "from_table": r"FROM\s+(.+?)(?=\bWHERE\b|\bINNER\b|\bLEFT\b|\bRIGHT\b|\bJOIN\b|\bGROUP\b|\bORDER\b|\bHAVING\b|\bLIMIT\b|$)",
+            "where_clause": r"WHERE\s+(.+?)(?=\bGROUP\b|\bORDER\b|\bHAVING\b|\bLIMIT\b|$)",
+            "join_clause": r"((?:LEFT|RIGHT|INNER|OUTER)?\s*JOIN\s+.+?\bON\b\s+.+?)(?=\bWHERE\b|\bGROUP\b|\bORDER\b|\bHAVING\b|$)",
+            "group_by": r"GROUP\s+BY\s+(.+?)(?=\bHAVING\b|\bORDER\b|\bLIMIT\b|$)",
+            "having_clause": r"HAVING\s+(.+?)(?=\bORDER\b|\bLIMIT\b|$)",
+            "order_by": r"ORDER\s+BY\s+(.+?)(?=\bLIMIT\b|$)",
+            "limit_clause": r"\b(LIMIT\s+\d+)\b",
+        }
+        for k, p in others.items():
+            if k not in elements:
+                ms = re.search(p, sql_u, re.IGNORECASE | re.DOTALL)
+                if ms: elements[k] = ms.group(1).strip()
+        return elements
+
+    def calculate_sql_complexity(self, sql: str) -> int:
+        """Calculate a complexity score for a SQL query."""
+        score = 1
+        sql_u = sql.upper()
         
-        if m_table and s_table and m_table != s_table:
-            return 0.1, f"Sai tên bảng: yêu cầu '{m_table}', sinh viên dùng '{s_table}'"
+        # 1. Joins (+1 per distinct join)
+        joins = len(re.findall(r"\bJOIN\b", sql_u))
+        score += joins
         
-        match_count = 0
-        total_count = 0
+        # 2. Subqueries (+2 per nested select)
+        subqueries = len(re.findall(r"\(SELECT\b", sql_u.replace(" ", "")))
+        score += (subqueries * 2)
         
-        for key in m_elements:
-            if m_elements.get(key):
-                total_count += 1
-                if key in s_elements:
-                    m_val = normalize_sql_val(m_elements[key])
-                    s_val = normalize_sql_val(s_elements.get(key, ""))
-                    
-                    m_parts = set(x.strip() for x in m_val.split(','))
-                    s_parts = set(x.strip() for x in s_val.split(','))
-                    
-                    if m_val == s_val or m_parts == s_parts:
-                        match_count += 1
+        # 3. Clauses
+        if "\bGROUP BY\b" in sql_u: score += 1
+        if "\bHAVING\b" in sql_u: score += 1
+        if "\bUNION\b" in sql_u: score += 2
         
-        score = match_count / total_count if total_count > 0 else 0.5
-        return score, f"SQL match: {match_count}/{total_count} elements"
+        # 4. Conditions in WHERE
+        where_m = re.search(r"WHERE\s+(.+?)(?=\bGROUP\b|\bORDER\b|\bHAVING\b|\bLIMIT\b|$)", sql_u, re.DOTALL)
+        if where_m:
+            conditions = len(re.split(r"\bAND\b|\bOR\b", where_m.group(1)))
+            if conditions > 2: score += 1
+            
+        return score
+
+    def compare_sql_queries(self, model: str, student: str) -> Tuple[float, str]:
+        # Filter pleading noise (xin xỏ)
+        def filter_noise(text):
+            t = text.lower()
+            for noise in PLEADING_NOISE:
+                t = t.replace(noise, " ")
+            return " ".join(t.split())
+
+        model = filter_noise(model)
+        student = filter_noise(student)
+        
+        # Pre-normalize synonyms (Vietnamese technical terms)
+        model = normalize_synonyms(model)
+        student = normalize_synonyms(student)
+
+        m_u, s_u = model.upper(), student.upper()
+        
+        complexity = self.calculate_sql_complexity(model)
+        is_simple = complexity < 3
+        
+        def fix_sticky_tokens(sql):
+            s = re.sub(r'([*(),;=<>!])', r' \1 ', sql)
+            sticky_patterns = [
+                (r'(?i)\b(LEFT|RIGHT|INNER|OUTER|CROSS)(JOIN)\b', r'\1 \2'),
+                (r'(?i)\b(GROUP|ORDER)(BY)\b', r'\1 \2'),
+                (r'(?i)\b(DELETE|TRUNCATE)(FROM)\b', r'\1 \2'),
+                (r'(?i)\b(NOT)(IN|NULL|EXISTS)\b', r'\1 \2'),
+                (r'(?i)\b(SELECT|FROM|WHERE|HAVING|LIMIT)\b', r' \1 '), 
+            ]
+            for pat, repl in sticky_patterns:
+                s = re.sub(pat, repl, s)
+            return " ".join(s.split())
+
+        model = fix_sticky_tokens(model)
+        student = fix_sticky_tokens(student)
+
+        if any(re.search(p, model, re.IGNORECASE) for p in self.sql_ddl_indicators): return self._grade_sql_ddl(model, student)
+        if any(re.search(p, model, re.IGNORECASE) for p in self.sql_procedural_indicators): return self._grade_sql_procedural(model, student)
+
+        def super_normalize(text, aliases=None, table_names=None):
+            if not text: return ""
+            t = text.upper().strip().rstrip(';')
+            cmap = {
+                r'\bLEN\(': r'LENGTH(', r'\bGETDATE\(\)': r'CURRENT_TIMESTAMP',
+                r'\bNOW\(\)': r'CURRENT_TIMESTAMP', r'\bIFNULL\(': r'COALESCE(', r'\bISNULL\(': r'COALESCE(',
+                r'\bNVL\(': r'COALESCE(', r'\bCOUNT\s*\(\s*(\*|1)\s*\)': r'COUNT(1)'
+            }
+            for p, r in cmap.items(): t = re.sub(p, r, t)
+            t = re.sub(r'\bAS\s+\w+\b', ' ', t).replace('(', ' ( ').replace(')', ' ) ')
+            if aliases:
+                for al_name in sorted(aliases.keys(), key=len, reverse=True):
+                    t = re.sub(rf'\b{re.escape(al_name)}\.', '', t); t = re.sub(rf'\b{re.escape(al_name)}\b', ' ', t)
+            if table_names:
+                for tbl in sorted(table_names, key=len, reverse=True): t = re.sub(rf'\b{re.escape(tbl)}\.', '', t)
+            noise = ["INNER", "LEFT", "RIGHT", "OUTER", "FULL", "JOIN", "ON", "DISTINCT"]
+            for n in noise: t = re.sub(rf'\b{n}\b', ' ', t)
+            t = re.sub(r'[\[\]{}]', ' ', t).replace('<>', '!=')
+            if t.count("'") >= 2: t = t.replace(' + ', ' || ')
+            return " ".join(t.split()).lower().strip()
+
+        def extract_names(sql):
+            al, tbls = {}, set()
+            m = re.search(r'FROM\s+(.+?)(?=\bWHERE\b|\bINNER\b|\bLEFT\b|\bRIGHT\b|\bJOIN\b|\bGROUP\b|\bORDER\b|\bHAVING\b|\bLIMIT\b|$)', sql, re.IGNORECASE | re.DOTALL)
+            if m:
+                body, d, l, cls_l = m.group(1), 0, 0, []
+                for i in range(len(body)):
+                    if body[i] == '(':
+                        if d == 0: cls_l.append(body[l:i])
+                        d += 1
+                    elif body[i] == ')':
+                        d -= 1
+                        if d == 0: cls_l.append(" SBQ "); l = i+1
+                cls_l.append(body[l:])
+                for p in "".join(cls_l).split(','):
+                    w = p.strip().split()
+                    if w: tbls.add(w[0].upper())
+                    if len(w) >= 2 and w[-1].upper() not in ["AS", "ON", "JOIN", "WHERE", "GROUP", "ORDER", "HAVING"]: al[w[-1].upper()] = w[0].upper()
+            return al, tbls
+
+        m_el = self.extract_sql_elements(model)
+        s_el = self.extract_sql_elements(student)
+        m_al, m_tbls = extract_names(model)
+        s_al, s_tbls = extract_names(student)
+        m_count, t_count, det = 0.0, 0, []
+        clauses = ["select_cols", "where_clause", "join_clause", "group_by", "having_clause", "order_by", "limit_clause"]
+
+        has_logic_error = False
+        for k in clauses:
+            m_v, s_v = m_el.get(k, ""), s_el.get(k, "")
+            if not m_v.strip(): continue
+            t_count += 1
+            
+            m_pts = {super_normalize(p, m_al, m_tbls).replace(',', '') for p in m_v.replace(' AND ', ',').replace(' OR ', ',').split(',') if p.strip()}
+            s_pts = {super_normalize(p, s_al, s_tbls).replace(',', '') for p in s_v.replace(' AND ', ',').replace(' OR ', ',').split(',') if p.strip()}
+            m_n, s_n = super_normalize(m_v, m_al, m_tbls).replace(',', ''), super_normalize(s_v, s_al, s_tbls).replace(',', '')
+            
+            m_norm_math = m_n.replace(' ', '')
+            s_norm_math = s_n.replace(' ', '')
+            math_ops = ['+', '-', '*', '/']
+            math_error = False
+            for op in math_ops:
+                if (op in m_norm_math and op not in s_norm_math) or (op in s_norm_math and op not in m_norm_math):
+                    math_error = True
+                    has_logic_error = True
+                    break
+            
+            negation_error = False
+            if ("NOT IN" in m_n.upper() and "NOT IN" not in s_n.upper() and " IN " in s_n.upper()) or \
+               ("NOT IN" in s_n.upper() and "NOT IN" not in m_n.upper() and " IN " in m_n.upper()):
+                negation_error = True
+                has_logic_error = True
+
+            clause_inc = 0.0
+            eq_found = False
+            
+            if m_n == s_n or (m_pts and m_pts == s_pts): 
+                clause_inc = 1.0
+                eq_found = True
+            elif m_pts and s_pts:
+                found_pts = 0
+                for mp in m_pts:
+                    best_sim = 0
+                    for sp in s_pts:
+                        sim = difflib.SequenceMatcher(None, mp, sp).ratio()
+                        if sim > best_sim: best_sim = sim
+                    if best_sim >= 0.85: found_pts += 1
+                    elif best_sim >= 0.7 and len(mp) >= 4: found_pts += 0.8
+                rat = found_pts / len(m_pts)
+                clause_inc = max(rat, 0.4)
+                if rat >= 0.9: clause_inc = 1.0
+                else: det.append(f"Khớp logic {k} ({int(rat*100)}%)")
+                eq_found = True
+            elif k == "select_cols" and (s_n == "*" or m_n == "*"):
+                clause_inc = 0.95; det.append("Chấp nhận: Sử dụng SELECT * thay cho liệt kê cột cụ thể."); eq_found = True
+            elif s_pts and m_pts.intersection(s_pts):
+                rat = len(m_pts.intersection(s_pts)) / len(m_pts)
+                clause_inc = max(rat, 0.4); det.append(f"Khớp {k} ({int(rat*100)}%)"); eq_found = True
+            else:
+                if k == "join_clause" and m_pts:
+                    m_on = re.search(r'ON\s+(.+)', m_v, re.IGNORECASE)
+                    m_on_n = super_normalize(m_on.group(1), m_al, m_tbls).replace(',', '') if m_on else m_n
+                    s_w_n = super_normalize(s_el.get("where_clause", ""), s_al, s_tbls).replace(',', '')
+                    if (m_on_n and s_w_n and (m_on_n in s_w_n or s_w_n in m_on_n)) or any(p in s_w_n for p in m_pts):
+                        clause_inc = 0.95; det.append("Chấp nhận: Sử dụng Comma-Join thay cho INNER JOIN."); eq_found = True
+                elif k == "where_clause" and m_pts:
+                    s_j_n = super_normalize(s_el.get("join_clause", ""), s_al, s_tbls).replace(',', '')
+                    if any(p in s_j_n for p in m_pts):
+                        clause_inc = 0.95; det.append("Chấp nhận: Điều kiện lọc đặt ở JOIN (ON) thay vì WHERE."); eq_found = True
+
+            if not eq_found:
+                clause_names = {"select_cols": "SELECT", "where_clause": "WHERE", "join_clause": "JOIN", "group_by": "GROUP BY", "order_by": "ORDER BY"}
+                det.append(f"Thiếu hoặc sai {clause_names.get(k, k)}")
+
+            if math_error: clause_inc *= 0.4; det.append(f"Lỗi {k}: Sai phép toán (+, -, *, /)")
+            if negation_error: clause_inc *= 0.3; det.append(f"Lỗi {k}: Sai logic phủ định (IN vs NOT IN)")
+            m_count += clause_inc
+
+        if t_count == 0:
+            m_clean = re.sub(r'[^A-Z0-9]', '', model.upper()).strip()
+            s_clean = re.sub(r'[^A-Z0-9]', '', student.upper()).strip()
+            if not m_clean: return 0.5, "Không thể xác định thuật ngữ mẫu"
+            if m_clean == s_clean or m_clean in s_clean: return 1.0, "Khớp thuật ngữ SQL"
+            sim = difflib.SequenceMatcher(None, m_clean, s_clean).ratio()
+            if sim >= 0.7 and len(m_clean) >= 2: return 0.9, "Khớp thuật ngữ SQL (có lỗi chính tả nhẹ)"
+            return 0.0, f"Không khớp thuật ngữ SQL yêu cầu (Mong đợi: {m_clean})"
+
+        score = m_count / t_count
+        important_clauses = ["join_clause", "group_by", "where_clause"]
+        missing_important = [c for c in important_clauses if c in m_el and c not in s_el]
+        
+        # TIERED SCORING - Priority: Matching -> Logic Reasoning Fallback
+        if score < 0.9:
+            if not missing_important and not has_logic_error:
+                if is_simple:
+                    score = max(score, 0.8)
+                    det.append("Suy luận: Cấu trúc cơ bản chính xác (Fallback < 90%)")
+                else:
+                    # For complex queries, use the standard 0.75 structural boost
+                    score = max(score, 0.75)
+                    det.append("Suy luận: Tư duy logic cấu trúc phức tạp chính xác (Fallback < 90%)")
+        
+        is_agg = any(x in m_el.get("select_cols", "").upper() for x in ["SUM(", "COUNT(", "AVG(", "MIN(", "MAX("])
+        if is_agg and m_el.get("group_by") and not s_el.get("group_by"): 
+            return 0.15, "Lỗi Chí Tử: Truy vấn có Aggregate nhưng thiếu GROUP BY"
+        
+        if "NOT IN" in m_u and ("NOT EXISTS" in s_u or "EXCEPT" in s_u): 
+            score = max(score, 0.98); det.append("Chấp nhận: Sử dụng logic NOT EXISTS/EXCEPT thay cho NOT IN.")
+        
+        if score >= 0.95: 
+            return 1.0, "SQL Match: Chính xác hoàn toàn về logic.\nAI Reasoning:\n- " + "\n- ".join([d for d in det if "Chấp nhận" in d or "Khớp" in d]) if det else "SQL Match: Chính xác"
+        
+        reasoning = "AI Reasoning:\n- " + "\n- ".join(det) if det else ""
+        return score, f"SQL Match: {int(score*100)}%\n{reasoning}"
+
+    def _grade_sql_ddl(self, model: str, student: str) -> Tuple[float, str]:
+        def tok(s): s = s.upper(); s = re.sub(r'--.*|/\*.*?\*/', '', s, flags=re.DOTALL); s = re.sub(r'([(),;=<>!+*/])', r' \1 ', s); return [t for t in s.split() if t.strip()]
+        m_t, s_t = tok(model), tok(student); sc, pens = 1.0, []
+        if "CREATE" in m_t and "TABLE" in m_t and ("CREATE" not in s_t or "TABLE" not in s_t): return 0.05, "Thiếu CREATE TABLE"
+        for cc in ["PRIMARY KEY", "FOREIGN KEY", "REFERENCES"]:
+            if cc in " ".join(m_t) and cc not in " ".join(s_t): sc -= 0.25; pens.append(f"Thiếu {cc}")
+        return max(0.1, sc), "|".join(pens) if pens else "DDL hợp lệ"
+
+    def _grade_sql_procedural(self, model: str, student: str) -> Tuple[float, str]:
+        def tok(s): s = s.upper(); s = re.sub(r'--.*|/\*.*?\*/', '', s, flags=re.DOTALL); s = re.sub(r'([(),;=<>!+*/])', r' \1 ', s); return [t for t in s.split() if t.strip()]
+        m_t, s_t = tok(model), tok(student); m_txt, s_txt = " ".join(m_t), " ".join(s_t)
+        if ("TRIGGER" in m_txt and "TRIGGER" not in s_txt) or ("PROCEDURE" in m_txt and "PROCEDURE" not in s_txt): return 0.1, "Sai loại đối tượng"
+        sc, pens = 1.0, []
+        if "BEGIN" in m_t and "END" in m_t and "BEGIN" in s_t and "END" in s_t:
+            m_b = m_t[m_t.index("BEGIN")+1 : len(m_t)-1-m_t[::-1].index("END")]
+            s_b = s_t[s_t.index("BEGIN")+1 : len(s_t)-1-s_t[::-1].index("END")]
+            cov = len(set(m_b) & set(s_b)) / len(set(m_b)) if m_b else 1.0
+            if cov < 0.6: sc *= cov; pens.append(f"Nội dung không khớp ({int(cov*100)}%)")
+        return max(0.1, sc), "|".join(pens) if pens else "Procedural hợp lệ"
     
     # MATH ANALYSIS METHODS
     
@@ -724,8 +981,19 @@ class CodeAnalyzer:
     
     # MAIN GRADING METHOD
     def grade(self, model_text: str, student_text: str, max_points: float) -> Optional[Dict[str, Any]]:
+        # 1. EARLY FAKER CHECK (Always check even if type unknown)
+        from .faker_detector import is_meaningless_answer
+        is_faker, faker_reason = is_meaningless_answer(student_text)
+        if is_faker:
+            return {
+                "score": 0.0,
+                "type": "Đối phó",
+                "explanation": f"Reasoning: {faker_reason}. Không chấm điểm cho bài làm đối phó/vô nghĩa."
+            }
+
         model_type = self.detect_answer_type(model_text)
         student_type = self.detect_answer_type(student_text)
+        is_tech = model_type in ["code", "sql", "math"]
         
         logger.info(f"CodeAnalyzer: model_type={model_type}, student_type={student_type}")
         
@@ -733,14 +1001,24 @@ class CodeAnalyzer:
             return None
         
         if model_type != "text" and student_type == "text":
-            return {
-                "score": max_points * 0.1,
-                "type": "Wrong Format",
-                "explanation": f"Yêu cầu trả lời dạng {model_type}, sinh viên viết văn bản thường"
-            }
+            if self._is_short_tech_typo(model_text, student_text):
+                logger.info(f"Global Typo Rescue: {model_text} vs {student_text}")
+                pass # Cho phép đi tiếp
+            else:
+                return {
+                    "score": 0.0,
+                    "type": "Wrong Format",
+                    "explanation": f"Sai bản chất: Yêu cầu trả lời dạng {model_type}, sinh viên viết văn bản thường không chứa thuật ngữ chuyên môn."
+                }
         
         # CODE GRADING
         if model_type == "code":
+            # Kiểm tra xin xỏ/đối phó ẩn trong bài code
+            from .faker_detector import contains_faker_in_code
+            has_f_in_c, f_c_reas = contains_faker_in_code(student_text)
+            if has_f_in_c:
+                return {"score": 0.0, "type": "Đối phó", "explanation": f"Reasoning: {f_c_reas}. Không chấm điểm cho bài code chứa nội dung đối phó."}
+                
             has_error, error_msg = self.check_logic_errors(model_text, student_text)
             if has_error:
                 return {
@@ -819,11 +1097,17 @@ class CodeAnalyzer:
         
         # SQL GRADING
         if model_type == "sql":
-            if student_type != "sql":
+            # Kiểm tra xin xỏ/đối phó ẩn trong SQL
+            from .faker_detector import contains_faker_in_code
+            has_f_in_s, f_s_reas = contains_faker_in_code(student_text)
+            if has_f_in_s:
+                return {"score": 0.0, "type": "Đối phó", "explanation": f"Reasoning: {f_s_reas}. Không chấm điểm cho SQL chứa nội dung đối phó."}
+
+            if student_type != "sql" and not self._is_short_tech_typo(model_text, student_text):
                 return {
-                    "score": max_points * 0.1,
+                    "score": 0.0,
                     "type": "Wrong Format",
-                    "explanation": "Yêu cầu câu truy vấn SQL"
+                    "explanation": "Sai định dạng: Yêu cầu trả lời bằng câu lệnh hoặc thuật ngữ SQL chuyên môn."
                 }
             
             score, feedback = self.compare_sql_queries(model_text, student_text)

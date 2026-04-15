@@ -198,7 +198,7 @@ const importExamQuestions = async (req, res) => {
     let totalEssay = 0;
     let mcqCount = 0;
     let essayCount = 0;
-    const scorePattern = /\((\d+(?:[.,]\d+)?)đ\)/i; // (0.5đ) hoặc (0,5đ)
+    const scorePattern = /\((\d+(?:[.,]\d+)?)\s*(?:đ|points?)\)/i;
 
     // Duyệt để tính tổng điểm
     for (let i = 0; i < preview.length; i++) {
@@ -233,23 +233,6 @@ const importExamQuestions = async (req, res) => {
       }
     }
 
-    // Giới hạn số câu hỏi
-    if (mcqCount > 50) {
-      await transaction.rollback();
-      return res.status(400).json({
-        message: `Số câu trắc nghiệm vượt quá giới hạn (tối đa 50, hiện tại ${mcqCount}).`,
-        status: "error",
-      });
-    }
-
-    if (essayCount > 10) {
-      await transaction.rollback();
-      return res.status(400).json({
-        message: `Số câu tự luận vượt quá giới hạn (tối đa 10, hiện tại ${essayCount}).`,
-        status: "error",
-      });
-    }
-
     // ✅ Tổng điểm phải đúng 10
     const totalPoints = preview.reduce((sum, q) => {
       const match = q.question_text?.match(scorePattern);
@@ -259,11 +242,12 @@ const importExamQuestions = async (req, res) => {
       return sum + point;
     }, 0);
 
-    // Kiểm tra tổng điểm = 10 (cho phép sai số 0.01 do làm tròn)
-    if (Math.abs(totalPoints - 10) > 0.01) {
+    // ✅ Tổng điểm phải đúng 10 (không sai số)
+    const tolerance = 0.00001;
+    if (Math.abs(totalPoints - 10) > tolerance) {
       await transaction.rollback();
       return res.status(400).json({
-        message: `Tổng điểm phải bằng 10đ (hiện tại: ${totalPoints.toFixed(2)}đ).`,
+        message: `Tổng điểm phải bằng chính xác 10đ (Hiện tại: ${totalPoints.toFixed(3)}đ). Vui lòng điều chỉnh lại điểm các câu hỏi.`,
         status: "error",
       });
     }
@@ -332,13 +316,14 @@ const importExamQuestions = async (req, res) => {
           if (hasCreatedBy && hasIsBank) {
             [insertQRes] = await sequelize.query(
               `INSERT INTO exam_questions 
-                (exam_id, question_text, type, points, created_by, is_bank_question, created_at) 
-               VALUES (?, ?, 'MCQ', ?, ?, TRUE, NOW())`,
+                (exam_id, question_text, type, points, model_answer, created_by, is_bank_question, created_at) 
+               VALUES (?, ?, 'MCQ', ?, ?, ?, TRUE, NOW())`,
               {
                 replacements: [
                   examId,
                   q.question_text.trim(),
                   qPoints,
+                  q.model_answer ? q.model_answer.trim() : null,
                   instructorId,
                 ],
                 transaction,
@@ -347,13 +332,14 @@ const importExamQuestions = async (req, res) => {
           } else if (hasCreatedBy) {
             [insertQRes] = await sequelize.query(
               `INSERT INTO exam_questions 
-                (exam_id, question_text, type, points, created_by, created_at) 
-               VALUES (?, ?, 'MCQ', ?, ?, NOW())`,
+                (exam_id, question_text, type, points, model_answer, created_by, created_at) 
+               VALUES (?, ?, 'MCQ', ?, ?, ?, NOW())`,
               {
                 replacements: [
                   examId,
                   q.question_text.trim(),
                   qPoints,
+                  q.model_answer ? q.model_answer.trim() : null,
                   instructorId,
                 ],
                 transaction,
@@ -362,10 +348,10 @@ const importExamQuestions = async (req, res) => {
           } else {
             [insertQRes] = await sequelize.query(
               `INSERT INTO exam_questions 
-                (exam_id, question_text, type, points, created_at) 
-               VALUES (?, ?, 'MCQ', ?, NOW())`,
+                (exam_id, question_text, type, points, model_answer, created_at) 
+               VALUES (?, ?, 'MCQ', ?, ?, NOW())`,
               {
-                replacements: [examId, q.question_text.trim(), qPoints],
+                replacements: [examId, q.question_text.trim(), qPoints, q.model_answer ? q.model_answer.trim() : null],
                 transaction,
               }
             );

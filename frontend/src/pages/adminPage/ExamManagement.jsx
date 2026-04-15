@@ -10,7 +10,7 @@ import AdminSidebar from '../../components/admin/AdminSidebar';
 import { useLanguage } from '../../context/LanguageContext';
 
 const ExamManagement = () => {
-    const { t } = useLanguage();
+    const { t, language } = useLanguage();
     const [exams, setExams] = useState([]);
     const [loading, setLoading] = useState(true);
     const [total, setTotal] = useState(0);
@@ -148,22 +148,28 @@ const ExamManagement = () => {
         const timeOpen = exam.time_open ? new Date(exam.time_open) : null;
         const timeClose = exam.time_close ? new Date(exam.time_close) : null;
 
+        let config = { label: exam.status, color: 'bg-gray-500/10 text-gray-400 border-gray-500/20' };
+
         if (timeOpen && timeClose && now >= timeOpen && now <= timeClose) {
-            return { label: t('ongoing'), class: 'bg-green-600/20 text-green-400 border border-green-600/30' };
+            config = { label: t('ongoing'), color: 'bg-green-500/10 text-green-500 border-green-500/20' };
         } else if (timeOpen && now < timeOpen) {
-            return { label: t('upcoming'), class: 'bg-blue-600/20 text-blue-400 border border-blue-600/30' };
+            config = { label: t('upcoming'), color: 'bg-blue-500/10 text-blue-500 border-blue-500/20' };
         } else if (timeClose && now > timeClose) {
-            return { label: t('ended'), class: 'bg-gray-600/20 text-gray-300 border border-gray-600/30' };
+            config = { label: t('ended'), color: 'bg-gray-500/10 text-gray-400 border-gray-500/20' };
         } else if (exam.status === 'draft') {
-            return { label: t('draft'), class: 'bg-yellow-600/20 text-yellow-400 border border-yellow-600/30' };
-        } else {
-            return { label: exam.status, class: 'bg-gray-600/20 text-gray-300 border border-gray-600/30' };
+            config = { label: t('draft'), color: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' };
         }
+
+        return (
+            <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold border whitespace-nowrap shadow-sm transition-all duration-200 ${config.color}`}>
+                {config.label}
+            </span>
+        );
     };
 
     const formatDateTime = (dateStr) => {
-        if (!dateStr) return 'Chưa đặt';
-        return new Date(dateStr).toLocaleString('vi-VN');
+        if (!dateStr) return t('notSet');
+        return new Date(dateStr).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US');
     };
 
     return (
@@ -218,109 +224,107 @@ const ExamManagement = () => {
                     <div className="overflow-x-auto">
                         <table className="w-full min-w-[800px]">
                             <thead className="bg-gray-700/50">
-                            <tr>
-                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('exam')}</th>
-                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('instructor')}</th>
-                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('status')}</th>
-                                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('time')}</th>
-                                <th className="px-6 py-4 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">{t('questions')}</th>
-                                <th className="px-6 py-4 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">{t('candidates')}</th>
-                                <th className="px-6 py-4 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">{t('action')}</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-700">
-                            {loading ? (
                                 <tr>
-                                    <td colSpan="7" className="px-6 py-8 text-center text-gray-300">
-                                        {t('loading')}
-                                    </td>
+                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('exam')}</th>
+                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('instructor')}</th>
+                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('status')}</th>
+                                    <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{t('time')}</th>
+                                    <th className="px-6 py-4 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">{t('questions')}</th>
+                                    <th className="px-6 py-4 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">{t('candidates')}</th>
+                                    <th className="px-6 py-4 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">{t('action')}</th>
                                 </tr>
-                            ) : exams.length === 0 ? (
-                                <tr>
-                                    <td colSpan="7" className="px-6 py-8 text-center text-gray-300">
-                                        {t('noData')}
-                                    </td>
-                                </tr>
-                            ) : (
-                                exams.map((exam) => {
-                                    const status = getStatusBadge(exam);
-                                    const canDelete = exam.can_delete;
+                            </thead>
+                            <tbody className="divide-y divide-gray-700">
+                                {loading ? (
+                                    <tr>
+                                        <td colSpan="7" className="px-6 py-8 text-center text-gray-300">
+                                            {t('loading')}
+                                        </td>
+                                    </tr>
+                                ) : exams.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="7" className="px-6 py-8 text-center text-gray-300">
+                                            {t('noData')}
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    exams.map((exam) => {
+                                        const status = getStatusBadge(exam);
+                                        const canDelete = exam.can_delete;
 
-                                    return (
-                                        <tr key={exam.id} className="hover:bg-gray-700/30 transition-colors">
-                                            <td className="px-6 py-4">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-lg bg-blue-600/20 flex items-center justify-center">
-                                                        <BookOpen className="text-blue-400" size={18} />
+                                        return (
+                                            <tr key={exam.id} className="hover:bg-gray-700/30 transition-colors">
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-10 h-10 rounded-lg bg-blue-600/20 flex items-center justify-center">
+                                                            <BookOpen className="text-blue-400" size={18} />
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-white font-medium">{exam.title}</p>
+                                                            <p className="text-gray-300 text-xs">{exam.exam_room_code || t('noRoomCode')}</p>
+                                                        </div>
                                                     </div>
-                                                    <div>
-                                                        <p className="text-white font-medium">{exam.title}</p>
-                                                        <p className="text-gray-300 text-xs">{exam.exam_room_code || 'Không có mã phòng'}</p>
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-gray-300">{exam.instructor_name || 'N/A'}</td>
+                                                <td className="px-6 py-4">
+                                                    {getStatusBadge(exam)}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="text-xs">
+                                                        <p className="text-gray-300">{t('open')}: {formatDateTime(exam.time_open)}</p>
+                                                        <p className="text-gray-300">{t('close')}: {formatDateTime(exam.time_close)}</p>
                                                     </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-gray-300">{exam.instructor_name || 'N/A'}</td>
-                                            <td className="px-6 py-4">
-                                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${status.class}`}>
-                                                    {status.label}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="text-xs">
-                                                    <p className="text-gray-300">Mở: {formatDateTime(exam.time_open)}</p>
-                                                    <p className="text-gray-300">Đóng: {formatDateTime(exam.time_close)}</p>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 text-center text-sm text-gray-300">{exam.total_questions || 0}</td>
-                                            <td className="px-6 py-4 text-center text-sm text-gray-300">{exam.total_submissions || 0}</td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex justify-end gap-2">
-                                                    <button
-                                                        onClick={() => handleView(exam.id)}
-                                                        className="p-2 text-gray-300 hover:text-blue-400 hover:bg-blue-600/10 rounded-lg transition-colors"
-                                                        title="Xem chi tiết"
-                                                    >
-                                                        <Eye size={16} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleEditTime(exam)}
-                                                        className="p-2 text-gray-300 hover:text-yellow-400 hover:bg-yellow-600/10 rounded-lg transition-colors"
-                                                        title="Sửa thời gian"
-                                                    >
-                                                        <Clock size={16} />
-                                                    </button>
-                                                    {canDelete ? (
+                                                </td>
+                                                <td className="px-6 py-4 text-center text-sm text-gray-300">{exam.total_questions || 0}</td>
+                                                <td className="px-6 py-4 text-center text-sm text-gray-300">{exam.total_submissions || 0}</td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex justify-end gap-2">
                                                         <button
-                                                            onClick={() => handleDelete(exam)}
-                                                            className="p-2 text-gray-300 hover:text-red-400 hover:bg-red-600/10 rounded-lg transition-colors"
-                                                            title="Xóa"
+                                                            onClick={() => handleView(exam.id)}
+                                                            className="p-2 text-gray-300 hover:text-blue-400 hover:bg-blue-600/10 rounded-lg transition-colors"
+                                                            title="Xem chi tiết"
                                                         >
-                                                            <Trash2 size={16} />
+                                                            <Eye size={16} />
                                                         </button>
-                                                    ) : (
                                                         <button
-                                                            disabled
-                                                            className="p-2 text-gray-600 cursor-not-allowed"
-                                                            title="Không thể xóa bài thi đang diễn ra"
+                                                            onClick={() => handleEditTime(exam)}
+                                                            className="p-2 text-gray-300 hover:text-yellow-400 hover:bg-yellow-600/10 rounded-lg transition-colors"
+                                                            title="Sửa thời gian"
                                                         >
-                                                            <Trash2 size={16} />
+                                                            <Clock size={16} />
                                                         </button>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })
-                            )}
-                        </tbody>
-                    </table>
+                                                        {canDelete ? (
+                                                            <button
+                                                                onClick={() => handleDelete(exam)}
+                                                                className="p-2 text-gray-300 hover:text-red-400 hover:bg-red-600/10 rounded-lg transition-colors"
+                                                                title="Xóa"
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                disabled
+                                                                className="p-2 text-gray-600 cursor-not-allowed"
+                                                                title="Không thể xóa bài thi đang diễn ra"
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
+                            </tbody>
+                        </table>
                     </div>
 
                     {/* Pagination */}
                     {totalPages > 1 && (
                         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-700">
                             <span className="text-sm text-gray-300">
-                                Hiển thị {(page - 1) * limit + 1} - {Math.min(page * limit, total)} trong tổng số {total} bài thi
+                                {t('showing')} {(page - 1) * limit + 1} - {Math.min(page * limit, total)} {t('of')} {total} {t('exams')}
                             </span>
                             <div className="flex items-center gap-2">
                                 <button
@@ -330,7 +334,7 @@ const ExamManagement = () => {
                                 >
                                     <ChevronLeft size={18} />
                                 </button>
-                                <span className="text-white">Trang {page} / {totalPages}</span>
+                                <span className="text-white">{t('page')} {page} / {totalPages}</span>
                                 <button
                                     onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                                     disabled={page === totalPages}
@@ -348,7 +352,7 @@ const ExamManagement = () => {
                     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 overflow-y-auto py-8">
                         <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-2xl mx-4">
                             <div className="flex justify-between items-center p-6 border-b border-gray-700 sticky top-0 bg-gray-800 z-10">
-                                <h2 className="text-xl font-semibold text-white">Chi tiết bài thi</h2>
+                                <h2 className="text-xl font-semibold text-white">{t('examDetails')}</h2>
                                 <button onClick={() => setShowViewModal(false)} className="text-gray-300 hover:text-white">
                                     <X size={20} />
                                 </button>
@@ -356,7 +360,7 @@ const ExamManagement = () => {
                             <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
                                 <div>
                                     <h3 className="text-lg font-medium text-white mb-2">{selectedExam.title}</h3>
-                                    <p className="text-gray-300">Giảng viên: {selectedExam.instructor_name || 'N/A'}</p>
+                                    <p className="text-gray-300">{t('instructor')}: {selectedExam.instructor_name || 'N/A'}</p>
                                 </div>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -369,25 +373,51 @@ const ExamManagement = () => {
                                         <p className="text-white">{formatDateTime(selectedExam.time_close)}</p>
                                     </div>
                                     <div className="bg-gray-700/50 p-4 rounded-lg">
-                                        <p className="text-xs text-gray-300 uppercase mb-1">Thời lượng</p>
-                                        <p className="text-white">{selectedExam.duration_minutes || 0} phút</p>
+                                        <p className="text-xs text-gray-300 uppercase mb-1">{t('duration')}</p>
+                                        <p className="text-white">{selectedExam.duration_minutes || 0} {t('minutes')}</p>
                                     </div>
                                     <div className="bg-gray-700/50 p-4 rounded-lg">
-                                        <p className="text-xs text-gray-300 uppercase mb-1">Điểm tối đa</p>
+                                        <p className="text-xs text-gray-300 uppercase mb-1">{t('maxPoints')}</p>
                                         <p className="text-white">{selectedExam.max_points || 100}</p>
                                     </div>
                                 </div>
 
                                 {selectedExam.questions && selectedExam.questions.length > 0 && (
                                     <div>
-                                        <h4 className="text-white font-medium mb-3">Danh sách câu hỏi ({selectedExam.questions.length})</h4>
-                                        <div className="space-y-3 max-h-60 overflow-y-auto">
+                                        <h4 className="text-white font-medium mb-3">{t('questionList')} ({selectedExam.questions.length})</h4>
+                                        <div className="space-y-4 max-h-60 overflow-y-auto pr-2">
                                             {selectedExam.questions.map((q, idx) => (
-                                                <div key={q.id} className="bg-gray-700/30 p-3 rounded-lg">
-                                                    <p className="text-sm text-gray-300">
-                                                        <span className="text-blue-400 font-medium">Q{idx + 1}:</span> {q.question_text?.slice(0, 100)}...
+                                                <div key={q.id} className="bg-gray-700/30 p-4 rounded-xl border border-gray-700">
+                                                    <p className="text-sm text-white font-medium mb-2">
+                                                        <span className="text-blue-400">Q{idx + 1}:</span> {q.question_text}
                                                     </p>
-                                                    <span className="text-xs text-gray-300">{q.type} • {q.points || 1} điểm</span>
+                                                    
+                                                    {/* Model Answer for Management View */}
+                                                    <div className="mt-3 bg-blue-600/10 border border-blue-600/20 p-2.5 rounded-lg">
+                                                        <p className="text-[10px] uppercase font-bold text-blue-400 mb-1">Đáp án mẫu / Tham chiếu</p>
+                                                        <p className="text-xs text-gray-300 whitespace-pre-wrap italic">
+                                                            {(() => {
+                                                                if (q.model_answer) return q.model_answer;
+                                                                if (q.correct_answer) return q.correct_answer;
+                                                                
+                                                                // MCQ Fallback
+                                                                if (q.type === 'MCQ' && q.options) {
+                                                                    const correctOpt = q.options.find(opt => 
+                                                                        (typeof opt === 'object' && opt.is_correct) || 
+                                                                        (typeof opt === 'string' && opt === q.correct_answer)
+                                                                    );
+                                                                    if (correctOpt) return typeof correctOpt === 'object' ? (correctOpt.text || correctOpt.option_text) : correctOpt;
+                                                                }
+                                                                
+                                                                return 'Chưa có đáp án mẫu';
+                                                            })()}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="mt-2 flex items-center justify-between">
+                                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-600 text-gray-300 uppercase">{q.type}</span>
+                                                        <span className="text-xs text-blue-400 font-bold">{q.points || 1} điểm</span>
+                                                    </div>
                                                 </div>
                                             ))}
                                         </div>
@@ -403,13 +433,13 @@ const ExamManagement = () => {
                     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
                         <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-md mx-4">
                             <div className="flex justify-between items-center p-6 border-b border-gray-700">
-                                <h2 className="text-xl font-semibold text-white">Cập nhật thời gian kết thúc</h2>
+                                <h2 className="text-xl font-semibold text-white">{t('updateTimeClose')}</h2>
                                 <button onClick={() => setShowEditTimeModal(false)} className="text-gray-300 hover:text-white">
                                     <X size={20} />
                                 </button>
                             </div>
                             <div className="p-6 space-y-4">
-                                <p className="text-gray-300">Bài thi: <span className="text-white font-medium">{selectedExam.title}</span></p>
+                                <p className="text-gray-300">{t('exam')}: <span className="text-white font-medium">{selectedExam.title}</span></p>
                                 <div>
                                     <label className="block text-sm text-gray-300 mb-2">Thời gian kết thúc mới</label>
                                     <DatePicker
@@ -438,16 +468,16 @@ const ExamManagement = () => {
                                         placeholderText="Chọn thời gian..."
                                     />
                                 </div>
-                                <p className="text-xs text-gray-300">
-                                    * Thời gian kết thúc phải sau thời điểm hiện tại
+                                <p className="text-xs text-gray-400 italic">
+                                    * {t('updateTimeCloseNote')}
                                 </p>
                             </div>
                             <div className="flex justify-end gap-3 p-6 border-t border-gray-700">
                                 <button
                                     onClick={() => setShowEditTimeModal(false)}
-                                    className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
+                                    className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
                                 >
-                                    Hủy
+                                    {t('cancel')}
                                 </button>
                                 <button
                                     onClick={handleSaveTime}
@@ -455,7 +485,7 @@ const ExamManagement = () => {
                                     className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50"
                                 >
                                     <Save size={16} />
-                                    {saving ? 'Đang lưu...' : 'Lưu'}
+                                    {saving ? t('saving') : t('save')}
                                 </button>
                             </div>
                         </div>
@@ -470,24 +500,24 @@ const ExamManagement = () => {
                                 <div className="w-16 h-16 rounded-full bg-red-600/20 flex items-center justify-center mx-auto mb-4">
                                     <AlertTriangle className="text-red-400" size={32} />
                                 </div>
-                                <h2 className="text-xl font-semibold text-white mb-2">Xác nhận xóa</h2>
+                                <h2 className="text-xl font-semibold text-white mb-2">{t('confirmDelete')}</h2>
                                 <p className="text-gray-300 mb-6">
-                                    Bạn có chắc chắn muốn xóa bài thi <span className="text-white font-medium">"{selectedExam.title}"</span>?
-                                    Tất cả câu hỏi và kết quả thi cũng sẽ bị xóa.
+                                    {t('deleteConfirmText')} <span className="text-white font-medium">"{selectedExam.title}"</span>?
+                                    {t('cannotUndo')}
                                 </p>
                                 <div className="flex justify-center gap-3">
                                     <button
                                         onClick={() => setShowDeleteModal(false)}
                                         className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
                                     >
-                                        Hủy
+                                        {t('cancel')}
                                     </button>
                                     <button
                                         onClick={confirmDelete}
                                         disabled={saving}
                                         className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50"
                                     >
-                                        {saving ? 'Đang xóa...' : 'Xóa'}
+                                        {saving ? t('deleting') : t('delete')}
                                     </button>
                                 </div>
                             </div>

@@ -37,6 +37,12 @@ for i in range(NUM_SESSIONS):
             'screenshot_only',        # Chi PrtSc / Ctrl+PrtSc nhieu lan, khong co gi khac
             'screenshot_then_paste',  # Chup roi paste vao bai (chup tu dien thoai / tai lieu)
             'screenshot_frequent',    # Chup man hinh lien tuc + doi tab + blur
+            # --- MỚI: Hanh vi phím cứng chi tiết ---
+            'f12_cheater',            # Mo DevTools
+            'alt_tab_cheater',        # Chuyen tab bang Alt+Tab
+            'win_shortcut_cheater',   # Win+D / Win+P
+            'reload_cheater',         # F5 / F11
+            'esc_cheater',            # ESC thoat fullscreen
         ])
         
         if cheating_type == 'heavy_tapper':
@@ -172,6 +178,32 @@ for i in range(NUM_SESSIONS):
             max_blur_dur = avg_blur_dur + random.randint(1000, 5000)
             mouse_outside = random.randint(3, 10)
             screenshot_attempts = random.randint(5, 15)  # Chup lien tuc
+            
+        elif cheating_type == 'f12_cheater':
+            tab_switches, blur_events, fullscreen_exits = 0, 0, 0
+            avg_blur_dur, max_blur_dur, mouse_outside = 0, 0, 1
+            copy_attempts, paste_attempts, screenshot_attempts = 0, 0, 0
+            devtools_attempts = 1
+        elif cheating_type == 'alt_tab_cheater':
+            tab_switches, blur_events, fullscreen_exits = 1, 1, 0
+            avg_blur_dur, max_blur_dur, mouse_outside = 1000, 1000, 1
+            copy_attempts, paste_attempts, screenshot_attempts = 0, 0, 0
+            devtools_attempts = 0
+        elif cheating_type == 'win_shortcut_cheater':
+            tab_switches, blur_events, fullscreen_exits = 0, 1, 0
+            avg_blur_dur, max_blur_dur, mouse_outside = 500, 500, 1
+            copy_attempts, paste_attempts, screenshot_attempts = 0, 0, 0
+            devtools_attempts = 0
+        elif cheating_type == 'reload_cheater':
+            tab_switches, blur_events, fullscreen_exits = 0, 0, 0
+            avg_blur_dur, max_blur_dur, mouse_outside = 0, 0, 0
+            copy_attempts, paste_attempts, screenshot_attempts = 0, 0, 0
+            devtools_attempts = 0
+        elif cheating_type == 'esc_cheater':
+            tab_switches, blur_events, fullscreen_exits = 0, 0, 1
+            avg_blur_dur, max_blur_dur, mouse_outside = 0, 0, 0
+            copy_attempts, paste_attempts, screenshot_attempts = 0, 0, 0
+            devtools_attempts = 0
 
         idle_time = random.randint(10000, 150000)
         typing_gaps = round(random.uniform(5.0, 25.0), 2)
@@ -209,18 +241,28 @@ for i in range(NUM_SESSIONS):
 
     data.append([
         session_id, student_id, duration, 
-        tab_switches, blur_events, blocked_keys, fullscreen_exits, 
+        tab_switches, blur_events, fullscreen_exits, 
         avg_blur_dur, max_blur_dur, idle_time, typing_gaps, 
         mouse_outside, copy_attempts, paste_attempts, devtools_attempts, 
-        screenshot_attempts, label
+        screenshot_attempts, 
+        # New Granular Features
+        1 if cheating_type == 'f12_cheater' else 0,              # has_f12
+        1 if cheating_type == 'alt_tab_cheater' else 0,          # has_alt_tab
+        1 if cheating_type == 'win_shortcut_cheater' else 0,    # has_win_d_p
+        1 if cheating_type in ['screenshot_only', 'screenshot_frequent'] else 0, # has_prt_scr
+        1 if cheating_type == 'reload_cheater' else 0,           # has_f11_f5
+        1 if cheating_type == 'esc_cheater' else 0,              # has_escape
+        label
     ])
 
 df = pd.DataFrame(data, columns=[
     'session_id', 'student_id', 'duration_seconds', 
-    'tab_switches', 'blur_events', 'blocked_keys', 'fullscreen_exits', 
+    'tab_switches', 'blur_events', 'fullscreen_exits', 
     'avg_blur_duration_ms', 'max_blur_duration_ms', 'total_idle_ms', 'typing_gaps_avg_sec', 
     'mouse_outside_count', 'copy_attempts', 'paste_attempts', 'devtools_attempts', 
-    'screenshot_attempts', 'label'
+    'screenshot_attempts',
+    'has_f12', 'has_alt_tab', 'has_win_d_p', 'has_prt_scr', 'has_f11_f5', 'has_escape',
+    'label'
 ])
 
 df.to_csv(output_file, index=False)
