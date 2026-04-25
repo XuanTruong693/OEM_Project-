@@ -10,11 +10,25 @@ const requireRoomVerification = async (req, res, next) => {
 
     // Lấy exam_id từ params hoặc body
     let examId = null;
-    if (req.params.id) {
-      examId = req.params.id;
-    }
+    let submissionId = null;
+
+    // Check if we are on a submission route
     if (req.params.id && req.path.includes('/submissions/')) {
-      const submissionId = req.params.id;
+      submissionId = req.params.id;
+
+      // Kiểm tra xem sinh viên có được Giảng viên bypass (admin_bypass) cho submission này không
+      // Check this BEFORE doing anything else to prevent 403
+      const [bypassRows] = await sequelize.query(
+        `SELECT id FROM cheating_logs WHERE submission_id = ? AND event_type = 'admin_bypass' LIMIT 1`,
+        { replacements: [submissionId] }
+      );
+
+      if (Array.isArray(bypassRows) && bypassRows.length > 0) {
+        console.log(`✅ [verifyRoomMiddleware] Submission ${submissionId} is bypassed by instructor. Skipping room check.`);
+        return next();
+      }
+
+      // Fetch exam_id from submission if needed later
       const [subRows] = await sequelize.query(
         `SELECT exam_id FROM submissions WHERE id = ? LIMIT 1`,
         { replacements: [submissionId] }
@@ -22,29 +36,22 @@ const requireRoomVerification = async (req, res, next) => {
       if (Array.isArray(subRows) && subRows.length > 0) {
         examId = subRows[0].exam_id;
       }
+    } else if (req.params.id) {
+      // If not a submission route, assume :id is the examId
+      examId = req.params.id;
     }
+
+    // Skip verification if room_token is present in body (initial join)
     if (req.body && req.body.room_token) {
       return next();
     }
 
     if (!examId) {
+      console.warn("❌ [verifyRoomMiddleware] Cannot determine examId for path:", req.path);
       return res.status(400).json({
-        message: "Không xác định được exam",
+        message: "Không xác định được phòng thi",
         needVerifyRoom: true
       });
-    }
-
-    // ✅ THÊM: Kiểm tra xem sinh viên có được Giảng viên bypass (admin_bypass) cho submission này không
-    if (req.params.id && req.path.includes('/submissions/')) {
-        const submissionId = req.params.id;
-        const [bypassRows] = await sequelize.query(
-            `SELECT id FROM cheating_logs WHERE submission_id = ? AND event_type = 'admin_bypass' LIMIT 1`,
-            { replacements: [submissionId] }
-        );
-        if (Array.isArray(bypassRows) && bypassRows.length > 0) {
-            console.log(`✅ [verifyRoomMiddleware] Submission ${submissionId} is bypassed by instructor. Skipping room check.`);
-            return next();
-        }
     }
 
     // Lấy exam_room_code từ exam
@@ -69,7 +76,7 @@ const requireRoomVerification = async (req, res, next) => {
 
     if (!Array.isArray(verifiedRows) || verifiedRows.length === 0) {
       // Chưa verify room
-      console.warn("❌ [verifyRoomMiddleware] Student chưa verify room, trả 403");
+      console.warn(`❌ [verifyRoomMiddleware] Student ${userId} chưa verify room ${roomCode}, trả 403`);
       return res.status(403).json({
         message: "Bạn cần nhập mã phòng thi trước khi truy cập",
         needVerifyRoom: true,

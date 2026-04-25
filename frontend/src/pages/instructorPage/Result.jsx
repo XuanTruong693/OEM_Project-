@@ -1013,8 +1013,8 @@ export default function Result() {
       // ✅ Payload: mcq_score (Total MCQ), ai_score (Total Essay), per_question_scores (Individual edits)
       const payload = {
         submission_id: r.submission_id,
-        mcq_score: newTotalScore, 
-        ai_score: newAiScore,     
+        mcq_score: newTotalScore,
+        ai_score: newAiScore,
         student_name: r.student_name,
         per_question_scores: (submissionQuestions || [])
           .filter(q => q.answer?.id && (essayScores[q.answer.id] !== undefined || essayFeedback[q.answer.id] !== undefined))
@@ -1060,9 +1060,9 @@ export default function Result() {
         if (modified) {
           return {
             ...q,
-            answer: { 
-              ...(q.answer || {}), 
-              score: modified.score, 
+            answer: {
+              ...(q.answer || {}),
+              score: modified.score,
               instructor_feedback: modified.feedback,
               status: 'confirmed'
             }
@@ -1161,7 +1161,7 @@ export default function Result() {
           `/instructor/exams/${examId}/students/${row.student_id}`
         );
 
-        showToast("success", `✅ Đã xóa bài thi!`);
+        showToast("success", `Đã xóa bài thi!`);
 
         load(examId);
       } catch (err) {
@@ -2401,6 +2401,59 @@ export default function Result() {
                                         </div>
                                       </div>
                                     )}
+
+                                    {/* AI Reasoning Section */}
+                                    {(() => {
+                                      let aiFeedback = null;
+                                      if (q.answer?.ai_explanation) {
+                                        try {
+                                          aiFeedback = typeof q.answer.ai_explanation === "string"
+                                            ? JSON.parse(q.answer.ai_explanation)
+                                            : q.answer.ai_explanation;
+                                        } catch (e) {
+                                          console.error("Error parsing ai_explanation", e);
+                                        }
+                                      }
+
+                                      if (!aiFeedback) return null;
+
+                                      return (
+                                        <div className="mt-3 bg-indigo-50/30 border border-indigo-200 rounded-xl overflow-hidden shadow-sm">
+                                          <div className="px-4 py-2 border-b border-indigo-200 flex items-center justify-between bg-indigo-50">
+                                            <div className="flex items-center gap-2">
+                                              <HiAcademicCap className="text-indigo-600 text-lg" />
+                                              <span className="text-[10px] font-extrabold text-indigo-700 uppercase tracking-widest flex items-center gap-1.5">
+                                                Lý giải chấm điểm (AI Reasoning)
+                                                {aiFeedback.type && (
+                                                  <span className="px-1.5 py-0.5 bg-indigo-600 text-white rounded text-[9px] font-bold">
+                                                    {aiFeedback.type}
+                                                  </span>
+                                                )}
+                                              </span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-[10px] font-bold text-indigo-500 uppercase">Độ tin cậy:</span>
+                                              <span className="text-xs font-black text-indigo-700">
+                                                {aiFeedback.confidence ? (aiFeedback.confidence * 100).toFixed(1) + "%" : "100%"}
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <div className="p-4 bg-white/50 backdrop-blur-sm">
+                                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                              <span className="w-4 h-px bg-slate-200"></span>
+                                              TRÌNH TỰ SUY LUẬN (CHAIN OF THOUGHT)
+                                              <span className="w-4 h-px bg-slate-200"></span>
+                                            </div>
+                                            <div className="text-sm text-slate-700 leading-relaxed font-semibold whitespace-pre-wrap bg-white border border-indigo-100 rounded-xl p-4 shadow-sm relative group transition-all">
+                                              <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-100 transition-opacity">
+                                                <HiStar className="text-indigo-400" />
+                                              </div>
+                                              {aiFeedback.explanation || "Không có lý giải chi tiết."}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })()}
 
                                     {/* Score Editing Section for Essay */}
                                     {q.answer?.id && (

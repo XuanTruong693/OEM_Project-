@@ -8,6 +8,7 @@ from sklearn.metrics import accuracy_score, classification_report
 import logging
 import json
 import onnxruntime as ort
+from app.nlp.visual_features import visual_extractor
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 DATASET_PATH = os.path.join(BASE_DIR, "data", "comprehensive_cheating_dataset.csv")
 MODEL_PATH = os.path.join(BASE_DIR, "data", "behavior_model.pkl")
 ONNX_MODEL_PATH = os.path.join(BASE_DIR, "data", "behavior_model.onnx")
+VISUAL_MODEL_PATH = os.path.join(BASE_DIR, "data", "visual_behavior_model.pkl")
 
 # Các features dùng để predict cho Soft & Hard Behaviours (AI-First)
 FEATURES = [
@@ -107,6 +109,15 @@ class BehaviorDetectionModel:
                 logger.error(f"❌ Failed to load PKL model: {str(e)}")
         else:
             logger.warning("⚠️ Chưa có file model. Hệ thống sẽ dùng rule-based.")
+        
+        # Load Visual AI model if exists
+        self.visual_model = None
+        if os.path.exists(VISUAL_MODEL_PATH):
+            try:
+                self.visual_model = joblib.load(VISUAL_MODEL_PATH)
+                logger.info("✅ Load Visual AI Model thành công.")
+            except Exception as e:
+                logger.error(f"❌ Failed to load Visual model: {str(e)}")
 
     def train_model(self):
         """Huấn luyện mô hình từ comprehensive_cheating_dataset.csv"""
@@ -164,7 +175,6 @@ class BehaviorDetectionModel:
         for e in events:
             typ = e.get('event_type')
             details = e.get('details', {})
-            # Fix crash 500 if key is null
             key = str(details.get('key') or '').lower()
             is_internal = details.get('is_internal', False)
             
@@ -220,24 +230,88 @@ class BehaviorDetectionModel:
 
     def detect_cheating(self, events):
         # ==========================================
-        # LUỒNG 0: CONTEXT-AWARE BYPASS
+        # LUỒNG 0: PHÂN TÍCH NGỮ CẢNH HỆ THỐNG (Smart Buffer)
         # ==========================================
+        is_confirmed_cheat = False
+        
         for e in events:
             context = e.get('context', {})
+            details = e.get('details', {})
             battery_level = context.get('battery_level', 1.0)
             network_rtt = context.get('network_rtt', 0)
+            event_type = e.get('event_type')
             
-            # Sync with frontend: Battery < 20%, Network RTT > 500ms, or Recent Power Change
+            # Kiểm tra vị trí chuột (Nếu có) để phát hiện hành vi cố tình tương tác thanh tab
+            mouse_pos = details.get('mouse_pos', {})
+            is_mouse_in_prohibited_area = mouse_pos.get('y', 999) < 100 # Vùng thanh Tab/Địa chỉ
+            
+            # Sync with frontend: Ngưỡng pin 20%
             is_recent_power_change = context.get('is_power_changed', False)
-            is_legitimate = (battery_level < 0.2) or (network_rtt > 500) or is_recent_power_change
-            
-            if is_legitimate:
+            is_low_battery_context = (battery_level < 0.2) or is_recent_power_change
+
+            # [HÀNH VI GIAN LẬN XÁC ĐỊNH BẤT CHẤP NGỮ CẢNH]
+            confirm_reason = None
+            if event_type == 'visibility_hidden':
+                confirm_reason = "Phát hiện ẩn tab (Hidden) - Hành vi cố tình bất chấp ngữ cảnh."
+            elif is_mouse_in_prohibited_area:
+                confirm_reason = f"Chuột di chuyển vào vùng Tab Bar ({mouse_pos.get('y')}px) - Nghi ngờ tương tác với thanh điều hướng."
+            elif event_type == 'window_blur' and details.get('duration_ms', 0) > 5000:
+                confirm_reason = f"Mất tiêu điểm (Blur) quá lâu ({details.get('duration_ms')}ms) - Vượt ngưỡng ân xá hệ thống."
+
+            if confirm_reason:
+                logger.info(f"🚨 [AI Behavior] {confirm_reason} -> Chốt gian lận.")
+                return {
+                    "is_cheating": True,
+                    "confidence": 1.0,
+                    "features_extracted": self.process_raw_events(events),
+                    "reason": confirm_reason
+                }
+            if is_low_battery_context or (network_rtt > 500):
+                # Nếu có ảnh chụp màn hình, AI sẽ dùng "Mắt" để kiểm tra xem thực sự là gì
+                snapshot_path = details.get('snapshot_path')
+                if snapshot_path and os.path.exists(snapshot_path) and self.visual_model:
+                    try:
+                        v_features, v_info = visual_extractor.get_full_feature_vector(snapshot_path)
+                        v_probs = self.visual_model.predict_proba([v_features])[0]
+                        v_prob_cheating = v_probs[1]
+                        if v_info.get('is_desktop_likely'):
+                            v_prob_cheating = min(1.0, v_prob_cheating + 0.30)
+                        elif v_info.get('is_browser_ui_likely'):
+                            v_prob_cheating = min(1.0, v_prob_cheating + 0.20)
+                        THRESHOLD = 0.65
+                        
+                        if v_prob_cheating < (1 - THRESHOLD):
+                            logger.info(f"🛡️ [AI Vision] Ảnh chụp xác nhận an toàn ({v_prob_cheating:.2f}). Ân xá hoàn toàn.")
+                            return { "is_cheating": False, "confidence": 0.0, "reason": "AI Vision xác nhận giao diện an toàn." }
+                        
+                        elif v_prob_cheating >= THRESHOLD:
+                            vision_reason = "Phát hiện giao diện ứng dụng lạ bên ngoài bài thi."
+                            if v_info.get('is_desktop_likely'):
+                                vision_reason = "Phát hiện thí sinh đang sử dụng Màn hình nền (Desktop) hoặc Taskbar ứng dụng khác."
+                            elif v_info.get('is_browser_ui_likely'):
+                                vision_reason = "Phát hiện thí sinh đang tương tác với các thẻ Tab hoặc thanh công cụ trình duyệt bên ngoài."
+                                
+                            logger.info(f"🚨 [AI Vision] {vision_reason} ({v_prob_cheating:.2f}). Hủy ân xá!")
+                            return { 
+                                "is_cheating": True, 
+                                "confidence": v_prob_cheating, 
+                                "reason": f"[AI VISION]: {vision_reason}" 
+                            }
+                        else:
+                            logger.info(f"⚖️ [AI Vision] Kết quả không chắc chắn ({v_prob_cheating:.2f}). Giữ nguyên cảnh báo ban đầu.")
+                            return { 
+                                "is_cheating": is_cheating, 
+                                "confidence": v_prob_cheating, 
+                                "reason": f"AI không chắc chắn về hình ảnh ({v_prob_cheating:.2f}). {final_reason}"
+                            }
+                    except Exception as ve:
+                        logger.error(f"Vision Inference Error: {ve}")
+
                 reason = "Sự kiện hệ thống hợp lệ"
-                if battery_level < 0.2: reason += " (Pin yếu)"
+                if is_low_battery_context: reason += " (Pin yếu)"
                 if network_rtt > 500: reason += " (Mạng lag)"
-                if is_recent_power_change: reason += " (Thay đổi nguồn điện)"
                 
-                logger.info(f"🛡️ [AI Behavior] Bỏ qua sự kiện {e.get('event_type')} do {reason}.")
+                logger.info(f"🛡️ [AI Behavior] Ân xá sự kiện {event_type} do {reason}.")
                 return {
                     "is_cheating": False,
                     "confidence": 0.0,
@@ -268,53 +342,106 @@ class BehaviorDetectionModel:
             'has_f12', 'has_alt_tab', 'has_win_d_p', 'has_prt_scr', 
             'has_f11_f5', 'has_escape', 
             'devtools_attempts', 'screenshot_attempts', 'multi_monitor_attempts',
-            'copy_attempts', 'paste_attempts'
+            'copy_attempts', 'paste_attempts', 'tab_switches'
         ]
         
         # Đặc biệt: meta_blur chỉ là deterministic nếu duration đủ lâu (lọc nhấn nhầm)
         is_serious_meta = features_dict.get('has_meta_blur', False) and features_dict.get('max_blur_duration_ms', 0) > 1000
         
-        if any(features_dict.get(f, 0) >= 1 for f in HARD_KEY_FEATURES) or is_serious_meta:
+        # Biến đánh dấu kết quả từ logic cơ bản
+        is_det_cheating = any(features_dict.get(f, 0) >= 1 for f in HARD_KEY_FEATURES) or is_serious_meta
+        
+        if is_det_cheating:
             is_cheating = True
-            confidence = 1.0 # Bằng chứng phím cứng là tuyệt đối (Confidence 100%)
+            confidence = 1.0
             logger.info(f"🚨 [AI Deterministic] Phát hiện vi phạm gian lận. Khẳng định gian lận.")
         else:
+            ml_confidence = 0.0
             if hasattr(self, 'ort_session') and self.ort_session:
                 try:
                     input_name = self.ort_session.get_inputs()[0].name
                     X_input = np.array([[features_dict[f] for f in FEATURES]], dtype=np.float32)
                     outputs = self.ort_session.run(None, {input_name: X_input})
-                    confidence = float(outputs[1][0][1]) if len(outputs) > 1 else 1.0
-                    is_cheating = bool(confidence > 0.6)
-                except Exception as e:
-                    logger.error(f"ONNX Error: {e}")
-                    is_cheating = False
+                    ml_confidence = float(outputs[1][0][1]) if len(outputs) > 1 else 0.5
+                except Exception as e: logger.error(f"ONNX Error: {e}")
             elif self.model:
                 X_input = pd.DataFrame([features_dict], columns=FEATURES)
-                probs = self.model.predict_proba(X_input)[0]
-                confidence = probs[1]
-                is_cheating = bool(confidence > 0.6)
+                ml_confidence = self.model.predict_proba(X_input)[0][1]
+            
+            is_cheating = bool(ml_confidence > 0.6)
+            confidence = ml_confidence
+
+            # ==========================================
+            # [MỚI] LUỒNG 2.5: VISION TIE-BREAKER (TRỌNG TÀI)
+            # ==========================================
+            # Nếu kết quả ML mập mờ (30% - 65%) hoặc cần xác thực thêm khi có snapshot
+            snapshot_path = None
+            for e in events:
+                if e.get('details', {}).get('snapshot_path'):
+                    snapshot_path = e.get('details', {}).get('snapshot_path')
+                    break
+            
+            is_ambiguous = (0.3 < confidence < 0.65)
+            
+            if snapshot_path and os.path.exists(snapshot_path) and self.visual_model:
+                try:
+                    v_features, v_info = visual_extractor.get_full_feature_vector(snapshot_path)
+                    v_probs = self.visual_model.predict_proba([v_features])[0]
+                    v_prob_cheating = v_probs[1]    
+                    if v_info.get('is_desktop_likely'):
+                        v_prob_cheating = min(1.0, v_prob_cheating + 0.35) 
+                        logger.info(f"🚀 [AI Boost] Phát hiện Desktop -> Nâng xác suất lên {v_prob_cheating:.2f}")
+                    elif v_info.get('is_browser_ui_likely'):
+                        v_prob_cheating = min(1.0, v_prob_cheating + 0.20) # Boost cho Browser
+                        logger.info(f"🚀 [AI Boost] Phát hiện Browser Tab -> Nâng xác suất lên {v_prob_cheating:.2f}")
+
+                    V_THRESHOLD = 0.65
+
+                    if is_ambiguous:
+                        logger.info(f"⚖️ [AI Tie-breaker] Telemetry mập mờ ({confidence:.2f}). Gọi Vision trọng tài...")
+                        if v_prob_cheating >= V_THRESHOLD:
+                            is_cheating = True
+                            confidence = v_prob_cheating
+                            logger.info(f"🚨 [AI Tie-breaker] Vision XÁC NHẬN GIAN LẬN ({v_prob_cheating:.2f}). Ghi đè kết quả.")
+                        elif v_prob_cheating < (1 - V_THRESHOLD):
+                            is_cheating = False
+                            confidence = 0.0
+                            logger.info(f"✅ [AI Tie-breaker] Vision XÁC NHẬN AN TOÀN ({v_prob_cheating:.2f}). Ân xá hoàn toàn.")
+                    
+                    # Cập nhật thông tin reason từ Vision nếu Vision quá rõ ràng
+                    if v_prob_cheating >= V_THRESHOLD:
+                        v_reason = "Phát hiện ứng dụng lạ."
+                        if v_info.get('is_desktop_likely'): v_reason = "Thí sinh đang tương tác với Màn hình nền (Desktop)/Taskbar."
+                        elif v_info.get('is_browser_ui_likely'): v_reason = "Thí sinh đang tương tác với các thẻ Tab hoặc thanh địa chỉ trình duyệt."
+                        vision_confirm_msg = f"[AI VISION CONFIRMED]: {v_reason}"
+                        # Gán trực tiếp vào reason nếu đạt ngưỡng
+                        vision_override_reason = vision_confirm_msg
+                except Exception as ve:
+                    logger.error(f"Tie-breaker Vision Error: {ve}")
 
         # ==========================================
-        # LUỒNG 2: FEATURE ATTRIBUTION
+        # LUỒNG 3: FEATURE ATTRIBUTION & DETAILED REASONING
         # ==========================================
         final_reason = "Phát hiện hành vi gian lận bất thường."
         
         if is_cheating:
-            # Tìm tính năng có độ nghiêm trọng cao nhất đang ở trạng thái kích hoạt (>=1)
-            found_reason = False
-            for feat in SEVERITY_PRIORITY:
-                if features_dict.get(feat, 0) >= 1:
-                    rule_key = FEATURE_TO_RULE_MAP.get(feat)
-                    if rule_key:
-                        final_reason = HARD_RULES_DICT.get(rule_key) or SOFT_RULES_DICT.get(rule_key) or final_reason
-                        found_reason = True
-                        break
-            
-            # Dự phòng nếu không khớp priority nào
-            if not found_reason:
-                if features_dict.get('max_blur_duration_ms', 0) > 15000:
-                    final_reason = SOFT_RULES_DICT["prolonged_away"]
+            # 1. Ưu tiên lý do từ Vision (nếu có và rõ ràng)
+            if 'vision_override_reason' in locals():
+                final_reason = vision_override_reason
+            else:
+                found_reason = False
+                for feat in SEVERITY_PRIORITY:
+                    if features_dict.get(feat, 0) >= 1:
+                        rule_key = FEATURE_TO_RULE_MAP.get(feat)
+                        if rule_key:
+                            final_reason = HARD_RULES_DICT.get(rule_key) or SOFT_RULES_DICT.get(rule_key) or final_reason
+                            found_reason = True
+                            break
+                
+                # Dự phòng nếu không khớp priority nào
+                if not found_reason:
+                    if features_dict.get('max_blur_duration_ms', 0) > 15000:
+                        final_reason = SOFT_RULES_DICT["prolonged_away"]
 
         return {
             "is_cheating": is_cheating,

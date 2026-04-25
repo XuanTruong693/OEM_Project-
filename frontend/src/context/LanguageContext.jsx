@@ -299,6 +299,22 @@ const translations = {
         allStudentsHavePhotos: 'Tất cả sinh viên đều đã có ảnh thẻ! 🎉',
 
         // Results Management Added Keys
+        searchStudentPlaceholder: 'Tìm tên hoặc email sinh viên...',
+        reviewAndEditScore: 'Xem & Chỉnh sửa điểm',
+        studentInfo: 'Thông tin sinh viên',
+        gradingInputs: 'Nhập điểm thành phần',
+        finalGrandTotal: 'TỔNG ĐIỂM CUỐI CÙNG',
+        adminScoreNote: 'Admin có thể sửa trực tiếp cả điểm trắc nghiệm và tự luận. Điểm sau khi lưu sẽ được hệ thống đồng bộ và gửi thông báo tới sinh viên.',
+        detailedSubmissionReview: 'Chi tiết bài làm & Đáp án',
+        loadingDetailedQuestions: 'Đang tải chi tiết bài làm...',
+        noSubmissionDetailFound: 'Không tìm thấy dữ liệu chi tiết bài thi.',
+        correct: 'ĐÚNG',
+        incorrect: 'SAI',
+        studentAnswer: 'Bài làm của sinh viên',
+        modelAnswer: 'Đáp án mẫu',
+        saveAndConfirm: 'Lưu & Xác nhận',
+        pass: 'ĐẠT',
+        fail: 'KHÔNG ĐẠT',
     },
     en: {
         // Common
@@ -589,7 +605,24 @@ const translations = {
         allStudentsHavePhotos: 'All students have photos! 🎉',
         captureIDPhoto: 'Capture ID Photo',
         captureNote: 'Place the card in the frame and press Capture',
-        captureAction: 'Capture'
+        captureAction: 'Capture',
+        // Results Management Added Keys
+        searchStudentPlaceholder: 'Search student name or email...',
+        reviewAndEditScore: 'Review & Edit Score',
+        studentInfo: 'Student Information',
+        gradingInputs: 'Grading Inputs',
+        finalGrandTotal: 'FINAL GRAND TOTAL',
+        adminScoreNote: 'Admin can directly edit both MCQ and essay scores. Once saved, the system will sync and notify the student.',
+        detailedSubmissionReview: 'Detailed Submission Review',
+        loadingDetailedQuestions: 'Loading submission details...',
+        noSubmissionDetailFound: 'No submission detail found.',
+        correct: 'CORRECT',
+        incorrect: 'INCORRECT',
+        studentAnswer: 'Student Answer',
+        modelAnswer: 'Model Answer',
+        saveAndConfirm: 'Save & Confirm',
+        pass: 'PASS',
+        fail: 'FAIL',
     }
 };
 

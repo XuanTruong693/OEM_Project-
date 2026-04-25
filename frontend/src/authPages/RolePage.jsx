@@ -34,8 +34,14 @@ export default function RolePage() {
       localStorage.removeItem("verifiedRoomId");
       localStorage.removeItem("verifiedRoomCode");
 
-      // 3. Lưu role vào localStorage
+      sessionStorage.removeItem("token");
+      sessionStorage.removeItem("role");
+      sessionStorage.removeItem("verifiedRoomId");
+      sessionStorage.removeItem("verifiedRoomCode");
+
+      // 3. Lưu role vào localStorage và sessionStorage
       localStorage.setItem("selectedRole", selectedRole);
+      sessionStorage.setItem("selectedRole", selectedRole);
 
       if (selectedRole === "instructor") {
         navigate("/login", {

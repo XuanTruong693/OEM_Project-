@@ -7,7 +7,7 @@ const { pool } = require("../config/db");
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:8000";
 const MAX_CONCURRENT_JOBS = 20;       // Reduced to avoid overwhelming AI service
 const GRADING_TIMEOUT = 90000;       // 90 seconds per AI request (CPU inference can be slow)
-const MAX_RETRIES = 5;               // Max retries per essay
+const MAX_RETRIES = 15;               // Max retries per essay
 const RETRY_DELAY_BASE = 2000;       // 2 second base delay (exponential backoff)
 const RECOVERY_INTERVAL = 10000;     // Check for pending/failed every 10s (was 30s)
 const STALE_TIMEOUT = 180000;        // 3 minutes - mark as stale if in_progress too long
@@ -268,7 +268,7 @@ const performGrading = async (submissionId, conn) => {
                     console.warn(`[AIService] ⚠️ Invalid score from AI (NaN): Answer ${ans.id}, using 0`);
                     score = 0;
                 }
-                
+
                 // Clamp score to valid range [0, max_points]
                 if (score < 0) {
                     console.warn(`[AIService] ⚠️ AI returned negative score (${score}): Answer ${ans.id}, clamping to 0`);
@@ -281,9 +281,9 @@ const performGrading = async (submissionId, conn) => {
                 // ── SAVE SCORE immediately (per-answer, not batch) ──
                 await conn.query(`
                     UPDATE student_answers 
-                    SET score = ?, status = 'graded', graded_at = NOW()
+                    SET score = ?, ai_explanation = ?, status = 'graded', graded_at = NOW()
                     WHERE id = ?
-                `, [score, ans.id]);
+                `, [score, JSON.stringify(aiResult), ans.id]);
 
                 // Log to ai_logs
                 try {

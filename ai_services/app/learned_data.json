@@ -565,7 +565,7 @@
     "confirmed_score": 0.0,
     "max_points": 0.2,
     "ai_score": 0.2,
-    "feedback": "Instructor corrected: 0.2 → 0",
+    "feedback": "Sai hệ quản trị cơ sở dữ liệu (NEW dùng cho MySQL/PostgreSQL, SQL Server dùng bảng tạm inserted).",
     "learned_at": "2026-04-14T19:59:11.195254",
     "score_ratio": 0.0
   },
@@ -722,11 +722,11 @@
   {
     "student_answer": "INSERT, UPDATE, DELETE",
     "model_answer": "event",
-    "confirmed_score": 0.2,
+    "confirmed_score": 0,
     "ai_score": 0.07,
     "max_points": 0.2,
     "score_ratio": 0.0,
-    "feedback": "Instructor corrected: 0 → 0.2",
+    "feedback": "",
     "learned_at": "2026-04-15T13:32:51.597241"
   },
   {
@@ -752,11 +752,11 @@
   {
     "student_answer": "SELECT Products.product_id, Products.name, SUM(Products.price + OrderDequantity) AS total\nFROM Products\nJOIN OrderDetails ON Products.product_id = OrderDetails.product_id\nGROUP BY Products.Product_id, Product.name",
     "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
+    "confirmed_score": 0.8,
     "ai_score": 0.0,
     "max_points": 1.0,
     "score_ratio": 0.8,
-    "feedback": "Instructor corrected: 0 → 1",
+    "feedback": "Instructor corrected: 0 → 0.8",
     "learned_at": "2026-04-15T13:36:32.830231"
   },
   {
@@ -906,7 +906,7 @@
     "ai_score": 0.8,
     "max_points": 1.0,
     "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0.8 → 1",
+    "feedback": "",
     "learned_at": "2026-04-15T13:41:29.495828"
   },
   {
@@ -1200,564 +1200,14 @@
     "learned_at": "2026-04-15T13:55:02.573385"
   },
   {
-    "student_answer": "inseted",
-    "model_answer": "inserted",
-    "confirmed_score": 0.15,
-    "ai_score": 0.2,
+    "student_answer": "ODERS",
+    "model_answer": "Orders",
+    "confirmed_score": 0,
+    "ai_score": 0.15,
     "max_points": 0.2,
     "score_ratio": 0.7499999999999999,
     "feedback": "",
-    "learned_at": "2026-04-15T13:55:21.753852"
-  },
-  {
-    "student_answer": "SELECT name, SUM(quantity * price) AS TotalAmount\nFROM Products\nJOIN OrderDetails ON Products.product_id = OrderDetails.product_id\nGROUP BY name:",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0.5 → 1",
-    "learned_at": "2026-04-15T13:56:58.999300"
-  },
-  {
-    "student_answer": "SELECT Product_id, P.name, SUM(OD.quantity * P.price) AS TotalAmount\nFROM Products P\nJOIN OrderDetails OD ON P.product_id = OD.product_id\nGROUP BY P.product_id P.name;",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
-    "ai_score": 0.8,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T13:56:59.552234"
-  },
-  {
-    "student_answer": "ROLLBACK TRANSATION",
-    "model_answer": "ROLLBACK",
-    "confirmed_score": 0,
-    "ai_score": 0.2,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T13:56:59.747235"
-  },
-  {
-    "student_answer": "SELECT name, SUM (quantity*price) AS TotalAmount\nFROM Products\nJOIN OderDetails ON Products.product_id=OrderDetails.product_id\nGROUP BY name;",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0.5 → 1",
-    "learned_at": "2026-04-15T13:57:10.939768"
-  },
-  {
-    "student_answer": "SELECT name, SUM(quantify*price)AS TOTAL_Amount\nFROM Products\nJOIN OderDetails ON Products.product_id=OrderDetails.product_id\nGROUP BY name",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0.5 → 1",
-    "learned_at": "2026-04-15T13:57:32.479771"
-  },
-  {
-    "student_answer": "SELECT p.product_id, p.product_name,\nSUM (od.quantity * od.unit_price) as tongsotien \nFROM products p\nJoin orderdetails od on p.product_id = od.product_id \ngroup by p.product_id, p.product_name;",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0 → 1",
-    "learned_at": "2026-04-15T13:58:57.825448"
-  },
-  {
-    "student_answer": "SELECT * FROM CUSTOMERS\nWHERE customer_id NOT IN\n(SELECT DISTINCT customer_id from orders);",
-    "model_answer": "SELECT\ncustomer_id,\nname,\ncity\nFROM Customers\nWHERE customer_id NOT IN (\nSELECT customer_id\nFROM Orders\n);",
-    "confirmed_score": 1.0,
-    "ai_score": 0.58,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0.58 → 1",
-    "learned_at": "2026-04-15T13:58:58.517352"
-  },
-  {
-    "student_answer": "SELECT*\nFROM CUSTOMERS\nWHERE CUSTOMERS_ID NOT IN(\nSELECT CUSTOMERS_ID FROM ORDER\n);",
-    "model_answer": "SELECT\ncustomer_id,\nname,\ncity\nFROM Customers\nWHERE customer_id NOT IN (\nSELECT customer_id\nFROM Orders\n);",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0 → 1",
-    "learned_at": "2026-04-15T14:12:38.089434"
-  },
-  {
-    "student_answer": "SELECT p.product_id,p.name,SUM(od.quantity * od.price ) AS total_amount\nFROM Products p\nJOIN OrderDetails od ON p.product_id=od.product_id\nGROUP BY p.product_id, p.product_name;",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0.83 → 1",
-    "learned_at": "2026-04-15T14:12:56.032156"
-  },
-  {
-    "student_answer": "Thm",
-    "model_answer": "tham so",
-    "confirmed_score": 0,
-    "ai_score": 0.1,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:12:56.701855"
-  },
-  {
-    "student_answer": "SELECT p.name, SUM(p.price * o.quantity) AS TongTien\nFROM PRODUCTS p\nJOIN ORDERDETAILS o ON o.product_id = p.product_id\nGROUP BY p.name;",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0.8 → 1",
-    "learned_at": "2026-04-15T14:13:23.393015"
-  },
-  {
-    "student_answer": "'P01'",
-    "model_answer": "@id|1",
-    "confirmed_score": 0,
-    "ai_score": 0.2,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:13:23.948056"
-  },
-  {
-    "student_answer": "SELECT p.product_id,p.name,SUM(o.quantity * p.price) AS Tong\nFROM Products p\nJOIN OrderDetails o ON p.product_id = o.product_id\nGROUP BY p.product_id,p.",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0.83 → 1",
-    "learned_at": "2026-04-15T14:13:37.299347"
-  },
-  {
-    "student_answer": "ORDERD",
-    "model_answer": "OrderDetails",
-    "confirmed_score": 0,
-    "ai_score": 0.07,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:13:37.873138"
-  },
-  {
-    "student_answer": "Cac thao tac INSERT,UPDATE,DELETE ",
-    "model_answer": "event",
-    "confirmed_score": 0,
-    "ai_score": 0.07,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:13:37.878410"
-  },
-  {
-    "student_answer": "5",
-    "model_answer": "@id|1",
-    "confirmed_score": 0,
-    "ai_score": 0.06,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:13:37.897750"
-  },
-  {
-    "student_answer": "SELECT p.name, SUM(quantity * price)\nFROM Products p, OrderDetails  od\nWHERE product_id = od.product_id\nGROUP BY p.name;",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 0.7,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 0.7,
-    "feedback": "Instructor corrected: 0.39 → 0.7",
-    "learned_at": "2026-04-15T14:15:08.432994"
-  },
-  {
-    "student_answer": "SELECT \ni.ItemID,\ni.ItemName,\nSUM(h.Quantity * h.Price) AS\nTotalAmount\nFROM Items i\nJOIN HistoryItems h\nON i.ItemID = h.ItemID\nGROUP BY\ni.ItemID, i.ItemName;\n",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 0.9,
-    "feedback": "Instructor corrected: 0.8 → 1",
-    "learned_at": "2026-04-15T14:16:11.595928"
-  },
-  {
-    "student_answer": "UPDATE Products\nSET price = price *1.1\nWHERE product_id=1;",
-    "model_answer": "@id|1",
-    "confirmed_score": 0.12,
-    "ai_score": 0.17,
-    "max_points": 0.2,
-    "score_ratio": 0.6,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:16:12.334840"
-  },
-  {
-    "student_answer": "SELECT*\nFROM Customers\nWHERE customers_id NOT IN{\nSELECT customers_id\nFROM Orders\n};",
-    "model_answer": "SELECT\ncustomer_id,\nname,\ncity\nFROM Customers\nWHERE customer_id NOT IN (\nSELECT customer_id\nFROM Orders\n);",
-    "confirmed_score": 1.0,
-    "ai_score": 0.5,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:16:12.389660"
-  },
-  {
-    "student_answer": "INSE",
-    "model_answer": "inserted",
-    "confirmed_score": 0,
-    "ai_score": 0.06,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:30:10.664012"
-  },
-  {
-    "student_answer": "SELECT *\nFROM Customers\nWHERE customer_id NOT IN {\nSELECT cusmtomer_id\nFROM Orders\n};",
-    "model_answer": "SELECT\ncustomer_id,\nname,\ncity\nFROM Customers\nWHERE customer_id NOT IN (\nSELECT customer_id\nFROM Orders\n);",
-    "confirmed_score": 1.0,
-    "ai_score": 0.5,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:30:10.683632"
-  },
-  {
-    "student_answer": "mot su kien thay doi du lieu( nhu INSERT, UPDATE, HPAC DELECT)",
-    "model_answer": "event",
-    "confirmed_score": 0,
-    "ai_score": 0.07,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:30:10.914820"
-  },
-  {
-    "student_answer": "Input parameters",
-    "model_answer": "tham so",
-    "confirmed_score": 0.2,
-    "ai_score": 0,
-    "max_points": 0.2,
-    "score_ratio": 1.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:30:10.918469"
-  },
-  {
-    "student_answer": "DESS",
-    "model_answer": "DESC",
-    "confirmed_score": 0,
-    "ai_score": 0.2,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:30:10.922576"
-  },
-  {
-    "student_answer": "cac thao tac thay doi du lieu (DML)",
-    "model_answer": "event",
-    "confirmed_score": 0,
-    "ai_score": 0.07,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:30:11.006849"
-  },
-  {
-    "student_answer": "SELECT\nTenSanPham,\nSUM(ThanhTien) AS TongSoTien\nFROM\nDonHang\nGROUP BY \nTenSanPham;",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 0.1,
-    "ai_score": 0.19,
-    "max_points": 1.0,
-    "score_ratio": 0.1,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:30:11.032892"
-  },
-  {
-    "student_answer": "SELECT\nI.ItemID,\ni.ItemName,\nSUM(h.Quantity*h.Price) AS TotalAmount\nFROM Items i\nJOIN i.ItemID = h.ItemID\nGROUP BY\ni.ItemID, i.ItemName;",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 0.9,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 0.9,
-    "feedback": "Instructor corrected: 0.27 → 0.9",
-    "learned_at": "2026-04-15T14:30:38.321150"
-  },
-  {
-    "student_answer": "SELECT*\nFROM Customers\nWHERE customers_id NOT IN {\nSELECT customers_id\nFROM Oders\n}",
-    "model_answer": "SELECT\ncustomer_id,\nname,\ncity\nFROM Customers\nWHERE customer_id NOT IN (\nSELECT customer_id\nFROM Orders\n);",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0.58 → 1",
-    "learned_at": "2026-04-15T14:31:04.454723"
-  },
-  {
-    "student_answer": "SELECT p.product_id, p.name,\nSUM ( p.price * od.quanity) AS total_amounts\nFROM Products p\nJOIN OrderDetails od ON p.product_id = od.product_id\nGROUP BY p.product_id , p.name;",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0.89 → 1",
-    "learned_at": "2026-04-15T14:31:30.086070"
-  },
-  {
-    "student_answer": "SELECT p.name, SUM(od.quantity * p.price) AS TotalAmout\nFROM Products p\nJOIN OrderDetails od ON p.product_id = od.product_id\nGROUP BY p",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0.8 → 1",
-    "learned_at": "2026-04-15T14:31:49.316326"
-  },
-  {
-    "student_answer": "SELECT*FROM Customers\nWHERE customers_id NOT IN (SELECT customer_id FROM Orders);",
-    "model_answer": "SELECT\ncustomer_id,\nname,\ncity\nFROM Customers\nWHERE customer_id NOT IN (\nSELECT customer_id\nFROM Orders\n);",
-    "confirmed_score": 1.0,
-    "ai_score": 0.5,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:31:49.926275"
-  },
-  {
-    "student_answer": "SELECT *FROM Customers ,name ,city\nWHERE customer_id NOT IN (SELECT customer_id\nFROM Orders\n);",
-    "model_answer": "SELECT\ncustomer_id,\nname,\ncity\nFROM Customers\nWHERE customer_id NOT IN (\nSELECT customer_id\nFROM Orders\n);",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0.58 → 1",
-    "learned_at": "2026-04-15T14:32:04.780282"
-  },
-  {
-    "student_answer": "SELECT\ni.ItemID,\ni.ItemName,\nSum(h.Quantity*h.Price)AS TotalAmount\nFrom Items i\nJOIN HistoryItems h \nON i.ItemID= h.ItemID\nGROUP BY\ni.iTemID, i.ItemName;",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0.8 → 1",
-    "learned_at": "2026-04-15T14:32:33.395711"
-  },
-  {
-    "student_answer": "INSERT , UPDATE hoặc DELETE",
-    "model_answer": "event",
-    "confirmed_score": 0,
-    "ai_score": 0.07,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:32:34.436186"
-  },
-  {
-    "student_answer": "UPDATE Products\nSET price = price * 1.1\nWhere product_id = 1;",
-    "model_answer": "@id|1",
-    "confirmed_score": 0.12,
-    "ai_score": 0.17,
-    "max_points": 0.2,
-    "score_ratio": 0.6,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:32:34.452480"
-  },
-  {
-    "student_answer": "SELECT*\n    p.product_id,\n    p.product_name,\n    SUM(od.quantity * p.price) AS total_amount\nFROM products p\nJOIN Ordertails on ON p.product_id = od.product_id\nGROUP BY p.product_id, p.product_name;",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0.8 → 1",
-    "learned_at": "2026-04-15T14:32:56.615374"
-  },
-  {
-    "student_answer": "INSERT, UPDATE AND DELETE",
-    "model_answer": "event",
-    "confirmed_score": 0,
-    "ai_score": 0.07,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:33:51.357540"
-  },
-  {
-    "student_answer": "SELECT p.product_id, p.name, SUM (od.quantity*od.price) AS total_amount\nFROM Products p\nJOIN OrderDetails od ON p.product_id = od.product_id\nGROUP BY p.product_id, p.product_name;",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0.83 → 1",
-    "learned_at": "2026-04-15T14:34:27.108733"
-  },
-  {
-    "student_answer": "INSERT, UPDATE,DELETE",
-    "model_answer": "event",
-    "confirmed_score": 0,
-    "ai_score": 0.07,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:34:27.809219"
-  },
-  {
-    "student_answer": "DECS",
-    "model_answer": "DESC",
-    "confirmed_score": 0,
-    "ai_score": 0.07,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:34:27.814769"
-  },
-  {
-    "student_answer": "SELECT *\nFROM Customers\nWHERE custoner_id NOT IN (\nSELECT customer_id\nFROM Orders\n);",
-    "model_answer": "SELECT\ncustomer_id,\nname,\ncity\nFROM Customers\nWHERE customer_id NOT IN (\nSELECT customer_id\nFROM Orders\n);",
-    "confirmed_score": 1.0,
-    "ai_score": 0.5,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:34:28.341569"
-  },
-  {
-    "student_answer": "SELECT p.product_id, p.name, SUM (od.quantity * od.price) AS total_amount\nFROM Products p\nJOIN OrderDetails od ON p.product_id = od.product_id\nGROUP BY p.product_id, p.product_name;",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0.83 → 1",
-    "learned_at": "2026-04-15T14:34:41.449593"
-  },
-  {
-    "student_answer": "bởi các lệnh INSERT, UPDATE, DELETE",
-    "model_answer": "event",
-    "confirmed_score": 0,
-    "ai_score": 0.07,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:35:29.877843"
-  },
-  {
-    "student_answer": "BEFORE",
-    "model_answer": "INSTEAD OF",
-    "confirmed_score": 0.2,
-    "ai_score": 0.02,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "Instructor corrected: 0 → 0.2",
-    "learned_at": "2026-04-15T14:35:29.893745"
-  },
-  {
-    "student_answer": "INSERTED.product_id",
-    "model_answer": "@id|1",
-    "confirmed_score": 0.2,
-    "ai_score": 0,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "Instructor corrected: 0 → 0.2",
-    "learned_at": "2026-04-15T14:35:29.897841"
-  },
-  {
-    "student_answer": "SET NOCCOUNT ON",
-    "model_answer": "NOCOUNT ON",
-    "confirmed_score": 1.0,
-    "ai_score": 0,
-    "max_points": 0.2,
-    "score_ratio": 0.7999999999999999,
-    "feedback": "Instructor corrected: 0.16 → 1",
-    "learned_at": "2026-04-15T14:35:29.901869"
-  },
-  {
-    "student_answer": "SELECT name, SUM(P.price * OD.quanlity) AS total_price\nFROM Products P\nINNER JOIN OrderDetails OD ON P.product_id = OD.product_id\nGROUP BY P.name;\n",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
-    "ai_score": 0.8,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:35:29.912106"
-  },
-  {
-    "student_answer": "SELECT p.name, SUM(od. quantity * p.price) AS TotalAmout\nFROM Products o\nJOIN OrderDetails od ON p.product_id = GROUP BY p.name;",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0.8 → 1",
-    "learned_at": "2026-04-15T14:39:59.278828"
-  },
-  {
-    "student_answer": "cac thao tac INSERT, UPDATE, DELETE ",
-    "model_answer": "event",
-    "confirmed_score": 0,
-    "ai_score": 0.07,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:40:00.453740"
-  },
-  {
-    "student_answer": "SELECT\ni.ItemID,\nI.itemName,\nSUM(h.Quantity*h.Price)AS TotalAmount\nFROM Items i\nJOIN historyitems",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 0.4,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 0.4,
-    "feedback": "Instructor corrected: 0.13 → 0.4",
-    "learned_at": "2026-04-15T14:46:17.451877"
-  },
-  {
-    "student_answer": "SELECT*FROM Customers\nWHERE customer_id NOT IN{\nSELECT customers_id\nFrom Orders\n);",
-    "model_answer": "SELECT\ncustomer_id,\nname,\ncity\nFROM Customers\nWHERE customer_id NOT IN (\nSELECT customer_id\nFROM Orders\n);",
-    "confirmed_score": 1.0,
-    "ai_score": 0.5,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:46:21.885439"
-  },
-  {
-    "student_answer": "SELECT p.name, SUM(o.quantity * p.price) AS total\nFROM Products p\nJOIN OrderDetails od ON p.product_id = od.product_id\nGROUP BY p.name;",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0.8 → 1",
-    "learned_at": "2026-04-15T14:46:32.493814"
-  },
-  {
-    "student_answer": "INSERT, UPDATE hoac DELETE",
-    "model_answer": "event",
-    "confirmed_score": 0,
-    "ai_score": 0.07,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:46:33.673000"
-  },
-  {
-    "student_answer": "SELECT p.name, SUM(p.price * od.quantity) AS TotalAmount FROM Products p\nJOIN OrderDetails od ON p.product_id = od.product_id \nGROUP BY p.name;",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0.8 → 1",
-    "learned_at": "2026-04-15T14:47:36.085444"
+    "learned_at": "2026-04-15T13:55:04.030574"
   },
   {
     "student_answer": "Đại học Duy Tân thuộc trường tư thục và thuocj top 500 thế giói",
@@ -1767,7 +1217,7 @@
     "max_points": 2.0,
     "score_ratio": 0.75,
     "feedback": "",
-    "learned_at": "2026-04-15T14:47:36.866639"
+    "learned_at": "2026-04-17T18:53:15.352654"
   },
   {
     "student_answer": "University Duy Tân",
@@ -1777,7 +1227,7 @@
     "max_points": 2.0,
     "score_ratio": 0.1,
     "feedback": "",
-    "learned_at": "2026-04-15T14:47:36.869147"
+    "learned_at": "2026-04-17T18:53:15.354186"
   },
   {
     "student_answer": "Được nhiều người biết là trường tư và lên được top 500 rồi",
@@ -1787,7 +1237,17 @@
     "max_points": 2.0,
     "score_ratio": 0.8,
     "feedback": "",
-    "learned_at": "2026-04-15T14:47:36.888888"
+    "learned_at": "2026-04-17T18:53:15.357166"
+  },
+  {
+    "student_answer": "INSE",
+    "model_answer": "inserted",
+    "confirmed_score": 0,
+    "ai_score": 0.06,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:15.906645"
   },
   {
     "student_answer": "JOIN",
@@ -1797,7 +1257,17 @@
     "max_points": 0.2,
     "score_ratio": 1.0,
     "feedback": "",
-    "learned_at": "2026-04-15T14:47:36.962167"
+    "learned_at": "2026-04-17T18:53:15.907664"
+  },
+  {
+    "student_answer": "SELECT *\nFROM Customers\nWHERE customer_id NOT IN {\nSELECT cusmtomer_id\nFROM Orders\n};",
+    "model_answer": "SELECT\ncustomer_id,\nname,\ncity\nFROM Customers\nWHERE customer_id NOT IN (\nSELECT customer_id\nFROM Orders\n);",
+    "confirmed_score": 1.0,
+    "ai_score": 0.5,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:15.909154"
   },
   {
     "student_answer": "=\"da ",
@@ -1807,7 +1277,57 @@
     "max_points": 0.2,
     "score_ratio": 0.6,
     "feedback": "",
-    "learned_at": "2026-04-15T14:47:37.001541"
+    "learned_at": "2026-04-17T18:53:15.910662"
+  },
+  {
+    "student_answer": "input parameters",
+    "model_answer": "tham so",
+    "confirmed_score": 0.2,
+    "ai_score": 0,
+    "max_points": 0.2,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:15.910662"
+  },
+  {
+    "student_answer": "SELECT*FROM Customers\nWHERE customers_id NOT IN (SELECT customer_id FROM Orders);",
+    "model_answer": "SELECT\ncustomer_id,\nname,\ncity\nFROM Customers\nWHERE customer_id NOT IN (\nSELECT customer_id\nFROM Orders\n);",
+    "confirmed_score": 1.0,
+    "ai_score": 0.5,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:15.912692"
+  },
+  {
+    "student_answer": "SELECT p.name, SUM(od.quantity * p.price) AS TotalAmout\nFROM Products p\nJOIN OrderDetails od ON p.product_id = od.product_id\nGROUP BY p",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 1.0,
+    "ai_score": 0.8,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:15.914850"
+  },
+  {
+    "student_answer": "INSERT, UPDATE,DELETE",
+    "model_answer": "event",
+    "confirmed_score": 0,
+    "ai_score": 0.07,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:15.916839"
+  },
+  {
+    "student_answer": "DECS",
+    "model_answer": "DESC",
+    "confirmed_score": 0,
+    "ai_score": 0.07,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:15.918348"
   },
   {
     "student_answer": "SELECT*\nFROM Customers\nWHERE customer_id NOT IN (SELECT customer_id FROM Orders);",
@@ -1817,7 +1337,17 @@
     "max_points": 1.0,
     "score_ratio": 1.0,
     "feedback": "",
-    "learned_at": "2026-04-15T14:47:37.078638"
+    "learned_at": "2026-04-17T18:53:15.919352"
+  },
+  {
+    "student_answer": "SELECT p.product_id, p.name, SUM (od.quantity*od.price) AS total_amount\nFROM Products p\nJOIN OrderDetails od ON p.product_id = od.product_id\nGROUP BY p.product_id, p.product_name;",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 1.0,
+    "ai_score": 0.83,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:15.920932"
   },
   {
     "student_answer": " PARAMETERS",
@@ -1826,8 +1356,8 @@
     "ai_score": 0,
     "max_points": 0.2,
     "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0 → 0.2",
-    "learned_at": "2026-04-15T14:47:37.111895"
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:15.923946"
   },
   {
     "student_answer": "FOR",
@@ -1837,7 +1367,47 @@
     "max_points": 0.2,
     "score_ratio": 0.0,
     "feedback": "",
-    "learned_at": "2026-04-15T14:47:37.125177"
+    "learned_at": "2026-04-17T18:53:15.924953"
+  },
+  {
+    "student_answer": "SELECT p.name, SUM(p.price * od.quantity) AS TotalAmount FROM Products p\nJOIN OrderDetails od ON p.product_id = od.product_id \nGROUP BY p.name;",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 1.0,
+    "ai_score": 0.8,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:15.927993"
+  },
+  {
+    "student_answer": "UPDATE Products\nSET price = price *1.1\nWHERE product_id=1;",
+    "model_answer": "@id|1",
+    "confirmed_score": 0.12,
+    "ai_score": 0.17,
+    "max_points": 0.2,
+    "score_ratio": 0.6,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:15.934066"
+  },
+  {
+    "student_answer": "SELECT\nI.ItemID,\ni.ItemName,\nSUM(h.Quantity*h.Price) AS TotalAmount\nFROM Items i\nJOIN i.ItemID = h.ItemID\nGROUP BY\ni.ItemID, i.ItemName;",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 0.9,
+    "ai_score": 0.27,
+    "max_points": 1.0,
+    "score_ratio": 0.9,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:15.936013"
+  },
+  {
+    "student_answer": "SELECT p.product_id, p.name, SUM (od.quantity * od.price) AS total_amount\nFROM Products p\nJOIN OrderDetails od ON p.product_id = od.product_id\nGROUP BY p.product_id, p.product_name;",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 1.0,
+    "ai_score": 0.83,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:15.947657"
   },
   {
     "student_answer": "MOT SU KIEN (INSERT, UPDATE, DELETE)",
@@ -1847,7 +1417,7 @@
     "max_points": 0.2,
     "score_ratio": 0.0,
     "feedback": "",
-    "learned_at": "2026-04-15T14:48:49.028486"
+    "learned_at": "2026-04-17T18:53:15.949681"
   },
   {
     "student_answer": "SELECT *\nFROM Customers\nWHERE customer_id NOT IN(\nSELECT customer_id FROM Order\n);",
@@ -1857,107 +1427,87 @@
     "max_points": 1.0,
     "score_ratio": 1.0,
     "feedback": "",
-    "learned_at": "2026-04-15T14:48:49.030215"
+    "learned_at": "2026-04-17T18:53:15.950745"
   },
   {
-    "student_answer": "'I01'",
+    "student_answer": "SELECT*\nFROM CUSTOMERS\nWHERE CUSTOMERS_ID NOT IN(\nSELECT CUSTOMERS_ID FROM ORDER\n);",
+    "model_answer": "SELECT\ncustomer_id,\nname,\ncity\nFROM Customers\nWHERE customer_id NOT IN (\nSELECT customer_id\nFROM Orders\n);",
+    "confirmed_score": 1.0,
+    "ai_score": 0,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:15.968798"
+  },
+  {
+    "student_answer": "INSERT, UPDATE hoac DELETE",
+    "model_answer": "event",
+    "confirmed_score": 0,
+    "ai_score": 0.07,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:15.979382"
+  },
+  {
+    "student_answer": "SELECT p.name, SUM(o.quantity * p.price) AS total\nFROM Products p\nJOIN OrderDetails od ON p.product_id = od.product_id\nGROUP BY p.name;",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 1.0,
+    "ai_score": 0.8,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:15.983102"
+  },
+  {
+    "student_answer": "SELECT p.name, SUM(od. quantity * p.price) AS TotalAmout\nFROM Products o\nJOIN OrderDetails od ON p.product_id = GROUP BY p.name;",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 1.0,
+    "ai_score": 0.8,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:15.988294"
+  },
+  {
+    "student_answer": "Thm",
+    "model_answer": "tham so",
+    "confirmed_score": 0,
+    "ai_score": 0.1,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:15.990809"
+  },
+  {
+    "student_answer": "SELECT p.product_id,p.name,SUM(od.quantity * od.price ) AS total_amount\nFROM Products p\nJOIN OrderDetails od ON p.product_id=od.product_id\nGROUP BY p.product_id, p.product_name;",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 1.0,
+    "ai_score": 0.83,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:15.994324"
+  },
+  {
+    "student_answer": "'P01'",
     "model_answer": "@id|1",
     "confirmed_score": 0,
     "ai_score": 0.2,
     "max_points": 0.2,
     "score_ratio": 0.0,
     "feedback": "",
-    "learned_at": "2026-04-15T14:48:49.073310"
+    "learned_at": "2026-04-17T18:53:15.996849"
   },
   {
-    "student_answer": "cac su kien tren bang ( INSERT, UPDATE, DELETE)",
-    "model_answer": "event",
-    "confirmed_score": 0,
-    "ai_score": 0.07,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:48:49.177669"
-  },
-  {
-    "student_answer": "FOR",
-    "model_answer": "@id|1",
-    "confirmed_score": 0,
-    "ai_score": 0.06,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:48:49.180856"
-  },
-  {
-    "student_answer": "SELECT \n p.product_id;\np.name,\nSUM( p.price * od.quantity) AS tong_so_tien\nFROM Products p \nINNER JOIN OrderDetails od On\np.product_id=od.product_id\nGROUP BY\n   p.product_id,\n  p.name;",
+    "student_answer": "SELECT p.name, SUM(p.price * o.quantity) AS TongTien\nFROM PRODUCTS p\nJOIN ORDERDETAILS o ON o.product_id = p.product_id\nGROUP BY p.name;",
     "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
     "confirmed_score": 1.0,
-    "ai_score": 0.84,
+    "ai_score": 0.8,
     "max_points": 1.0,
     "score_ratio": 1.0,
     "feedback": "",
-    "learned_at": "2026-04-15T14:48:49.183170"
-  },
-  {
-    "student_answer": "SELECT p.name, SUM(quantity * price)\nFROM Products p, OrderDetails od \nWHERE p.product_id = od.product_id\nGROUP BY p.name;",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0.39 → 1",
-    "learned_at": "2026-04-15T14:49:13.461300"
-  },
-  {
-    "student_answer": "SET NOCOUT ON",
-    "model_answer": "NOCOUNT ON",
-    "confirmed_score": 0,
-    "ai_score": 0.2,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:49:14.357552"
-  },
-  {
-    "student_answer": "su kien thay doi du lieu (INSERT,UPDATE,or DELETE) ",
-    "model_answer": "event",
-    "confirmed_score": 0,
-    "ai_score": 0.07,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:49:14.436471"
-  },
-  {
-    "student_answer": "SELECT p.name SUM(p.price * od.quantity) AS total_amount \nFROM Products p\nJOIN OrderDetails od ON p.product_id = od.product_id\nGROUP BY p.product_id, p.name\n",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0.8 → 1",
-    "learned_at": "2026-04-15T14:49:24.509667"
-  },
-  {
-    "student_answer": "mot su kien thay doi du lieu ( nhu INSERT, UPDATE, Hoac DELECT)",
-    "model_answer": "event",
-    "confirmed_score": 0,
-    "ai_score": 0.07,
-    "max_points": 0.2,
-    "score_ratio": 0.0,
-    "feedback": "",
-    "learned_at": "2026-04-15T14:49:25.448517"
-  },
-  {
-    "student_answer": "SELECT p.name, SUM(p.price* o.quantity) AS TOTAL\nFROM PRODUCTS p\nJOIN ORDERDETAILS o ON o.product_id = p.product_id\nGROUP BY ",
-    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
-    "confirmed_score": 1.0,
-    "ai_score": 0.0,
-    "max_points": 1.0,
-    "score_ratio": 1.0,
-    "feedback": "Instructor corrected: 0.47 → 1",
-    "learned_at": "2026-04-15T14:50:07.530192"
+    "learned_at": "2026-04-17T18:53:15.999572"
   },
   {
     "student_answer": "Orders Details",
@@ -1967,7 +1517,7 @@
     "max_points": 0.2,
     "score_ratio": 1.0,
     "feedback": "",
-    "learned_at": "2026-04-15T14:50:08.423480"
+    "learned_at": "2026-04-17T18:53:16.000526"
   },
   {
     "student_answer": "DE",
@@ -1977,7 +1527,7 @@
     "max_points": 0.2,
     "score_ratio": 0.0,
     "feedback": "",
-    "learned_at": "2026-04-15T14:50:08.424983"
+    "learned_at": "2026-04-17T18:53:16.002037"
   },
   {
     "student_answer": "01",
@@ -1987,7 +1537,7 @@
     "max_points": 0.2,
     "score_ratio": 0.0,
     "feedback": "",
-    "learned_at": "2026-04-15T14:50:08.428007"
+    "learned_at": "2026-04-17T18:53:16.003068"
   },
   {
     "student_answer": "SELECT *\nFROM Customer\nWHERE customer_id NOT IN (SELECT customer_id FROM Orders",
@@ -1997,7 +1547,447 @@
     "max_points": 1.0,
     "score_ratio": 1.0,
     "feedback": "",
-    "learned_at": "2026-04-15T14:50:08.428511"
+    "learned_at": "2026-04-17T18:53:16.004075"
+  },
+  {
+    "student_answer": "'I01'",
+    "model_answer": "@id|1",
+    "confirmed_score": 0,
+    "ai_score": 0.2,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.007145"
+  },
+  {
+    "student_answer": "mot su kien thay doi du lieu( nhu INSERT, UPDATE, HPAC DELECT)",
+    "model_answer": "event",
+    "confirmed_score": 0,
+    "ai_score": 0.07,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.011168"
+  },
+  {
+    "student_answer": "DESS",
+    "model_answer": "DESC",
+    "confirmed_score": 0,
+    "ai_score": 0.2,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.013201"
+  },
+  {
+    "student_answer": "INSERT, UPDATE AND DELETE",
+    "model_answer": "event",
+    "confirmed_score": 0,
+    "ai_score": 0.07,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.019924"
+  },
+  {
+    "student_answer": "SELECT\ni.ItemID,\ni.ItemName,\nSUM(h.Quantity * h.Price) AS TotalAmount\nFROM Items i\nJOIN HistoryItems h\nON i.ItemID = h.ItemID\nGROUP BY \ni.ItemID, i.ItemName;",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 1.0,
+    "ai_score": 0.8,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.026471"
+  },
+  {
+    "student_answer": "ORDERD",
+    "model_answer": "OrderDetails",
+    "confirmed_score": 0,
+    "ai_score": 0.07,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.027987"
+  },
+  {
+    "student_answer": "Cac thao tac INSERT,UPDATE,DELETE ",
+    "model_answer": "event",
+    "confirmed_score": 0,
+    "ai_score": 0.07,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.029579"
+  },
+  {
+    "student_answer": "5",
+    "model_answer": "@id|1",
+    "confirmed_score": 0,
+    "ai_score": 0.06,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.031516"
+  },
+  {
+    "student_answer": "SELECT p.product_id,p.name,SUM(o.quantity * p.price) AS Tong\nFROM Products p\nJOIN OrderDetails o ON p.product_id = o.product_id\nGROUP BY p.product_id,p.",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 1.0,
+    "ai_score": 0.83,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.034501"
+  },
+  {
+    "student_answer": "cac thao tac INSERT, UPDATE, DELETE ",
+    "model_answer": "event",
+    "confirmed_score": 0,
+    "ai_score": 0.07,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.037602"
+  },
+  {
+    "student_answer": "SELECT*\nFROM Customers\nWHERE customers_id NOT IN {\nSELECT customers_id\nFROM Oders\n}",
+    "model_answer": "SELECT\ncustomer_id,\nname,\ncity\nFROM Customers\nWHERE customer_id NOT IN (\nSELECT customer_id\nFROM Orders\n);",
+    "confirmed_score": 1.0,
+    "ai_score": 0.58,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.043123"
+  },
+  {
+    "student_answer": "SELECT*\n    p.product_id,\n    p.product_name,\n    SUM(od.quantity * p.price) AS total_amount\nFROM products p\nJOIN Ordertails on ON p.product_id = od.product_id\nGROUP BY p.product_id, p.product_name;",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 1.0,
+    "ai_score": 0.8,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.058713"
+  },
+  {
+    "student_answer": "UPDATE Products \nSET price = price *1.1\nWHERE product_id = 1;",
+    "model_answer": "@id|1",
+    "confirmed_score": 0.12,
+    "ai_score": 0.17,
+    "max_points": 0.2,
+    "score_ratio": 0.6,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.071060"
+  },
+  {
+    "student_answer": "SET NOCOUT ON",
+    "model_answer": "NOCOUNT ON",
+    "confirmed_score": 0,
+    "ai_score": 0.2,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.078163"
+  },
+  {
+    "student_answer": "bởi các lệnh INSERT, UPDATE, DELETE",
+    "model_answer": "event",
+    "confirmed_score": 0,
+    "ai_score": 0.07,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.088426"
+  },
+  {
+    "student_answer": "BEFORE",
+    "model_answer": "INSTEAD OF",
+    "confirmed_score": 0.2,
+    "ai_score": 0.02,
+    "max_points": 0.2,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.089390"
+  },
+  {
+    "student_answer": "INSERTED.product_id",
+    "model_answer": "@id|1",
+    "confirmed_score": 0.2,
+    "ai_score": 0,
+    "max_points": 0.2,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.092387"
+  },
+  {
+    "student_answer": "SET NOCCOUNT ON",
+    "model_answer": "NOCOUNT ON",
+    "confirmed_score": 1.0,
+    "ai_score": 0,
+    "max_points": 0.2,
+    "score_ratio": 5.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.094941"
+  },
+  {
+    "student_answer": "SELECT *\nFROM Customers\nWHERE customer_id NOT IN (SELECT DISTINCT customer_id FROM Orders);",
+    "model_answer": "SELECT\ncustomer_id,\nname,\ncity\nFROM Customers\nWHERE customer_id NOT IN (\nSELECT customer_id\nFROM Orders\n);",
+    "confirmed_score": 1.0,
+    "ai_score": 0.58,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.098484"
+  },
+  {
+    "student_answer": "SELECT name, SUM(P.price * OD.quanlity) AS total_price\nFROM Products P\nINNER JOIN OrderDetails OD ON P.product_id = OD.product_id\nGROUP BY P.name;\n",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 1.0,
+    "ai_score": 0.8,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.105714"
+  },
+  {
+    "student_answer": "cac thao tac thay doi du lieu (DML)",
+    "model_answer": "event",
+    "confirmed_score": 0,
+    "ai_score": 0.07,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.108715"
+  },
+  {
+    "student_answer": "SELECT\nTenSanPham,\nSUM(ThanhTien) AS TongSoTien\nFROM\nDonHang\nGROUP BY \nTenSanPham;",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 0.1,
+    "ai_score": 0.19,
+    "max_points": 1.0,
+    "score_ratio": 0.1,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.110570"
+  },
+  {
+    "student_answer": "SELECT*FROM Customers\nWHERE customer_id NOT IN{\nSELECT customers_id\nFrom Orders\n);",
+    "model_answer": "SELECT\ncustomer_id,\nname,\ncity\nFROM Customers\nWHERE customer_id NOT IN (\nSELECT customer_id\nFROM Orders\n);",
+    "confirmed_score": 1.0,
+    "ai_score": 0.5,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.114661"
+  },
+  {
+    "student_answer": "SELECT\ni.ItemID,\nI.itemName,\nSUM(h.Quantity*h.Price)AS TotalAmount\nFROM Items i\nJOIN historyitems",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 0.4,
+    "ai_score": 0.13,
+    "max_points": 1.0,
+    "score_ratio": 0.4,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.116835"
+  },
+  {
+    "student_answer": "INSERT , UPDATE hoặc DELETE",
+    "model_answer": "event",
+    "confirmed_score": 0,
+    "ai_score": 0.07,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.118932"
+  },
+  {
+    "student_answer": "SELECT\ni.ItemID,\ni.ItemName,\nSum(h.Quantity*h.Price)AS TotalAmount\nFrom Items i\nJOIN HistoryItems h \nON i.ItemID= h.ItemID\nGROUP BY\ni.iTemID, i.ItemName;",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 1.0,
+    "ai_score": 0.8,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.122486"
+  },
+  {
+    "student_answer": "SELECT *\nFROM Customers\nWHERE custoner_id NOT IN (\nSELECT customer_id\nFROM Orders\n);",
+    "model_answer": "SELECT\ncustomer_id,\nname,\ncity\nFROM Customers\nWHERE customer_id NOT IN (\nSELECT customer_id\nFROM Orders\n);",
+    "confirmed_score": 1.0,
+    "ai_score": 0.5,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.126055"
+  },
+  {
+    "student_answer": "mot su kien thay doi du lieu ( nhu INSERT, UPDATE, Hoac DELECT)",
+    "model_answer": "event",
+    "confirmed_score": 0,
+    "ai_score": 0.07,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.128135"
+  },
+  {
+    "student_answer": "SELECT p.name SUM(p.price * od.quantity) AS total_amount \nFROM Products p\nJOIN OrderDetails od ON p.product_id = od.product_id\nGROUP BY p.product_id, p.name\n",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 1.0,
+    "ai_score": 0.8,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.133189"
+  },
+  {
+    "student_answer": "SELECT p.product_id, p.name,\nSUM ( p.price * od.quanity) AS total_amounts\nFROM Products p\nJOIN OrderDetails od ON p.product_id = od.product_id\nGROUP BY p.product_id , p.name;",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 1.0,
+    "ai_score": 0.89,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.139222"
+  },
+  {
+    "student_answer": "SELECT p.name, SUM(quantity * price)\nFROM Products p, OrderDetails  od\nWHERE product_id = od.product_id\nGROUP BY p.name;",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 0.7,
+    "ai_score": 0.39,
+    "max_points": 1.0,
+    "score_ratio": 0.7,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.152060"
+  },
+  {
+    "student_answer": "cac su kien tren bang ( INSERT, UPDATE, DELETE)",
+    "model_answer": "event",
+    "confirmed_score": 0,
+    "ai_score": 0.07,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.155206"
+  },
+  {
+    "student_answer": "FOR",
+    "model_answer": "@id|1",
+    "confirmed_score": 0,
+    "ai_score": 0.06,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.157237"
+  },
+  {
+    "student_answer": "SELECT \n p.product_id;\np.name,\nSUM( p.price * od.quantity) AS tong_so_tien\nFROM Products p \nINNER JOIN OrderDetails od On\np.product_id=od.product_id\nGROUP BY\n   p.product_id,\n  p.name;",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 1.0,
+    "ai_score": 0.84,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.160938"
+  },
+  {
+    "student_answer": "SELECT*\nFROM Customers\nWHERE customers_id NOT IN{\nSELECT customers_id\nFROM Orders\n};",
+    "model_answer": "SELECT\ncustomer_id,\nname,\ncity\nFROM Customers\nWHERE customer_id NOT IN (\nSELECT customer_id\nFROM Orders\n);",
+    "confirmed_score": 1.0,
+    "ai_score": 0.5,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.165505"
+  },
+  {
+    "student_answer": "su kien thay doi du lieu (INSERT,UPDATE,or DELETE) ",
+    "model_answer": "event",
+    "confirmed_score": 0,
+    "ai_score": 0.07,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.172847"
+  },
+  {
+    "student_answer": "SELECT p.name, SUM(quantity * price)\nFROM Products p, OrderDetails od \nWHERE p.product_id = od.product_id\nGROUP BY p.name;",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 1.0,
+    "ai_score": 0.39,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.181548"
+  },
+  {
+    "student_answer": "SELECT *FROM Customers ,name ,city\nWHERE customer_id NOT IN (SELECT customer_id\nFROM Orders\n);",
+    "model_answer": "SELECT\ncustomer_id,\nname,\ncity\nFROM Customers\nWHERE customer_id NOT IN (\nSELECT customer_id\nFROM Orders\n);",
+    "confirmed_score": 1.0,
+    "ai_score": 0.58,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.202735"
+  },
+  {
+    "student_answer": "SELECT p.name, SUM(p.price* o.quantity) AS TOTAL\nFROM PRODUCTS p\nJOIN ORDERDETAILS o ON o.product_id = p.product_id\nGROUP BY ",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 1.0,
+    "ai_score": 0.47,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.213978"
+  },
+  {
+    "student_answer": "SELECT Product_id, P.name, SUM(OD.quantity * P.price) AS TotalAmount\nFROM Products P\nJOIN OrderDetails OD ON P.product_id = OD.product_id\nGROUP BY P.product_id P.name;",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 1.0,
+    "ai_score": 0.8,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.263958"
+  },
+  {
+    "student_answer": "Products",
+    "model_answer": "OrderDetails",
+    "confirmed_score": 0.1,
+    "ai_score": 0,
+    "max_points": 0.2,
+    "score_ratio": 0.5,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.281677"
+  },
+  {
+    "student_answer": "ROLLBACK TRANSATION",
+    "model_answer": "ROLLBACK",
+    "confirmed_score": 0,
+    "ai_score": 0.2,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.321259"
+  },
+  {
+    "student_answer": "SELECT p.product_id, p.product_name,\nSUM (od.quantity * od.unit_price) as tongsotien \nFROM products p\nJoin orderdetails od on p.product_id = od.product_id \ngroup by p.product_id, p.product_name;",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 1.0,
+    "ai_score": 0.8,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.332637"
+  },
+  {
+    "student_answer": "inseted",
+    "model_answer": "inserted",
+    "confirmed_score": 0.15,
+    "ai_score": 0.2,
+    "max_points": 0.2,
+    "score_ratio": 0.7499999999999999,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.355891"
   },
   {
     "student_answer": "SELECT Products.product_id, Products.name, SUM( OrderDetails.quantity * Products.price ) AS Tong_Tien\nFROM Products\nJOIN OrderDetails ON Products.product_id=OrderDetails.product_id\nGROUP BY Products.product_id, Products.name;",
@@ -2007,16 +1997,46 @@
     "max_points": 1.0,
     "score_ratio": 1.0,
     "feedback": "",
-    "learned_at": "2026-04-15T15:06:41.184067"
+    "learned_at": "2026-04-17T18:53:16.382038"
   },
   {
-    "student_answer": "Products",
-    "model_answer": "OrderDetails",
-    "confirmed_score": 0.1,
-    "ai_score": 0.0,
-    "max_points": 0.2,
-    "score_ratio": 0.5,
-    "feedback": "Instructor corrected: 0 → 0.1",
-    "learned_at": "2026-04-15T15:40:37.176993"
+    "student_answer": "SELECT name, SUM(quantity * price) AS TotalAmount\nFROM Products\nJOIN OrderDetails ON Products.product_id = OrderDetails.product_id\nGROUP BY name:",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 1.0,
+    "ai_score": 0.5,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.405013"
+  },
+  {
+    "student_answer": "SELECT name, SUM (quantity*price) AS TotalAmount\nFROM Products\nJOIN OderDetails ON Products.product_id=OrderDetails.product_id\nGROUP BY name;",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 1.0,
+    "ai_score": 0.5,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.511678"
+  },
+  {
+    "student_answer": "SELECT name, SUM(quantify*price)AS TOTAL_Amount\nFROM Products\nJOIN OderDetails ON Products.product_id=OrderDetails.product_id\nGROUP BY name",
+    "model_answer": "SELECT\np.product_id,\np.name,\nSUM(od.quantity * p.price) AS total_revenue\nFROM Products p\nINNER JOIN OrderDetails od\nON p.product_id = od.product_id\nGROUP BY\np.product_id,\np.name;",
+    "confirmed_score": 1.0,
+    "ai_score": 0.8,
+    "max_points": 1.0,
+    "score_ratio": 1.0,
+    "feedback": "",
+    "learned_at": "2026-04-17T18:53:16.541196"
+  },
+  {
+    "student_answer": "Biến cố năm 1930 đã giải quyết triệt để sự bế tắc của phong trào giải phóng dân tộc cuối thế kỷ 19. Bằng việc vũ trang lý luận Mác - Leenin cho lực lượng vô sản, tổ chức đã đưa phong trao chống thực dân từ tính chất tự phát tiến lên tự giác hoàn toàn, tự nắm lấy ngọn cờ thế kỷ.",
+    "model_answer": "Sự ra đời của Đảng là một bước ngoặt vĩ đại trong lịch sử cách mạng Việt Nam, chấm dứt hoàn toàn thời kỳ khủng hoảng về đường lối cứu nước và giai cấp lãnh đạo. Nó khẳng định giai cấp công nhân đã trưởng thành và đủ sức bước lên vũ đài chính trị.",
+    "confirmed_score": 2.0,
+    "ai_score": 0.08,
+    "max_points": 2.0,
+    "score_ratio": 1.0,
+    "feedback": "Đúng ý chính diễn đạt giỏi theo cách hiểu",
+    "learned_at": "2026-04-23T10:15:25.639410"
   }
 ]

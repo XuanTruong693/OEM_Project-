@@ -61,8 +61,9 @@ const ExamBank = () => {
 
   const parseTs = (v) => (v ? new Date(String(v).replace(" ", "T")) : null);
   const isValid = (d) => d instanceof Date && !isNaN(d.getTime());
-  // Chỉ dựa vào khoảng thời gian open/close để xác định đang thi
+  // Dựa vào status và khoảng thời gian open/close để xác định đang thi
   const isInProgress = (exam) => {
+    if (exam.status !== 'published') return false;
     const open = parseTs(exam.time_open);
     const close = parseTs(exam.time_close);
     if (!isValid(open) || !isValid(close)) return false;

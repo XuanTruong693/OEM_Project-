@@ -107,16 +107,16 @@ exports.createStudentCard = async (req, res) => {
         }
 
         if (!isValidStudentCode(student_code)) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'MSSV không hợp lệ (5-15 ký tự, chữ và số, không được chỉ chứa toàn chữ cái).' 
+            return res.status(400).json({
+                success: false,
+                message: 'MSSV không hợp lệ (5-15 ký tự, chữ và số, không được chỉ chứa toàn chữ cái).'
             });
         }
 
         if (!isValidStudentName(student_name)) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Tên sinh viên không hợp lệ (tối đa 100 ký tự, chỉ chứa chữ cái và khoảng trắng).' 
+            return res.status(400).json({
+                success: false,
+                message: 'Tên sinh viên không hợp lệ (tối đa 100 ký tự, chỉ chứa chữ cái và khoảng trắng).'
             });
         }
 
@@ -151,6 +151,10 @@ exports.createStudentCard = async (req, res) => {
  */
 exports.updateStudentCard = async (req, res) => {
     try {
+        console.log(`[UpdateStudentCard] ID: ${req.params.id}`);
+        console.log(`[UpdateStudentCard] Body:`, req.body);
+        console.log(`[UpdateStudentCard] Files:`, req.files ? Object.keys(req.files) : 'None');
+
         const card = await StudentCard.findByPk(req.params.id);
         if (!card) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy thẻ sinh viên.' });
@@ -164,9 +168,9 @@ exports.updateStudentCard = async (req, res) => {
             const trimmedCode = student_code.trim();
             if (trimmedCode !== card.student_code) {
                 if (!isValidStudentCode(trimmedCode)) {
-                    return res.status(400).json({ 
-                        success: false, 
-                        message: 'MSSV không hợp lệ (5-15 ký tự, chữ và số, không được chỉ chứa toàn chữ cái).' 
+                    return res.status(400).json({
+                        success: false,
+                        message: 'MSSV không hợp lệ (5-15 ký tự, chữ và số, không được chỉ chứa toàn chữ cái).'
                     });
                 }
                 // Check trùng với record KHÁC
@@ -188,9 +192,9 @@ exports.updateStudentCard = async (req, res) => {
 
         if (student_name && student_name.trim()) {
             if (!isValidStudentName(student_name)) {
-                return res.status(400).json({ 
-                    success: false, 
-                    message: 'Tên sinh viên không hợp lệ (tối đa 100 ký tự, chỉ chứa chữ cái và khoảng trắng).' 
+                return res.status(400).json({
+                    success: false,
+                    message: 'Tên sinh viên không hợp lệ (tối đa 100 ký tự, chỉ chứa chữ cái và khoảng trắng).'
                 });
             }
             updateData.student_name = student_name.trim();

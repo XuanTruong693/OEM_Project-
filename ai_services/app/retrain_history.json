@@ -1,9 +1,9 @@
 {
   "corrections_since_last_retrain": 0,
-  "total_corrections": 142,
-  "last_retrain_at": "2026-04-15T15:43:04.474375",
-  "retrain_count": 120,
-  "accuracy_before": 202,
-  "accuracy_after": 202,
+  "total_corrections": 144,
+  "last_retrain_at": "2026-04-23T10:15:39.578484",
+  "retrain_count": 122,
+  "accuracy_before": 204,
+  "accuracy_after": 204,
   "is_retraining": false
 }

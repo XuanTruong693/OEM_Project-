@@ -118,20 +118,14 @@ exports.postProctorEvent = async (req, res) => {
         const studentName =
           studentRows?.[0]?.full_name || `Student ${studentId}`;
 
-        // ✅ [Context-Aware AI] Bypass logging if it's a legitimate system event
         const context = details?.context || {};
-        const isBatteryCritical = context.battery_level !== undefined && context.battery_level < 0.1;
+        const isBatteryCritical = context.battery_level !== undefined && context.battery_level < 0.2;
         const isNetworkLagging = context.network_rtt !== undefined && context.network_rtt > 500;
 
         const LEGITIMATE_PRONE_EVENTS = ["window_blur", "visibility_hidden", "tab_switch"];
-
-        if (LEGITIMATE_PRONE_EVENTS.includes(event_type) && (isBatteryCritical || isNetworkLagging)) {
-          console.log(`🛡️ [Proctor] Bypassing log for ${event_type} due to context: Battery=${context.battery_level}, RTT=${context.network_rtt}`);
-          return res.status(200).json({
-            success: true,
-            is_cheating: false,
-            message: "Legitimate system context detected. Event ignored."
-          });
+        if (LEGITIMATE_PRONE_EVENTS.includes(event_type) && (isBatteryCritical || isNetworkLagging) && severity !== 'high') {
+          console.log(`🛡️ [Proctor] Degrading severity for ${event_type} due to context (Battery/Network)`);
+          severity = "low";
         }
 
         // ✅ Insert into cheating_logs table WITHOUT transaction (to avoid deadlock)
@@ -716,13 +710,39 @@ exports.getSubmissionQuestions = async (req, res) => {
       [examId]
     );
 
-    // Lấy câu trả lời từ submission có điểm cao nhất
+    // 1. Lấy câu trả lời từ submission
     const [answers] = await conn.query(
-      `SELECT id, question_id, answer_text, selected_option_id, score, status
-       FROM student_answers
-       WHERE submission_id = ? AND student_id = ?`,
-      [actualSubmissionId, studentId]
+      `SELECT sa.* FROM student_answers sa WHERE sa.submission_id = ?`,
+      [actualSubmissionId]
     );
+
+    // 2. Lấy AI logs mới nhất để bổ sung Reasoning
+    try {
+      const [aiLogs] = await conn.query(
+        `SELECT question_id, response_payload FROM ai_logs 
+         WHERE student_id = ? AND question_id IN (
+           SELECT question_id FROM student_answers WHERE submission_id = ?
+         )
+         ORDER BY created_at DESC`,
+        [studentId, actualSubmissionId]
+      );
+
+      const latestLogsMap = {};
+      (aiLogs || []).forEach(log => {
+        if (!latestLogsMap[log.question_id]) {
+          latestLogsMap[log.question_id] = log.response_payload;
+        }
+      });
+
+      // Merge reasoning vào answers
+      answers.forEach(ans => {
+        if (!ans.ai_explanation && latestLogsMap[ans.question_id]) {
+          ans.ai_explanation = latestLogsMap[ans.question_id];
+        }
+      });
+    } catch (logErr) {
+      console.warn("⚠️ [Submission] Could not fetch ai_logs fallback:", logErr.message);
+    }
 
     conn.release();
 

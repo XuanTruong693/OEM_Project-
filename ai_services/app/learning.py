@@ -517,8 +517,8 @@ class LearningEngine:
             print("[Learning] ⚠️ Could not load model for semantic similarity check")
             return
         
-        SIMILARITY_THRESHOLD = 0.60  # Learn if similarity > 60% (lowered to catch real synonyms)
-        MIN_WORD_LENGTH = 6  # Skip single-syllable words (dưới, giỏi = 4 chars) to avoid false positives
+        SIMILARITY_THRESHOLD = 0.85  # Increased threshold for high precision
+        MIN_WORD_LENGTH = 8
         
         for candidate in candidates:
             student_words = candidate["student_words"]  # Already tokenized with underthesea
@@ -557,16 +557,11 @@ class LearningEngine:
             model_list = list(unique_model)
             
             try:
-                # Remove diacritics for better similarity matching
-                student_nodiacritics = [self._remove_diacritics(s) for s in student_list]
-                model_nodiacritics = [self._remove_diacritics(m) for m in model_list]
-                
-                student_embeddings = model.encode(student_nodiacritics, convert_to_tensor=True)
-                model_embeddings = model.encode(model_nodiacritics, convert_to_tensor=True)
+                student_embeddings = model.encode(student_list, convert_to_tensor=True)
+                model_embeddings = model.encode(model_list, convert_to_tensor=True)
                 
                 # Compute similarity matrix
                 similarities = util.cos_sim(student_embeddings, model_embeddings)
-                # Debug: Show TOP 5 similarity pairs (regardless of threshold)
                 all_pairs = []
                 for i, s_phrase in enumerate(student_list):
                     for j, m_phrase in enumerate(model_list):
@@ -586,7 +581,22 @@ class LearningEngine:
                         
                         if sim >= SIMILARITY_THRESHOLD:
                             # Log all pairs that meet threshold
-                            print(f"[Learning] 🎯 Pair meets threshold ({sim:.0%}): '{s_phrase}' ↔ '{m_phrase}'")
+                            print(f"[Learning] 🎯 Pair meets Bi-Encoder threshold ({sim:.0%}): '{s_phrase}' ↔ '{m_phrase}'")
+                            
+                            # Double check with Reranker for extreme precision
+                            try:
+                                from app.nlp import get_ai_model
+                                ai_core = get_ai_model()
+                                if ai_core and ai_core.reranker:
+                                    rerank_score = float(ai_core.reranker.predict([s_phrase, m_phrase]))
+                                    # BGE Reranker v2-m3 threshold: ~0.1 for relatedness
+                                    if rerank_score < 0.1:
+                                        print(f"[Learning] ❌ Reranker REJECTED pair '{s_phrase}' ↔ '{m_phrase}' (Score: {rerank_score:.2f})")
+                                        continue
+                                    else:
+                                        print(f"[Learning] 🛡️ Reranker VERIFIED pair '{s_phrase}' ↔ '{m_phrase}' (Score: {rerank_score:.2f})")
+                            except Exception as re_err:
+                                print(f"[Learning] ⚠️ Reranker verification skipped: {re_err}")
                             
                             # Skip if already known
                             if m_phrase in self.synonyms and s_phrase in self.synonyms[m_phrase]:

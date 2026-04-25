@@ -134,6 +134,33 @@ PLEADING_NOISE: Set[str] = {
     "nới tay", "giúp con", "dạ thưa", "dạ thầy", "dạ cô",
 }
 
+# =========================================================================
+# STUDENT PREAMBLE PATTERNS (Tiền ngữ mào đầu - cần bóc tách trước khi chấm)
+# =========================================================================
+STUDENT_PREAMBLES: List[str] = [
+    "em xin trả lời là",
+    "em xin trả lời câu này là",
+    "em xin trả lời như sau",
+    "câu trả lời của em là",
+    "câu trả lời của em như sau",
+    "bài làm của em là",
+    "bài làm của em như sau",
+    "theo em thì",
+    "theo em trả lời là",
+    "theo em hiểu thì",
+    "theo ý kiến của em",
+    "em xin trả lời",
+    "em trả lời là",
+    "em trả lời như sau",
+    "em trả lời",
+    "câu trả lời là",
+    "đáp án của em là",
+    "đáp án là",
+    "dạ thưa thầy",
+    "dạ thưa cô",
+    "dạ em xin trả lời",
+]
+
 SYNONYM_PAIRS: Dict[str, str] = {
     # HÁN VIỆT
     "thái dương": "mặt trời", "nhật": "mặt trời",
@@ -300,6 +327,8 @@ ANTONYM_PAIRS: Dict[str, List[str]] = {
     "tiến bộ": ["lạc hậu"], "lạc hậu": ["tiến bộ"],
     "độc lập": ["lệ thuộc", "phụ thuộc"], "phụ thuộc": ["độc lập"],
     "duy vật": ["duy tâm"], "duy tâm": ["duy vật"],
+    "thống trị": ["nhân dân lao động", "người lao động", "bị trị"],
+    "tự giác": ["tự phát"], "tự phát": ["tự giác"],
 }
 
 DIRECTIONAL_VERBS: Set[str] = {
@@ -309,7 +338,7 @@ DIRECTIONAL_VERBS: Set[str] = {
     "kế thừa", "triển khai", "ghi đè", "trả về", "gọi", "khởi tạo",
 }
 
-PASSIVE_MARKERS: Set[str] = {"bị", "được", "do", "bởi", "nhờ", "qua"}
+PASSIVE_MARKERS: Set[str] = {"bị", "được", "do", "bởi"}
 
 HARD_LOCATIONS: Set[str] = {
     "hà nội", "hồ chí minh", "sài gòn", "đà nẵng", "hải phòng", "cần thơ",
@@ -371,10 +400,32 @@ def check_passive_voice(text: str) -> bool:
     words = text.lower().split()
     return any(marker in words for marker in PASSIVE_MARKERS)
 
+def strip_student_preamble(text: str) -> str:
+    """Bóc tách tiền ngữ mào đầu (preamble) của sinh viên khỏi câu trả lời.
+    Ví dụ: 'Em xin trả lời là: Hormone insulin...' -> 'Hormone insulin...'
+    Patterns được sắp xếp dài → ngắn để tránh partial match."""
+    if not text: return ""
+    cleaned = text.strip()
+    cleaned_lower = cleaned.lower()
+    
+    # Sắp xếp dài → ngắn
+    sorted_preambles = sorted(STUDENT_PREAMBLES, key=len, reverse=True)
+    for preamble in sorted_preambles:
+        if cleaned_lower.startswith(preamble):
+            # Cắt bỏ preamble + ký tự phân cách ngay sau (: , . -)
+            remainder = cleaned[len(preamble):]
+            remainder = re.sub(r'^[\s:,;.\-–—]+', '', remainder).strip()
+            if len(remainder) > 5:  # Chỉ cắt nếu phần còn lại đủ dài
+                return remainder
+    return cleaned
+
 def deep_clean_text(text: str) -> str:
     """Preprocessing sâu: xử lý edge cases dấu câu, brackets, ký tự đặc biệt.
     Gọi TRƯỚC normalize_text() và normalize_synonyms()."""
     if not text: return ""
+    
+    # 0. Bóc tách tiền ngữ mào đầu của sinh viên
+    text = strip_student_preamble(text)
     
     # 1. Thêm space trước/sau dấu câu dính chữ
     text = re.sub(r'([a-zA-ZÀ-ỹ]),([a-zA-ZÀ-ỹ])', r'\1 \2', text)

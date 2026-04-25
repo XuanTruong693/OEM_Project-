@@ -10,13 +10,14 @@ async function startExam(req, res) {
         const submissionId = req.params.id;
         const userId = req.user.id;
 
-        // 1) Lấy submission với verification status
+        // 1) Lấy submission với verification status và check bypass
         const [subRows] = await sequelize.query(
             `SELECT 
         s.id, s.exam_id, s.user_id, s.status, s.submitted_at,
         (CASE WHEN s.face_image_url IS NOT NULL OR s.face_image_blob IS NOT NULL THEN 1 ELSE 0 END) AS face_verified,
         (CASE WHEN s.student_card_url IS NOT NULL OR s.student_card_blob IS NOT NULL THEN 1 ELSE 0 END) AS card_verified,
-        e.require_face_check, e.require_student_card, e.monitor_screen
+        e.require_face_check, e.require_student_card, e.monitor_screen,
+        (SELECT COUNT(*) FROM cheating_logs WHERE submission_id = s.id AND event_type = 'admin_bypass') AS bypass_count
        FROM submissions s
        JOIN exams e ON e.id = s.exam_id
        WHERE s.id = ? AND s.user_id = ?
@@ -25,31 +26,47 @@ async function startExam(req, res) {
         );
         const sub =
             Array.isArray(subRows) && subRows.length > 0 ? subRows[0] : null;
-        if (!sub) return res.status(404).json({ message: "Submission not found" });
 
-        // 2) Kiểm tra verification requirements TRƯỚC KHI cho start
-        if (sub.require_face_check && !sub.face_verified) {
-            console.warn(
-                `❌ Student ${userId} cố start exam ${sub.exam_id} nhưng chưa verify face`
-            );
-            return res.status(403).json({
-                message: "Bạn cần xác minh khuôn mặt trước khi bắt đầu thi",
-                requireFaceCheck: true,
-                exam_id: sub.exam_id,
-                submission_id: submissionId,
-            });
+        if (!sub) {
+            console.error(`❌ [startExam] Submission ${submissionId} not found for user ${userId}`);
+            return res.status(404).json({ message: "Submission not found" });
         }
 
-        if (sub.require_student_card && !sub.card_verified) {
-            console.warn(
-                `❌ Student ${userId} cố start exam ${sub.exam_id} nhưng chưa verify card`
-            );
-            return res.status(403).json({
-                message: "Bạn cần xác minh thẻ sinh viên trước khi bắt đầu thi",
-                requireCardCheck: true,
-                exam_id: sub.exam_id,
-                submission_id: submissionId,
-            });
+        // Robust bypass check - handles strings, numbers, bigints
+        const isBypassed = Number(sub.bypass_count || sub.is_bypassed || 0) > 0;
+
+        console.log(`🔍 [startExam] Checking sub ${submissionId}:`, {
+            face_verified: sub.face_verified,
+            card_verified: sub.card_verified,
+            require_face: sub.require_face_check,
+            require_card: sub.require_student_card,
+            isBypassed: isBypassed,
+            bypass_count: sub.bypass_count
+        });
+
+        // 2) Kiểm tra verification requirements TRƯỚC KHI cho start
+        // BỎ QUA kiểm tra nếu đã được admin bypass
+        if (!isBypassed) {
+            if (sub.require_face_check && !Number(sub.face_verified)) {
+                console.warn(`❌ Student ${userId} blocked: Face verification required`);
+                return res.status(403).json({
+                    message: "Bạn cần xác minh khuôn mặt trước khi bắt đầu thi",
+                    requireFaceCheck: true,
+                    exam_id: sub.exam_id,
+                    submission_id: submissionId,
+                });
+            }
+            if (sub.require_student_card && !Number(sub.card_verified)) {
+                console.warn(`❌ Student ${userId} blocked: Student card verification required`);
+                return res.status(403).json({
+                    message: "Bạn cần xác minh thẻ sinh viên trước khi bắt đầu thi",
+                    requireStudentCard: true,
+                    exam_id: sub.exam_id,
+                    submission_id: submissionId,
+                });
+            }
+        } else {
+            console.log(`[startExam] Admin bypass active for submission ${submissionId}. Skipping verification checks.`);
         }
 
         // 3) Kiểm tra status - CHỈ CHẶN nếu đã nộp bài (có submitted_at)
@@ -119,6 +136,17 @@ async function startExam(req, res) {
                     `UPDATE submissions SET status = 'in_progress', started_at = COALESCE(started_at, NOW()) WHERE id = ?`,
                     { replacements: [submissionId] }
                 );
+
+                // Real-time broadcast to instructor
+                const { getIO } = require("../../services/socketService");
+                const io = getIO();
+                if (io) {
+                    io.to(`exam:${sub.exam_id}`).emit("instructor:student-status-updated", {
+                        submissionId,
+                        status: 'in_progress',
+                        started_at: new Date().toISOString()
+                    });
+                }
             } else if (hasStartedAt) {
                 await sequelize.query(
                     `UPDATE submissions SET started_at = COALESCE(started_at, NOW()) WHERE id = ?`,

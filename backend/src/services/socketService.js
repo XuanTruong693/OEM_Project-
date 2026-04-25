@@ -112,9 +112,9 @@ function initializeSocket(httpServer) {
     // Sinh viên đăng ký submission khi bắt đầu thi
     socket.on(
       "student:register-submission",
-      ({ submissionId, studentId, examId, studentName }) => {
+      ({ submissionId, studentId, examId, studentName, attempt_no }) => {
         console.log(
-          `🎓 [Socket] Student ${studentId} registered submission ${submissionId} for exam ${examId}`
+          `🎓 [Socket] Student ${studentId} registered submission ${submissionId} for exam ${examId} (Attempt: ${attempt_no})`
         );
 
         activeSubmissions.set(submissionId, {
@@ -123,13 +123,19 @@ function initializeSocket(httpServer) {
           examId: parseInt(examId),
           studentName,
           socketId: socket.id,
+          attempt_no: parseInt(attempt_no) || 1
         });
+
+        // JOIN SUBMISSION ROOM FOR RELIABLE TARGETING
+        socket.join(`submission:${submissionId}`);
+        console.log(`📡 [Socket] Joined room submission:${submissionId}`);
 
         // Thông báo tới tất cả instructors của exam này
         io.to(`exam:${examId}`).emit("student:registered", {
           submissionId: parseInt(submissionId),
           studentId: parseInt(studentId),
           studentName,
+          attempt_no: parseInt(attempt_no) || 1
         });
       }
     );
@@ -217,10 +223,31 @@ function broadcastSubmissionFinished(examId, submissionId, studentId) {
   });
 }
 
+/**
+ * Gửi event tới một submission cụ thể (ưu tiên socketId chính xác)
+ */
+function sendToSubmission(submissionId, eventName, data) {
+  if (!io) return false;
+
+  const sub = activeSubmissions.get(parseInt(submissionId));
+  
+  // PRIMARY: Emit to submission room (Best for reconnections)
+  console.log(`📡 [Socket] Sending room event ${eventName} to submission:${submissionId}`);
+  io.to(`submission:${submissionId}`).emit(eventName, data);
+
+  // SECONDARY: Fallback to direct socketId if room emit fails/needs priority
+  if (sub && sub.socketId) {
+    io.to(sub.socketId).emit(eventName, data);
+  }
+
+  return true;
+}
+
 module.exports = {
   initializeSocket,
   broadcastCheatingEvent,
   broadcastSubmissionFinished,
+  sendToSubmission,
   addServerLog,
   getIO: () => io,
 };

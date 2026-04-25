@@ -33,14 +33,19 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:4000",
         "http://127.0.0.1:4000",
+        "http://localhost:5500",
+        "http://127.0.0.1:5500",
+        "http://localhost:5000",
+        "http://127.0.0.1:5000",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
         "http://www.oes.io.vn",
         "https://www.oes.io.vn",
         "http://oes.io.vn",
         "https://oes.io.vn",
-        "http://localhost:5000",
     ],
     allow_credentials=True,
-    allow_methods=["POST", "GET", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 

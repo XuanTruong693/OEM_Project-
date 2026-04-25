@@ -3,11 +3,31 @@ import { useNavigate } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
 import { FiArrowLeft, FiClock, FiSearch } from "react-icons/fi";
 
-const statusLabel = (status) => {
-  if (!status) return { text: "draft", className: "bg-slate-100 text-slate-600" };
-  if (status === "draft") return { text: "Nháp", className: "bg-slate-100 text-slate-600" };
-  if (status === "published") return { text: "Đang mở", className: "bg-emerald-100 text-emerald-700" };
-  if (status === "closed") return { text: "Đã đóng", className: "bg-amber-100 text-amber-700" };
+const getStatusLabel = (exam) => {
+  const { status, time_open, time_close } = exam;
+  const now = new Date();
+
+  if (!status || status === "draft") {
+    return { text: "Nháp", className: "bg-slate-100 text-slate-600" };
+  }
+
+  if (status === "published") {
+    const openDate = time_open ? new Date(time_open) : null;
+    const closeDate = time_close ? new Date(time_close) : null;
+
+    if (closeDate && now > closeDate) {
+      return { text: "Đã đóng", className: "bg-red-100 text-red-700" };
+    }
+    if (openDate && now < openDate) {
+      return { text: "Sắp mở", className: "bg-amber-100 text-amber-700" };
+    }
+    return { text: "Đang mở", className: "bg-emerald-100 text-emerald-700" };
+  }
+
+  if (status === "closed") {
+    return { text: "Đã đóng", className: "bg-red-100 text-red-700" };
+  }
+
   return { text: status, className: "bg-slate-100 text-slate-600" };
 };
 
@@ -79,7 +99,7 @@ export default function InstructorExamsList() {
         ) : (
           <div className="space-y-3">
             {filtered.map((e) => {
-              const status = statusLabel(e.status);
+              const status = getStatusLabel(e);
               return (
                 <div
                   key={e.id}
@@ -126,7 +146,7 @@ export default function InstructorExamsList() {
                       Chỉnh sửa
                     </button>
                     <button
-                      onClick={() => navigate(`/instructor/exams/${e.id}/preview`)}
+                      onClick={() => navigate(`/exams/${e.id}/preview`)}
                       className="text-sm text-slate-600 hover:underline"
                     >
                       Xem trước

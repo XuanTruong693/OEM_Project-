@@ -11,7 +11,7 @@ export default function VerifyRoom() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
-  const role = localStorage.getItem("selectedRole");
+  const role = sessionStorage.getItem("selectedRole") || localStorage.getItem("selectedRole");
 
   useEffect(() => {
     const fromRoleSelection = location.state?.fromRoleSelection;

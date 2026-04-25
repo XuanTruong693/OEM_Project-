@@ -41,6 +41,7 @@ export default function TakeExam() {
   const mouseOutsideStartRef = useRef(null); // When mouse first left the window
   const monitorScreenConfigRef = useRef(false); // Store the admin config for cheating monitoring
   const isCurrentlyExitedRef = useRef(false); // Track if student is currently 'out' to prevent strike spam
+  const mousePosRef = useRef({ x: 0, y: 0 }); // 🖱️ Track mouse pos for AI context
 
   // ===== State =====
   const [theme, setTheme] = useState(
@@ -98,13 +99,13 @@ export default function TakeExam() {
 
     // [New Logic] Xóa timer buffer nếu quay lại kịp (Bỏ qua thông báo hệ thống/Toast)
     if (window.__blurBufferTimer) {
-        console.log("✅ [TakeExam] Student returned within grace period. Ignoring system notification blur.");
-        clearTimeout(window.__blurBufferTimer);
-        window.__blurBufferTimer = null;
+      console.log("✅ [TakeExam] Student returned within grace period. Ignoring system notification blur.");
+      clearTimeout(window.__blurBufferTimer);
+      window.__blurBufferTimer = null;
     }
 
     if (socketRef.current) {
-        socketRef.current.emit("student:returned", { submissionId });
+      socketRef.current.emit("student:returned", { submissionId });
     }
 
     // Lấy Snapshot ID đang quay hiện tại
@@ -113,20 +114,20 @@ export default function TakeExam() {
 
     // [New Logic] Nếu quay lại từ Snipping Tool -> Chốt lỗi luôn (Bỏ qua buffer)
     if (window.__snippingDetected) {
-        console.log("🚨 [TakeExam] Snipping Tool completion detected. Striking.");
-        penalize("screenshot_attempt", "Hoàn tất thao tác chụp ảnh bằng Snipping Tool (Win+Shift+S).", "meta+shift+s", true);
-        window.__snippingDetected = false;
+      console.log("🚨 [TakeExam] Snipping Tool completion detected. Striking.");
+      penalize("screenshot_attempt", "Hoàn tất thao tác chụp ảnh bằng Snipping Tool (Win+Shift+S).", "meta+shift+s", true);
+      window.__snippingDetected = false;
     }
 
     // [New Logic] Keep recording for 10 more seconds after return (Sticky Recording)
     if (recordingRef.current) {
-        console.log("[Recording] Student returned. Delaying stop for 10s to ensure clean exit...");
-        clearTimeout(returnTimerRef.current);
-        returnTimerRef.current = setTimeout(() => {
-            if (!isCurrentlyExitedRef.current && recordingRef.current) {
-                stopSnapshotCapture();
-            }
-        }, 10000); 
+      console.log("[Recording] Student returned. Delaying stop for 10s to ensure clean exit...");
+      clearTimeout(returnTimerRef.current);
+      returnTimerRef.current = setTimeout(() => {
+        if (!isCurrentlyExitedRef.current && recordingRef.current) {
+          stopSnapshotCapture();
+        }
+      }, 10000);
     }
 
     // Xóa bộ đếm Override 15s (SV đã quay lại an toàn)
@@ -208,7 +209,7 @@ export default function TakeExam() {
         await document.exitFullscreen?.();
       } catch { }
 
-      // === FIX: Stop screen share stream so browser bar disappears ===
+      // Stop screen share stream so browser bar disappears ===
       try {
         if (mediaStreamRef.current) {
           mediaStreamRef.current.getTracks().forEach(track => track.stop());
@@ -260,11 +261,16 @@ export default function TakeExam() {
   const aiVerdictRef = useRef({}); // Mapping snapshotId -> verdict (true/false/pending)
   const violationTimerRef = useRef({}); // Mapping snapshotId -> TimerID for 5s fallback
   const confirmedViolationRefs = useRef(new Set()); // Current active violations requiring 10s return
+  const lastStrikeTimestampRef = useRef(0); // [Fix Ghost] Theo dõi thời điểm cuối bị tăng số lỗi
+
+  // [New Logic] Phân loại vi phạm để xử lý ưu tiên
+  const HARD_VIOLATIONS = ["alt_tab", "screenshot_attempt", "blocked_key", "screen_share_stopped"];
+  const CUMULATIVE_VIOLATIONS = ["mouse_outside", "inactivity", "ai_detected_cheating", "tab_switch", "window_blur"];
 
   const requestScreenShare = async () => {
     try {
       setScreenShareError(null);
-      // === FIX BUG 1: Mute onBlur/onVisibility khi dialog dang mo ===
+      // Mute onBlur/onVisibility khi dialog dang mo
       screenShareRequestingRef.current = true;
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: { displaySurface: "monitor", cursor: "always" },
@@ -290,7 +296,7 @@ export default function TakeExam() {
 
       setScreenShared(true);
       // Hiển thị thông báo ngay khi chia sẻ thành công
-      flash("✅ Chia sẻ màn hình thành công! Bạn có 10 giây ân xá để xử lý thanh công cụ. Hãy nhấn 'Hide' (Ẩn) thanh chia sẻ màn hình ngay bây giờ.", "success", 8000);
+      flash("✅ Chia sẻ màn hình thành công! Bạn có 10 giây ân xá để xử lý thanh công cụ. Hãy nhấn 'Hide' (Ẩn) thanh chia sẻ màn hình ngay bây giờ.", "success", 7000);
 
       // Listen for user stopping sharing manually via browser bar
       track.onended = () => {
@@ -303,22 +309,22 @@ export default function TakeExam() {
       };
     } catch (err) {
       console.error("Screen share error:", err);
-      // === FIX BUG 1: reset flag ca khi user cancel dialog ===
+      // reset flag ca khi user cancel dialog
       screenShareRequestingRef.current = false;
       setScreenShareError("Bạn phải cho phép chia sẻ 'Toàn màn hình / Entire Screen' để làm bài thi.");
     }
   };
 
   // ===== Recording Control Helpers =====
-  const stopSnapshotCapture = () => {
+  const stopSnapshotCapture = (shouldUpload = true) => {
     if (!recordingRef.current) return;
     recordingRef.current = false;
     clearInterval(snapshotIntervalRef.current);
     clearTimeout(returnTimerRef.current);
 
-    console.log(`[Recording] Stopped capturing. Total frames: ${snapshotsRef.current.length}`);
+    console.log(`[Recording] Stopped capturing${!shouldUpload ? ' (FORCED DISCARD)' : ''}. Total frames: ${snapshotsRef.current.length}`);
 
-    if (snapshotsRef.current.length > 0) {
+    if (shouldUpload && snapshotsRef.current.length > 0) {
       // Background upload frames to backend
       const framesToUpload = [...snapshotsRef.current];
       snapshotsRef.current = [];
@@ -330,19 +336,20 @@ export default function TakeExam() {
         frames: framesToUpload,
         fps: 3
       }).then(() => {
-        // Automatically trigger video merge after framing upload
-        // Added 500ms delay to ensure backend has finished writing all files to disk
         setTimeout(() => {
           axiosClient.post(`/submissions/${submissionId}/videos/merge`, {
             violation_id: violationId
           }).catch(e => console.error("Video merge failed", e));
         }, 500);
       }).catch(err => console.error("Failed to upload snapshots", err));
+    } else {
+      // Discard snapshots
+      snapshotsRef.current = [];
     }
   };
 
   const startSnapshotCapture = (snapshotId = null) => {
-    // 🔒 [Fix Race Condition] Dùng lock để ngăn chặn việc khởi động nhiều máy quay trong 1 lúc
+    // Dùng lock để ngăn chặn việc khởi động nhiều máy quay trong 1 lúc
     if (window.__isCapturingInternal) {
       console.warn("[Recording] Capture already in transition, queuing request:", snapshotId);
       setTimeout(() => startSnapshotCapture(snapshotId), 100);
@@ -410,11 +417,7 @@ export default function TakeExam() {
     }, 333); // 3 FPS
   };
 
-
-
-
-
-  // ===== Penalize callback for inactivity (defined early for hook) =====
+  // Penalize callback for inactivity (defined early for hook)
   const penalizeInactivity = useCallback(async (evt, msg) => {
     if (submittedRef.current || !monitoringActiveRef.current) return;
     try {
@@ -428,18 +431,18 @@ export default function TakeExam() {
     }).catch(() => { });
 
     // Update violation count and check for auto-submit
-      setViolations((currentCount) => {
-        if (currentCount >= 50 || submittedRef.current) return currentCount;
-        const newCount = currentCount + 1;
-        
-        // Sync to localStorage
-        localStorage.setItem(`violations_${submissionId}`, newCount);
+    setViolations((currentCount) => {
+      if (currentCount >= 50 || submittedRef.current) return currentCount;
+      const newCount = currentCount + 1;
 
-        if (newCount >= 50 && !submittedRef.current) {
-          handleSubmit('violation');
-        }
-        return newCount;
-      });
+      // Sync to localStorage
+      localStorage.setItem(`violations_${submissionId}`, newCount);
+
+      if (newCount >= 50 && !submittedRef.current) {
+        handleSubmit('violation');
+      }
+      return newCount;
+    });
   }, [submissionId, examId]);
 
   // ===== Inactivity Monitor Hook =====
@@ -633,7 +636,7 @@ export default function TakeExam() {
           if (sysContext.battery_level < 0.2 && !sysContext.is_charging) {
             flash(`⚠️ PIN YẾU (${Math.round(sysContext.battery_level * 100)}%): Vui lòng cắm sạc để tránh bị ngắt quãng do thông báo hệ thống!`, "danger", 5000);
           }
-        } catch (e) {}
+        } catch (e) { }
 
         if (document.documentElement.requestFullscreen) {
           try {
@@ -654,7 +657,7 @@ export default function TakeExam() {
           const msg = error.response.data?.message || "Unknown error";
           // 400: Submitted/Graded, 401: Unauthorized, 403: Forbidden (Verification needed/Time limits), 404: Not found
           if (status === 403 || status === 400 || status === 401 || status === 404) {
-            // DEBUG: Show error instead of redirect to diagnose issues
+            // Show error instead of redirect to diagnose issues
             setInitError(`Lỗi khởi tạo (${status}): ${msg}`);
             setLoading(false);
             return;
@@ -717,18 +720,13 @@ export default function TakeExam() {
       return ctx;
     };
 
+
     const isLegitimateContext = (ctx) => {
       if (!ctx) return false;
-      // [Update] Tăng ngưỡng lên 20% (0.2) để khớp với thông báo Low Battery của Windows (thường ở 20% hoặc 15%)
+      // [Update] Ngưỡng đồng bộ 20% (0.2)
       const isBatteryCritical = ctx.battery_level !== undefined && ctx.battery_level < 0.2 && !ctx.is_charging;
       const isNetworkLagging = ctx.network_rtt !== undefined && ctx.network_rtt > 500;
-      
-      // [New] 5-second amnesty after plugging/unplugging charger
       const isRecentPowerChange = lastPowerChangeRef.current > 0 && (Date.now() - lastPowerChangeRef.current < 5000);
-
-      if (isRecentPowerChange) {
-        console.log("🛡️ [ContextShield] Bypassing violation due to recent power change event.");
-      }
 
       return isBatteryCritical || isNetworkLagging || isRecentPowerChange;
     };
@@ -743,7 +741,7 @@ export default function TakeExam() {
         return;
       }
 
-      // 📱 Mobile Logic: Certain events are instant strike by default
+      // Mobile Logic: Certain events are instant strike by default
       const MOBILE_STRICT_EVENTS = ["visibility_hidden", "window_blur", "fullscreen_lost", "screenshot_attempt"];
       if (isMobileDevice && MOBILE_STRICT_EVENTS.includes(evt) && !isWarningOnly) {
         isViolation = true;
@@ -770,23 +768,21 @@ export default function TakeExam() {
       }
 
       // 1. SHARED FOCUS GROUP THROTTLE (Nuclear Protection against triple counting)
-      // Nhóm các lỗi thoát ứng dụng: Alt+Tab, Win+D, Blur, Visibility, Blocked Hardware Keys...
-      // Chỉ CHO PHÉP MỘT sự kiện trong nhóm này được tính trong vòng 3.5s
       const SHARED_FOCUS_EVENTS = [
-        "visibility_hidden", 
-        "window_blur", 
-        "fullscreen_lost", 
-        "split_screen", 
-        "alt_tab", 
-        "screenshot_attempt", 
+        "visibility_hidden",
+        "window_blur",
+        "fullscreen_lost",
+        "split_screen",
+        "alt_tab",
+        "screenshot_attempt",
         "blocked_key"
       ];
-      
+
       const now = Date.now();
-      
+
       // [Nuclear Aggression] Bypass throttle for repeated Esc/F11 SPAM (<2s)
-      const isRepeatedEscF11 = (evt === 'blocked_key' && (key === 'escape' || key === 'f11')) && 
-                               (lastViolationTimeRef.current["__shared_focus"] && now - lastViolationTimeRef.current["__shared_focus"] < 2000);
+      const isRepeatedEscF11 = (evt === 'blocked_key' && (key === 'escape' || key === 'f11')) &&
+        (lastViolationTimeRef.current["__shared_focus"] && now - lastViolationTimeRef.current["__shared_focus"] < 2000);
 
       if (SHARED_FOCUS_EVENTS.includes(evt) && !isRepeatedEscF11) {
         const lastShared = lastViolationTimeRef.current["__shared_focus"];
@@ -795,7 +791,7 @@ export default function TakeExam() {
           return;
         }
       }
-      
+
       lastViolationTimeRef.current["__shared_focus"] = now;
       if (isRepeatedEscF11) console.log("🚨 [TakeExam] Nuclear SPAM bypass triggered for Esc/F11!");
       window.__lastBlockKeyTimestamp = now; // Đồng bộ toàn cục để chặn triệt thễ onVis/onFs/onKey
@@ -809,33 +805,36 @@ export default function TakeExam() {
         return;
       }
 
-      // 1. KIỂM TRA NGỮ CẢNH HỆ THỐNG TRƯỚC (Bypass nếu là sự kiện hợp lệ)
-      const sysContext = await getSystemContext();
-      if (isLegitimateContext(sysContext)) {
-        console.log(`🛡️ [AI Bypass] Bỏ qua lỗi ${evt} do ngữ cảnh hợp lệ (Pin: ${sysContext.battery_level}, RTT: ${sysContext.network_rtt})`);
-        flash("🛡️ Hệ thống phát hiện hoạt động nền của máy tính (Pin/Mạng). Đã bỏ qua.", "success", 3000);
-        return;
-      }
-
-      // 2. TÁCH VIDEO ĐỘC LẬP VÀ KÍCH HOẠT MÁY QUAY
+      // 1. TÁCH VIDEO ĐỘC LẬP VÀ KÍCH HOẠT MÁY QUAY (Luôn bắt bằng chứng hình ảnh)
       const randomId = Math.random().toString(36).substring(7);
       const snapshotId = `V_${Date.now()}_${randomId}_${evt}`;
       startSnapshotCapture(snapshotId);
+
+      // 2. KIỂM TRA NGỮ CẢNH HỆ THỐNG (Bỏ qua trực tiếp nếu là sự kiện hợp lệ)
+      const sysContext = await getSystemContext();
+      const isLegit = isLegitimateContext(sysContext);
+
+      if (isLegit) {
+        console.log(`🛡️ [AI Buffer] Đã kích hoạt máy quay ${snapshotId}. Đang đợi AI xác thực ngữ cảnh hợp lệ...`);
+        // Gắn thêm thông tin tọa độ chuột để AI phân biệt hành vi lợi dụng
+        extraDetails.mouse_pos = mousePosRef.current;
+        extraDetails.is_potential_system_event = true;
+      }
 
       // 4. GỌI AI VỚI TIMEOUT 2 GIÂY
       try {
         aiVerdictRef.current[snapshotId] = 'pending';
         const studentId = localStorage.getItem("student_id") || "0";
-        
+
         // Tạo promise gọi AI
         const aiCall = axiosClient.post(`${AI_URL}/api/ai/detect-behavior`, {
           student_id: parseInt(studentId),
           exam_id: parseInt(examId),
-          events: [{ 
-            event_type: evt, 
-            timestamp: Date.now(), 
-            details: { 
-              message: msg, 
+          events: [{
+            event_type: evt,
+            timestamp: Date.now(),
+            details: {
+              message: msg,
               key,
               window_title: document.title,
               ...extraDetails
@@ -853,50 +852,69 @@ export default function TakeExam() {
         aiVerdictRef.current[snapshotId] = isCheatingAI;
 
         if (isCheatingAI) {
-            console.log(`🚨 [AI Verdict] Confirm Cheating: ${evt}`);
-            flash(`🚨 AI PHÁT HIỆN GIAN LẬN: ${aiReason}`, "danger", 5000);
-            // [Authoritative] Any AI confirmation here results in +1, regardless of caller's isViolation flag
-            await commitViolation(evt, snapshotId, `[AI PHÊ DUYỆT]: ${aiReason}`, key, true);
+          console.log(`🚨 [AI Verdict] Confirm Cheating: ${evt}`);
+          flash(`🚨 AI PHÁT HIỆN GIAN LẬN: ${aiReason}`, "danger", 5000);
+
+          // Chốt vi phạm với cơ chế check cooldown 15s
+          await commitViolation(evt, snapshotId, `[AI PHÊ DUYỆT]: ${aiReason}`, key, true);
+          sessionEventsRef.current = [];
         } else {
-            console.log(`✅ [AI Verdict] Legitimate behavior: ${evt}. Cleaning up evidence...`);
+          console.log(`✅ [AI Verdict] Safe/System behavior: ${evt}. Discarding evidence locally...`);
+
+          // Dừng quay và KHÔNG tải lên (shouldUpload = false)
+          stopSnapshotCapture(false);
+
+          // Không gọi commitViolation -> Không lưu Log DB, không +1 vi phạm, không hiện Toast đỏ.
+          if (!isLegit) {
             flash("✅ AI xác nhận hành vi an toàn.", "success", 2000);
-            
-            // 🧹 DỌN DẸP BẰNG CHỨNG (DO AI PHÁN AN TOÀN)
-            stopSnapshotCapture();
-            // Xóa snapshot trên server (nếu đã kịp upload frames nào)
-            axiosClient.delete(`/submissions/${submissionId}/snapshots/${snapshotId}`).catch(() => { });
+          }
         }
       } catch (err) {
-        // FALLBACK: AI lỗi hoặc quá 2s -> Nếu là phím cứng cấm tuyệt đối thì CHỐT LỖI LUÔN để tránh lách luật bằng cách spam server
+        // AI lỗi hoặc quá 2s -> Nếu là phím cứng cấm tuyệt đối thì CHỐT LỖI LUÔN để tránh lách luật bằng cách spam server
         const HARD_KEYS = ["Escape", "F11", "F12", "F5", "alt_tab", "copy_attempt", "paste_attempt"];
         const isHardFail = HARD_KEYS.includes(evt) || HARD_KEYS.includes(key);
 
         if (isHardFail) {
-            console.error("🚨 [AI Offline] Hard violation detected but AI service failed. Forcing strike.");
-            flash(`🚨 VI PHẠM HỆ THỐNG: ${msg}`, "danger", 5000);
-            await commitViolation(evt, snapshotId, `[AI Offline - Force Strike]: ${msg}`, key, true);
+          console.error("🚨 [AI Offline] Hard violation detected but AI service failed. Forcing strike.");
+          flash(`🚨 VI PHẠM HỆ THỐNG: ${msg}`, "danger", 5000);
+          await commitViolation(evt, snapshotId, `[AI Offline - Force Strike]: ${msg}`, key, true);
         } else {
-            console.warn("[AI Fallback] AI timeout/error, applying Warning-Only:", err.message);
-            flash("⚠️ Phát hiện hành vi bất thường. Hệ thống đang theo dõi.", "warning", 3000);
+          console.warn("[AI Fallback] AI timeout/error, applying Warning-Only:", err.message);
+          flash("⚠️ Phát hiện hành vi bất thường. Hệ thống đang theo dõi.", "warning", 3000);
         }
+
+        // Nếu là vi phạm cứng, kích hoạt gửi ngay lập tức để AI nắm bắt bối cảnh
+        const isHard = HARD_VIOLATIONS.includes(evt) || HARD_VIOLATIONS.includes(key);
+        if (isHard) runAIAnalysis(true);
       }
     };
 
     const commitViolation = async (evt, snapshotId, msg, contextKey = null, isViolation = true) => {
       if (submittedRef.current) return;
 
-      // Nếu chỉ là Warning (không phải Violation) thì dừng tại đây, không tăng counter 1/5
+      const now = Date.now();
+      const isHard = HARD_VIOLATIONS.includes(evt) || HARD_VIOLATIONS.includes(contextKey);
+
+      // Nếu là vi phạm tổng hợp mà vừa mới bị phạt trong 15s -> Bỏ qua
+      if (!isHard && isViolation && (now - lastStrikeTimestampRef.current < 15000)) {
+        console.log(`[Cooldown] Bỏ qua vi phạm tổng hợp ${evt} vì vừa mới bị phạt ${now - lastStrikeTimestampRef.current}ms trước.`);
+        return;
+      }
+
+      // Nếu chỉ là Warning (không phải Violation) thì dừng tại đây, không tăng counter 1/10
       if (!isViolation) {
         console.log(`ℹ️ [TakeExam] Warning only (skipped DB log & counter): ${evt}`);
         return;
       }
 
-      // 🛑 INSTANT FEEDBACK: Cập nhật số lỗi và nộp bài NGAY LẬP TỨC nếu là lỗi thứ 50
-      // Chúng ta thực hiện việc này TRƯỚC KHI await postProctor để sinh viên thấy thông báo n/50 ngay lập tức
+      // 🛑 INSTANT FEEDBACK: Cập nhật số lỗi và nộp bài NGAY LẬP TỨC nếu là lỗi thứ 10
       setViolations((prev) => {
         if (prev >= 10) return prev;
         const nv = prev + 1;
-        
+
+        // Cập nhật timestamp lần cuối bị phạt để kích hoạt cooldown 15s
+        lastStrikeTimestampRef.current = Date.now();
+
         // Sync to localStorage
         localStorage.setItem(`violations_${submissionId}`, nv);
 
@@ -1021,16 +1039,14 @@ export default function TakeExam() {
           isMobileDevice ? "[MOBILE] Thí sinh đã CHUYỂN TAB hoặc ẨN TRÌNH DUYỆT (Nhấn Home/Vuốt lên) để thoát khỏi bài thi." : "Ẩn tab bài thi xuống (Mở một cửa sổ khác đè lên trên)."
         );
 
-        // 📱 Mobile: Instant Strike + Visual Protection
-        // [Flexible Proctoring] Chỉ tính lỗi nếu giám sát đang bật
         if (isMobileDevice) {
-           if (!monitoringActiveRef.current) {
-             flash(`⚠️ [Cảnh báo] ${msg} (Giám sát hiện đang tắt)`, "warning", 4000);
-           } else {
-             penalize("visibility_hidden", msg, null, true);
-           }
-           // [PROTECTION] Nuclear black-out on mobile whenever backgrounded (anti-screenshot/exit)
-           triggerScreenshotProtection();
+          if (!monitoringActiveRef.current) {
+            flash(`⚠️ [Cảnh báo] ${msg} (Giám sát hiện đang tắt)`, "warning", 4000);
+          } else {
+            penalize("visibility_hidden", msg, null, true);
+          }
+          // [PROTECTION] Nuclear black-out on mobile whenever backgrounded (anti-screenshot/exit)
+          triggerScreenshotProtection();
         }
       } else {
         notifyStudentReturned();
@@ -1049,13 +1065,13 @@ export default function TakeExam() {
       }
     };
     const onBlur = (e) => {
-      // === FIX BUG 1: Bo qua neu dang hien dialog chia se man hinh ===
+      // === Bo qua neu dang hien dialog chia se man hinh ===
       if (screenShareRequestingRef.current) {
         console.log("[TakeExam] onBlur ignored - screen share dialog is open");
         return;
       }
 
-      // === FIX: Nếu fullscreen không active, blur là hệ quả của thoát FS -> để onFs xử lý ===
+      // Nếu fullscreen không active, blur là hệ quả của thoát FS -> để onFs xử lý ===
       if (!document.fullscreenElement && !isMobileDevice) {
         console.log("ℹ️ [TakeExam] onBlur: Fullscreen không active, bỏ qua (onFs sẽ xử lý).");
         return;
@@ -1079,7 +1095,7 @@ export default function TakeExam() {
       let isViolationParam = isMobileDevice; // Default to instant on mobile device
       let isSystemShortcut = false;
 
-      // 🕵️ Precise detection of OS shortcuts causing blur (Windows/Mac)
+      // Precise detection of OS shortcuts causing blur (Windows/Mac)
       if (altPressedRef.current) {
         evt = "alt_tab";
         keyId = "alt+tab";
@@ -1087,7 +1103,7 @@ export default function TakeExam() {
         isSystemShortcut = true;
       }
       else if (metaPressedRef.current && shiftPressedRef.current) {
-        // [Precision Shield] Instant strike for snippets
+        // Instant strike for snippets
         evt = "screenshot_attempt";
         keyId = "meta+shift+s";
         msg = getDynamicViolationReason("screenshot_attempt", "meta+shift+s", "Mở công cụ cắt/chụp ảnh màn hình (Snipping Tool) của Windows.");
@@ -1111,11 +1127,11 @@ export default function TakeExam() {
           msg = getDynamicViolationReason("blocked_key", "meta_key", "Nhấn phím Windows kết hợp Click chuột vào ứng dụng khác để thoát bài thi.");
         }
         window.__lastWinCombo = null;
-        
-        // [Precision Shield] Phân nhánh: Win+D/P (Phạt ngay) vs Win đơn lẻ (Đợi 1s)
+
+        //  Phân nhánh: Win+D/P (Phạt ngay) vs Win đơn lẻ (Đợi 1s)
         if (keyId === "meta+d" || keyId === "meta+p") {
           console.log(`🚨 [onBlur] Instant Strike for Absolute Violation: ${keyId}`);
-          penalize(evt, msg, keyId, true, false); 
+          penalize(evt, msg, keyId, true, false);
           window.__lastBlockKeyTimestamp = Date.now();
         } else {
           const metaBufferTime = 1000;
@@ -1124,15 +1140,15 @@ export default function TakeExam() {
             if (isCurrentlyExitedRef.current) {
               const durationMs = Date.now() - now;
               console.log(`🚨 [onBlur] Meta-Blur confirmed after ${durationMs}ms. Striking.`);
-              penalize(evt, msg, keyId, true, false, { duration_ms: durationMs }); 
+              penalize(evt, msg, keyId, true, false, { duration_ms: durationMs });
               window.__lastBlockKeyTimestamp = Date.now();
             }
           }, metaBufferTime);
         }
-        return; 
+        return;
       }
 
-      // 🛡️ [Refined Logic] Split between Instant Strike vs Warning-First
+      // Split between Instant Strike vs Warning-First
       if (isSystemShortcut) {
         window.__warnedKeys = window.__warnedKeys || {};
         window.__keyPressTracker = window.__keyPressTracker || {};
@@ -1146,39 +1162,33 @@ export default function TakeExam() {
         }
 
         const isSeriousShortcut = ["alt+tab", "meta+d", "meta+p", "meta+shift+s"].includes(keyId);
-        
+
         window.__keyPressTracker[keyId] = now;
 
         if (isSeriousShortcut) {
-            console.log(`🚀 [onBlur] Instant Strike for Serious Shortcut: ${keyId}`);
-            penalize(evt, msg, keyId, true, false); 
-            window.__lastBlockKeyTimestamp = Date.now();
-            return; 
+          console.log(`🚀 [onBlur] Instant Strike for Serious Shortcut: ${keyId}`);
+          penalize(evt, msg, keyId, true, false);
+          window.__lastBlockKeyTimestamp = Date.now();
+          return;
         }
-        
-        // [Refinement] Other system keys (non-meta) lead to buffer
+
+        // Other system keys (non-meta) lead to buffer
         console.log(`ℹ️ [onBlur] ${keyId} detected. Routing through 1.0s buffer.`);
       }
-
-      // Fallback for generic blur (click outside)
-      // Check for recent suppression
       const recentBlockKey = window.__lastBlockKeyTimestamp && (now - window.__lastBlockKeyTimestamp < 2000);
       const recentFsExit = window.__lastFsExitTimestamp && (now - window.__lastFsExitTimestamp < 2000);
       if (recentBlockKey || recentFsExit) {
         console.log(`ℹ️ [TakeExam] Bỏ qua lỗi ${evt} do hệ quả của phím cứng/thoát FS.`);
         return;
       }
-
-      // [Smart Layered Buffer] 
-      // 0.8s cho Windows Key (Meta), 10.0s cho Generic Blur (Ân xá xử lý thanh công cụ).
       const bufferTime = (keyId === "meta_key") ? 800 : 10000;
       console.log(`🚨 [TakeExam] ${evt} detected (Buffering ${bufferTime}ms for smart amnesty...)`);
-      
+
       window.__blurBufferTimer = setTimeout(() => {
         if (isCurrentlyExitedRef.current) {
-          const durationMs = Date.now() - now; // Captured 'now' at start of onBlur
+          const durationMs = Date.now() - now;
           console.log(`🚨 [TakeExam] ${evt} confirmed after ${durationMs}ms buffer. Reporting violation.`);
-          
+
           if (!monitoringActiveRef.current) {
             flash(`⚠️ ${msg} (Giám sát hiện đang tắt)`, "warning", 4000);
           } else {
@@ -1212,21 +1222,16 @@ export default function TakeExam() {
     };
 
     const onFocus = () => {
-      // [Update] Tắt overlay sau 1 giây thay vì ngay lập tức để tránh đè nội dung đột ngột
-      // Đặt lên trên cùng để tránh bị kẹt do Ghost Focus check
       setTimeout(() => setShowBlurOverlay(false), 1000);
-
-      // 🕵️ [Nuclear Hardening] Chốt chặn Focus Ma (Ghost Focus)
-      // Chỉ xác nhận quay lại nếu bài thi THỰC SỰ đang được hiển thị VÀ được tập trung
       if (document.visibilityState !== 'visible' || !document.hasFocus()) {
         console.log("ℹ️ [TakeExam] Ghost Focus detected. Ignoring return signals.");
-        return; 
+        return;
       }
 
       // 🏳️ Reset focus state - allow new strikes if they exit again
       isCurrentlyExitedRef.current = false;
       window.__lastFocusReturnTime = Date.now();
-      
+
       notifyStudentReturned();
 
       // Check current potential violations for cleanup
@@ -1255,10 +1260,7 @@ export default function TakeExam() {
       }
     };
     const onKey = (e) => {
-      // Bỏ qua các sự kiện được giữ đè phím (Keyboard Auto-Repeat) để tránh đếm đúp
       if (e.repeat) return;
-
-      // 🕵️ [Fix Sticky Keys] Luôn đồng bộ trạng thái phím từ chính đối tượng Event
       // Điều này ngăn chặn việc phím bị dính khi macro/window mất focus đột ngột
       altPressedRef.current = e.altKey || false;
       metaPressedRef.current = e.metaKey || false;
@@ -1286,9 +1288,9 @@ export default function TakeExam() {
           e.stopPropagation();
           // Triệt tiêu phản lực (Snipping Tool làm Blur Window)
           window.__lastBlockKeyTimestamp = Date.now();
-          // [Fix Screenshot] Assign the EXACT event type instead of blocked_key!
+          // Assign the EXACT event type instead of blocked_key!
           penalize("screenshot_attempt", `Phát hiện cố tình chụp ảnh bài thi: ${sk.id}`, sk.id, true);
-          // [PROTECTION] Nuclear blur/black-out to ruin the screenshot
+          // Nuclear blur/black-out to ruin the screenshot
           triggerScreenshotProtection();
           return;
         }
@@ -1338,12 +1340,8 @@ export default function TakeExam() {
         flash(`ℹ️ Bạn vừa nhấn phím ${keyId}. (Giám sát hiện đang tắt)`, "warning", 3000);
         return;
       }
-
       e.preventDefault();
       e.stopPropagation();
-
-      // ĐẶT NGAY timestamp chốt chặn TRƯỚC MỌI THỨ (kể cả debounce)
-      // để đảm bảo onFs/onBlur/onVis luôn bị triệt tiêu
       window.__lastBlockKeyTimestamp = Date.now();
 
       const now = Date.now();
@@ -1369,30 +1367,31 @@ export default function TakeExam() {
         const isNuclearSpam = ["Escape", "F11"].includes(keyId) && (lastPress > 0) && (now - lastPress < 2000);
 
         if (isNuclearSpam) {
-            console.log(`🚨 [TakeExam] Nuclear SPAM detected for ${keyId}. Reporting to AI as strict.`);
-            // [Force Restore] Ngay lập tức ép quay lại Fullscreen vì có gesture từ phím
-            if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
-            
-            penalize("blocked_key", `Cố tình spam phím ${keyId} thoát bài thi liên tục.`, keyId, true, false);
-            return;
+          console.log(`🚨 [TakeExam] Nuclear SPAM detected for ${keyId}. Reporting to AI as strict.`);
+          // [Force Restore] Ngay lập tức ép quay lại Fullscreen vì có gesture từ phím
+          if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => { });
+
+          penalize("blocked_key", `Cố tình spam phím ${keyId} thoát bài thi liên tục.`, keyId, true, false);
+          return;
         }
 
         // [Force Restore for 1st press]
-        if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+        if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => { });
 
         // [New Authority] onKey reports all events to AI. Decision is delegated.
-        const fallbackReason = isFastRepeat 
-            ? `Cố tình nhấn phím ${keyId} liên tục để can thiệp hệ thống`
-            : `Sử dụng phím bị chặn: ${keyId}`;
+        const fallbackReason = isFastRepeat
+          ? `Cố tình nhấn phím ${keyId} liên tục để can thiệp hệ thống`
+          : `Sử dụng phím bị chặn: ${keyId}`;
         const reason = getDynamicViolationReason("blocked_key", keyId, fallbackReason);
-        
+
         penalize("blocked_key", reason, keyId, true, false);
 
         // Screenshot keys that might trigger onKey
         if (keyId === "PrintScreen") {
-          // [Zero Tolerance] PrtSc is an instant +1 strike
-          penalize("screenshot_attempt", "Nhấn phím PrintScreen chụp ảnh toàn màn hình đề thi.", "PrintScreen", true);
+          // [Logic Consolidate] PrtSc is an instant +1 strike. Already handled by penalize("blocked_key") above.
           triggerScreenshotProtection();
+          // Kích hoạt AI phân tích ngay lập tức
+          runAIAnalysis(true);
         } else if (keyId === "meta+shift+s") {
           // [Logic Snipping] Don't strike yet, wait for return to catch the selection
           window.__snippingDetected = true;
@@ -1429,15 +1428,9 @@ export default function TakeExam() {
           localStorage.setItem('__oem_internal_copy', cleanSelection);
           console.log("📋 [Smart Clipboard] Đã ghi nhớ nội dung copy nội bộ.");
         }
-      } catch (err) {}
-
-      // KHÔNG e.preventDefault() để cho phép nội dung vào clipboard hệ thống (hỗ trợ dán nội bộ)
-      // e.preventDefault();
-      // 🕵️ Sync Sticky Keys
+      } catch (err) { }
       altPressedRef.current = e.altKey || false;
       metaPressedRef.current = e.metaKey || false;
-
-      // Chốt chặn blur/vis side-effects
       window.__lastBlockKeyTimestamp = Date.now();
 
       const now = Date.now();
@@ -1459,49 +1452,53 @@ export default function TakeExam() {
       // [Amnesty] Copy nội bộ không bị phạt và KHÔNG gửi lên server để tránh AI chốt nhầm
       console.log("ℹ️ [TakeExam] Copy nội bộ. Cho phép và bỏ qua ghi nhận vi phạm.");
       flash(`📋 Đã sao chép nội dung bài thi.`, "info", 2000);
-      
+
       // Removed penalize call for internal context to prevent AI over-sensitivity
     };
 
     const onPaste = (e) => {
-      // 🕵️ [Smart Clipboard] Kiểm tra nội dung dán
+      // [Smart Clipboard] Kiểm tra nội dung dán
       try {
         const pastedText = (e.clipboardData.getData('text') || "").trim().toLowerCase();
         const internalText = (lastInternalCopyContentRef.current || localStorage.getItem('__oem_internal_copy') || "").trim().toLowerCase();
-        
+
         const isInternal = pastedText && (pastedText === internalText);
 
         if (isInternal) {
           console.log("✅ [Smart Clipboard] Paste nội bộ hợp lệ. Cho phép (Silent).");
           // Reset timer để tránh onVis side-effects
           window.__lastBlockKeyTimestamp = Date.now();
-          return; 
+          return; // Cho phép thực thi lệnh paste
         }
-      } catch (err) {}
+      } catch (err) { }
 
+      // NẾU tắt giám sát -> Cho phép dán (Không gọi preventDefault)
+      if (!monitoringActiveRef.current) {
+        console.log("ℹ️ [TakeExam] Giám sát đang tắt, hệ thống cho phép dán tự do.");
+        return; // Return without blocking
+      }
       e.preventDefault();
-      // 🕵️ Sync Sticky Keys
+
+      // Sync Sticky Keys
       altPressedRef.current = e.altKey || false;
       metaPressedRef.current = e.metaKey || false;
 
-      // NẾU giám sát đang bật -> Tính lỗi. NẾU tắt thì cho phép.
-      if (!monitoringActiveRef.current) {
-        flash("ℹ️ Đã thực hiện thao tác Dán (Paste).", "warning", 2000);
-        return;
-      }
-      
       const reason = getDynamicViolationReason("paste_attempt", null, "Thực hiện thao tác dán (Paste) nội dung từ nguồn bên ngoài.");
       penalize("paste_attempt", reason, "Ctrl+V", true, false, { is_internal: false });
       flash(`🚨 VI PHẠM! ${reason}`, "danger", 5000);
     };
 
     const onDrop = (e) => {
+      // NẾU tắt giám sát -> Cho phép kéo thả (Không gọi preventDefault)
+      if (!monitoringActiveRef.current) {
+        return; // Cho phép thực thi lệnh thả
+      }
+
       e.preventDefault();
-      // 🕵️ Sync Sticky Keys
       altPressedRef.current = e.altKey || false;
       metaPressedRef.current = e.metaKey || false;
 
-      // [Zero Tolerance] Kéo thả văn bản là tính lỗi ngay lập tức
+      // Kéo thả văn bản là tính lỗi ngay lập tức
       penalize("drag_drop_in", getDynamicViolationReason("drag_drop_in", null, "Kéo thả văn bản/tài liệu từ cửa sổ bên ngoài vào ô trả lời bài thi."), "drag_drop", true);
     };
 
@@ -1525,7 +1522,7 @@ export default function TakeExam() {
       if (e.metaKey && e.shiftKey && (key === "s" || key === "S")) {
         console.log("📸 [TakeExam] Snipping Tool (Win+Shift+S) release detected. Phạt lập tức.");
         penalize("screenshot_attempt", "Hoàn tất tổ hợp phím Snipping Tool (Win+Shift+S).", "meta+shift+s", true);
-        window.__snippingDetected = false; 
+        window.__snippingDetected = false;
         triggerScreenshotProtection();
       }
     };
@@ -1551,7 +1548,6 @@ export default function TakeExam() {
       const xPos = e.clientX;
       const isCenter = xPos > window.innerWidth * 0.15 && xPos < window.innerWidth * 0.85;
 
-      // BỎ QUA HOÀN TOÀN: NẾU là mép trên/dưới ở vùng trung tâm (Nơi thả thanh Stop Sharing)
       if ((isTopEdge || isBottomEdge) && isCenter) {
         console.log("ℹ️ [TakeExam] Chuột vào vùng Deadzone StopSharing. An toàn.");
         return; // Không đếm giờ phạt 
@@ -1593,6 +1589,10 @@ export default function TakeExam() {
       }
     };
 
+    const onMouseMove = (e) => {
+      mousePosRef.current = { x: e.clientX, y: e.clientY };
+    };
+
     start();
     // Kết nối tới WebSocket server để báo cáo gian lận - use SOCKET_URL from config
     const socketUrl = SOCKET_URL || window.location.origin;
@@ -1627,54 +1627,54 @@ export default function TakeExam() {
     });
 
     // ===== Real-time Instructor Interventions =====
-    
+
     // 1. Kicked by Instructor
     socket.on(`student:kicked:${submissionId}`, (data) => {
-        console.log("🚨 [Socket] Kicked by instructor");
-        flash(data.message || "Bạn đã bị giảng viên mời ra khỏi phòng thi.", "danger", 5000);
-        handleSubmit('violation'); // Immediate submission
+      console.log("🚨 [Socket] Kicked by instructor");
+      // Use 'kicked' reason to show specific UI message
+      handleSubmit('kicked');
     });
 
     // 2. Exam Configuration Updated
     socket.on("exam:config-updated", (updates) => {
-        console.log("🔄 [Socket] Exam config updated:", updates);
-        flash("⚙️ Giảng viên vừa cập nhật cấu hình bài thi.", "success", 3000);
-        
-        if (updates.duration_minutes) {
-            setDuration(updates.duration_minutes);
+      console.log("🔄 [Socket] Exam config updated:", updates);
+      flash("⚙️ Giảng viên vừa cập nhật cấu hình bài thi.", "success", 3000);
+
+      if (updates.duration_minutes) {
+        setDuration(updates.duration_minutes);
+      }
+
+      if (updates.time_close) {
+        const closeTime = new Date(updates.time_close).getTime();
+        if (!isNaN(closeTime)) {
+          const now = Date.now();
+          const secondsUntilClose = Math.floor((closeTime - now) / 1000);
+          // Only update if it's a realistic update, avoid sudden close due to tiny sync diffs
+          setRemaining(prev => {
+            const newRemaining = Math.max(0, secondsUntilClose);
+            // Nếu thời gian mới quá sát hoặc đã hết, chỉ set về 0 nếu thực sự cần thiết
+            return Math.min(prev, newRemaining);
+          });
         }
-        
-        if (updates.time_close) {
-            const closeTime = new Date(updates.time_close).getTime();
-            if (!isNaN(closeTime)) {
-                const now = Date.now();
-                const secondsUntilClose = Math.floor((closeTime - now) / 1000);
-                // Only update if it's a realistic update, avoid sudden close due to tiny sync diffs
-                setRemaining(prev => {
-                    const newRemaining = Math.max(0, secondsUntilClose);
-                    // Nếu thời gian mới quá sát hoặc đã hết, chỉ set về 0 nếu thực sự cần thiết
-                    return Math.min(prev, newRemaining);
-                });
-            }
-        }
-        
-        if (updates.monitor_screen !== undefined) {
-            monitorScreenConfigRef.current = !!updates.monitor_screen;
-            setMonitoringActive(!!updates.monitor_screen);
-            monitoringActiveRef.current = !!updates.monitor_screen;
-        }
+      }
+
+      if (updates.monitor_screen !== undefined) {
+        monitorScreenConfigRef.current = !!updates.monitor_screen;
+        setMonitoringActive(!!updates.monitor_screen);
+        monitoringActiveRef.current = !!updates.monitor_screen;
+      }
     });
 
     // 3. Exam Room Closed
     socket.on("exam:closed", (data) => {
-        console.log("🔒 [Socket] Exam room closed");
-        flash(data.message || "Phòng thi đã đóng.", "danger", 5000);
-        handleSubmit('time'); // Force submit as if time ran out
+      console.log("🔒 [Socket] Exam room closed");
+      flash(data.message || "Phòng thi đã đóng.", "danger", 5000);
+      handleSubmit('time'); // Force submit as if time ran out
     });
 
     // 4. Bypass Granted (Useful if student is stuck in PrepareExam but can also be used here)
     socket.on(`student:bypass-granted:${submissionId}`, () => {
-        flash("✅ Bạn đã được giảng viên cho phép bỏ qua xác minh.", "success", 5000);
+      flash("✅ Bạn đã được giảng viên cho phép bỏ qua xác minh.", "success", 5000);
     });
 
     socket.on("disconnect", () => {
@@ -1684,13 +1684,13 @@ export default function TakeExam() {
     // ==========================================
     // Real-time AI Behavior Analysis Interval
     // ==========================================
-    const runAIAnalysis = async () => {
+    const runAIAnalysis = async (isForcing = false) => {
       if (submittedRef.current || !monitoringActiveRef.current) return;
       if (sessionEventsRef.current.length === 0) return; // No events to process
 
-      // Throttle AI call 15 seconds max
+      // Throttle AI call 15 seconds max (trừ khi bị ép buộc bởi vi phạm cứng)
       const now = Date.now();
-      if (now - lastAIFireRef.current < 15000) return;
+      if (!isForcing && (now - lastAIFireRef.current < 15000)) return;
       lastAIFireRef.current = now;
 
       // Clone events to send and clear local buffer immediately
@@ -1707,21 +1707,21 @@ export default function TakeExam() {
           window_duration_seconds: 15
         }, { baseURL: "" });
 
-          // [New Authority] AI confirm means violation. Period.
-          if (res.data.confidence > 0.6) {
-            // [New Logic] Skip strike if already in a recording session for the SAME behavior to avoid double counting
-            if (recordingRef.current) {
-               console.log(`ℹ️ [TakeExam] Prolonged absence detected but recording is active. Skipping duplicate strike for ${res.data.reason}`);
-               return; 
-            }
-
-            // Use the specific rule key from AI instead of generic 'ai_detected_cheating'
-            const aiEventType = res.data.rule_key || 'ai_detected_cheating';
-            const msg = `[AI PHÊ DUYỆT] ${res.data.reason}`;
-            flash(msg, "danger", 6000); 
-            // Trigger authoritative violation (+1) with the EXACT AI REASON
-            await commitViolation(aiEventType, null, msg, "ai_inference", true);
+        // [New Authority] AI confirm means violation. Period.
+        if (res.data.confidence > 0.6) {
+          // [New Logic] Skip strike if already in a recording session for the SAME behavior to avoid double counting
+          if (recordingRef.current) {
+            console.log(`ℹ️ [TakeExam] Prolonged absence detected but recording is active. Skipping duplicate strike for ${res.data.reason}`);
+            return;
           }
+
+          // Use the specific rule key from AI instead of generic 'ai_detected_cheating'
+          const aiEventType = res.data.rule_key || 'ai_detected_cheating';
+          const msg = `[AI PHÊ DUYỆT] ${res.data.reason}`;
+          flash(msg, "danger", 6000);
+          // Trigger authoritative violation (+1) with the EXACT AI REASON
+          await commitViolation(aiEventType, null, msg, "ai_inference", true);
+        }
       } catch (err) {
         console.warn("[AI] Failed to analyze behavior:", err.message);
       }
@@ -1729,8 +1729,9 @@ export default function TakeExam() {
     const activateMonitoring = setTimeout(() => {
       if (monitorScreenConfigRef.current) {
         monitoringActiveRef.current = true;
-        setMonitoringActive(true); // Also update state for inactivity hook
+        setMonitoringActive(true);
         console.log("✅ [TakeExam] Monitoring activated after 10s grace period");
+        flash("✅ Hệ thống giám sát đã chính thức hoạt động.", "success", 4000);
         // flash message đã được gọi sớm hơn lúc vừa chia sẻ màn hình xong
         try {
           sessionStorage.setItem("exam_monitoring_active", "1");
@@ -1766,7 +1767,7 @@ export default function TakeExam() {
       clearTimeout(activateMonitoring);
       if (aiCheckIntervalRef.current) clearInterval(aiCheckIntervalRef.current);
       monitoringActiveRef.current = false;
-      setMonitoringActive(false); 
+      setMonitoringActive(false);
       try {
         sessionStorage.removeItem("exam_monitoring_active");
       } catch { }
@@ -1792,6 +1793,7 @@ export default function TakeExam() {
       document.removeEventListener("mouseleave", onMouseLeave);
       document.removeEventListener("mouseenter", onMouseEnter);
       window.removeEventListener("keyup", onKeyUp, true);
+      window.removeEventListener("mousemove", onMouseMove);
       if (window.screen && window.screen.removeEventListener) {
         window.screen.removeEventListener("change", onScreenChange);
       }
@@ -1948,12 +1950,11 @@ export default function TakeExam() {
               {examTitle}
             </h1>
           </button>
-          
+
           {/* CENTERED TIMER */}
           <div
-            className={`absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 font-mono font-black text-xl md:text-3xl whitespace-nowrap z-50 transition-colors ${
-              theme === "dark" ? "text-blue-400" : "text-blue-600"
-            }`}
+            className={`absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 font-mono font-black text-xl md:text-3xl whitespace-nowrap z-50 transition-colors ${theme === "dark" ? "text-blue-400" : "text-blue-600"
+              }`}
           >
             {fmt}
           </div>
@@ -2121,8 +2122,8 @@ export default function TakeExam() {
                       <h4 className="text-[10px] font-black uppercase tracking-widest text-blue-600">Câu hỏi {idx + 1}</h4>
                       <div className="flex items-center gap-2 mt-1">
                         <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-widest border ${theme === 'dark'
-                            ? 'bg-blue-950/40 border-blue-800/50 text-blue-300'
-                            : 'bg-blue-50 border-blue-200 text-blue-700'
+                          ? 'bg-blue-950/40 border-blue-800/50 text-blue-300'
+                          : 'bg-blue-50 border-blue-200 text-blue-700'
                           }`}>
                           {q.type === "MCQ" ? "Trắc nghiệm" : "Tự luận"}
                         </span>
@@ -2149,10 +2150,10 @@ export default function TakeExam() {
                             <label
                               key={oid}
                               className={`group relative flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${isSelected
-                                  ? "bg-blue-600/10 border-blue-600 shadow-sm"
-                                  : theme === 'dark'
-                                    ? "bg-white/5 border-white/5 hover:border-white/20"
-                                    : "bg-slate-50 border-slate-100 hover:border-blue-400 hover:bg-slate-100"
+                                ? "bg-blue-600/10 border-blue-600 shadow-sm"
+                                : theme === 'dark'
+                                  ? "bg-white/5 border-white/5 hover:border-white/20"
+                                  : "bg-slate-50 border-slate-100 hover:border-blue-400 hover:bg-slate-100"
                                 }`}
                             >
                               <input
@@ -2172,8 +2173,8 @@ export default function TakeExam() {
                               />
                               {/* Label Badge (A, B, C, D) */}
                               <div className={`w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center font-black text-sm transition-colors border ${isSelected
-                                  ? "bg-blue-600 text-white border-blue-600"
-                                  : "bg-white dark:bg-white/10 border-slate-200 dark:border-white/20 text-slate-500 dark:text-slate-300"
+                                ? "bg-blue-600 text-white border-blue-600"
+                                : "bg-white dark:bg-white/10 border-slate-200 dark:border-white/20 text-slate-500 dark:text-slate-300"
                                 }`}>
                                 {label}
                               </div>
@@ -2198,8 +2199,8 @@ export default function TakeExam() {
                           value={q.__answer_text || ""}
                           placeholder="Nhập câu trả lời tự luận của bạn tại đây..."
                           className={`w-full p-6 rounded-xl border-2 outline-none font-medium text-lg leading-relaxed transition-all resize-y min-h-[150px] ${theme === 'dark'
-                              ? "bg-white/5 border-white/10 focus:border-blue-600 text-slate-100"
-                              : "bg-white border-slate-100 focus:border-blue-600 text-slate-900 shadow-inner"
+                            ? "bg-white/5 border-white/10 focus:border-blue-600 text-slate-100"
+                            : "bg-white border-slate-100 focus:border-blue-600 text-slate-900 shadow-inner"
                             }`}
                           spellCheck="false"
                           data-gramm="false"
@@ -2272,9 +2273,10 @@ export default function TakeExam() {
           className={`w-full max-w-[560px] p-4 md:p-6 rounded-2xl border border-slate-200 shadow-2xl text-slate-800 bg-white`}
           style={{ backgroundColor: "#ffffff", color: "#0f172a" }}
         >
-          <h2 className={`text-base md:text-lg font-bold mb-2 ${(submitReason === 'time' || submitReason === 'violation') ? "text-red-600" : ""}`}>
+          <h2 className={`text-base md:text-lg font-bold mb-2 ${(submitReason === 'time' || submitReason === 'violation' || submitReason === 'kicked') ? "text-red-600" : ""}`}>
             {submitReason === 'time' && "⏰ Đã hết giờ làm bài!"}
             {submitReason === 'violation' && "🚨 Tự động nộp bài do vi phạm!"}
+            {submitReason === 'kicked' && "🚫 Bạn đã bị mời khỏi phòng thi!"}
             {submitReason === 'manual' && "Kết quả tạm thời"}
           </h2>
           {submitReason === 'time' && (
@@ -2284,7 +2286,12 @@ export default function TakeExam() {
           )}
           {submitReason === 'violation' && (
             <p className="text-sm text-slate-600 mb-4 font-medium">
-              Hệ thống đã tự động nộp bài vì sinh viên vi phạm quy chế thi quá 50 lần.
+              Hệ thống đã tự động nộp bài vì sinh viên vi phạm quy chế thi quá 10 lần.
+            </p>
+          )}
+          {submitReason === 'kicked' && (
+            <p className="text-sm text-slate-600 mb-4 font-medium">
+              Giảng viên đã kết thúc bài thi của bạn. Vui lòng liên hệ giảng viên nếu có thắc mắc.
             </p>
           )}
           <div

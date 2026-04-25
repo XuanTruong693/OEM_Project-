@@ -108,16 +108,26 @@ const RoomDetailManagement = () => {
     socketRef.current.on("student:registered", (data) => {
       setStudents(prev => {
         // Only add if not already in list
-        if (prev.find(s => s.student_id === data.studentId)) return prev;
+        if (prev.find(s => s.submission_id === data.submissionId)) return prev;
         return [{
           submission_id: data.submissionId,
           student_id: data.studentId,
           name: data.studentName,
-          status: 'in_progress',
+          status: 'pending',
+          attempt_no: data.attempt_no || 1,
           cheating_count: 0,
           started_at: new Date().toISOString()
         }, ...prev];
       });
+    });
+
+    // Listen for status updates (bypass, kick, start)
+    socketRef.current.on("instructor:student-status-updated", (data) => {
+      setStudents(prev => prev.map(s => 
+        String(s.submission_id) === String(data.submissionId)
+          ? { ...s, ...data }
+          : s
+      ));
     });
 
     // Listen for cheating detections to update counts in real-time
@@ -129,6 +139,15 @@ const RoomDetailManagement = () => {
             : s
         ));
       }
+    });
+
+    // Listen for submission completion
+    socketRef.current.on("student:submission-finished", (data) => {
+      setStudents(prev => prev.map(s =>
+        String(s.submission_id) === String(data.submissionId)
+          ? { ...s, status: 'submitted' }
+          : s
+      ));
     });
 
     return () => {
@@ -387,7 +406,14 @@ const RoomDetailManagement = () => {
                             {s.name.charAt(0)}
                           </div>
                           <div>
-                            <p className="font-bold text-gray-800 leading-none mb-1">{s.name}</p>
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="font-bold text-gray-800 leading-none">{s.name}</p>
+                              {s.attempt_no > 1 && (
+                                <span className="px-1.5 py-0.5 bg-purple-50 text-purple-600 text-[10px] font-black rounded-md border border-purple-100">
+                                  Lần {s.attempt_no}
+                                </span>
+                              )}
+                            </div>
                             <p className="text-xs text-gray-400 leading-none">{s.email || "No email"}</p>
                           </div>
                         </div>
@@ -409,7 +435,7 @@ const RoomDetailManagement = () => {
                             icon={FiCheckCircle}
                             label="Bypass"
                             color="blue"
-                            disabled={s.is_bypassed || !['in_progress', 'registered'].includes(s.status)}
+                            disabled={s.is_bypassed || !['in_progress', 'registered', 'pending'].includes(s.status)}
                             onClick={() => handleStudentAction(s.submission_id, 'bypass')}
                             title="Cho phép bỏ qua xác minh"
                           />
@@ -417,7 +443,7 @@ const RoomDetailManagement = () => {
                             icon={FiUserX}
                             label="Kick"
                             color="red"
-                            disabled={!['in_progress', 'registered'].includes(s.status)}
+                            disabled={!['in_progress', 'registered', 'pending'].includes(s.status)}
                             onClick={() => handleStudentAction(s.submission_id, 'kick')}
                             title="Buộc nộp bài"
                           />
@@ -481,7 +507,8 @@ const StatusBadge = ({ status }) => {
     in_progress: { label: "Đang thi", class: "bg-emerald-50 text-emerald-600 border-emerald-100" },
     submitted: { label: "Đã nộp", class: "bg-blue-50 text-blue-600 border-blue-100" },
     kicked: { label: "BỊ KICK", class: "bg-red-50 text-red-600 border-red-100" },
-    registered: { label: "CHỜ VERIFY", class: "bg-amber-50 text-amber-600 border-amber-100" }
+    registered: { label: "CHỜ VERIFY", class: "bg-amber-50 text-amber-600 border-amber-100" },
+    pending: { label: "CHỜ VERIFY", class: "bg-amber-50 text-amber-600 border-amber-100" }
   };
   const s = config[status] || { label: status, class: "bg-gray-50 text-gray-600" };
   return <span className={`px-2.5 py-1 rounded-lg border text-[10px] font-black uppercase tracking-widest ${s.class}`}>{s.label}</span>;

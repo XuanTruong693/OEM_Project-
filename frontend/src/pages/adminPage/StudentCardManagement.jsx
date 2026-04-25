@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     Search, Upload, FileSpreadsheet, Eye, Edit2, Trash2,
     X, Save, Check, AlertTriangle, ChevronLeft, ChevronRight,
-    CreditCard, Image, FileText, Camera
+    CreditCard, Image as ImageIcon, FileText, Camera
 } from 'lucide-react';
 import axiosClient from '../../api/axiosClient';
 import AdminSidebar from '../../components/admin/AdminSidebar';
@@ -523,7 +523,7 @@ const StudentCardManagement = () => {
                                         />
                                     ) : (
                                         <div className="flex flex-col items-center text-gray-500 py-8">
-                                            <Image size={40} />
+                                            <ImageIcon size={40} />
                                             <p className="mt-2 text-sm">{t('noCardImage')}</p>
                                         </div>
                                     )}

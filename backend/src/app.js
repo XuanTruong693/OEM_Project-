@@ -56,6 +56,8 @@ const app = express();
 const allowedOrigins = [
   "http://localhost:4000",
   "http://127.0.0.1:4000",
+  "http://localhost:5500",
+  "http://127.0.0.1:5500",
   "http://oes.io.vn",
   "http://www.oes.io.vn",
   "https://oes.io.vn",

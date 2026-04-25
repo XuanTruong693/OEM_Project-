@@ -11,6 +11,7 @@ const multer = require('multer');
 // Admin controllers
 const studentCardController = require('../controllers/admin/studentCardController');
 const aiLogsController = require('../controllers/admin/aiLogsController');
+const submissionController = require('../controllers/submissionController');
 
 // Admin models
 const {
@@ -35,11 +36,13 @@ router.use(activityLoggerMiddleware);
 // ============================================================================
 
 router.get('/student-cards', verifyToken, verifyRole('admin'), studentCardController.getStudentCards);
+router.get('/student-cards/no-image', verifyToken, verifyRole('admin'), studentCardController.getStudentCardsWithoutImage);
 router.get('/student-cards/:id', verifyToken, verifyRole('admin'), studentCardController.getStudentCardById);
 router.post('/student-cards', verifyToken, verifyRole('admin'), upload.fields([{ name: 'card_image', maxCount: 1 }]), studentCardController.createStudentCard);
 router.put('/student-cards/:id', verifyToken, verifyRole('admin'), upload.fields([{ name: 'card_image', maxCount: 1 }]), studentCardController.updateStudentCard);
 router.delete('/student-cards/:id', verifyToken, verifyRole('admin'), studentCardController.deleteStudentCard);
 router.post('/student-cards/batch', verifyToken, verifyRole('admin'), upload.any(), studentCardController.batchUploadStudentCards);
+router.post('/student-cards/batch-update-images', verifyToken, verifyRole('admin'), upload.any(), studentCardController.batchUpdateCardImages);
 
 // ============================================================================
 // DASHBOARD APIs
@@ -587,12 +590,18 @@ router.delete('/exams/:id', verifyToken, verifyRole('admin'), async (req, res) =
 // ============================================================================
 
 /**
+ * GET /api/admin/submissions/:submissionId/questions
+ * Lấy danh sách câu hỏi của một submission
+ */
+router.get('/submissions/:submissionId/questions', verifyToken, verifyRole('admin'), submissionController.getSubmissionQuestions);
+
+/**
  * GET /api/admin/results
  * Lấy tổng hợp kết quả thi
  */
 router.get('/results', verifyToken, verifyRole('admin'), async (req, res) => {
   try {
-    const { exam_id, page = 1, limit = 20 } = req.query;
+    const { exam_id, search, page = 1, limit = 20 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     let whereClause = '1=1';
@@ -601,6 +610,11 @@ router.get('/results', verifyToken, verifyRole('admin'), async (req, res) => {
     if (exam_id) {
       whereClause += ' AND s.exam_id = ?';
       params.push(exam_id);
+    }
+    
+    if (search) {
+      whereClause += ' AND (u.full_name LIKE ? OR u.email LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`);
     }
 
     const [results] = await pool.query(`

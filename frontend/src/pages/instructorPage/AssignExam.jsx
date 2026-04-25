@@ -93,18 +93,34 @@ const parseTextContent = (text) => {
           while (nextI < lines.length && options.length < 10) {
             let optLine = lines[nextI];
 
-            if (optionPrefixPattern.test(optLine)) {
-              if (optLine.trim().startsWith("*") || optLine.trim().endsWith("*")) {
-                correctOption = options.length;
-                optLine = optLine.replace(/\*/g, "").trim();
-              }
+            // Nếu gặp câu hỏi mới thì dừng
+            if (questionPrefixPattern.test(optLine)) break;
 
-              const cleanOpt = optLine.replace(optionPrefixPattern, "").trim();
-              options.push(cleanOpt);
-              nextI++;
-            } else {
-              break;
+            // Nếu gặp tiêu đề phần thi mới thì dừng
+            const lowerOpt = optLine.toLowerCase();
+            if (lowerOpt.includes("tự luận") || lowerOpt.includes("essay") || lowerOpt.includes("trắc nghiệm") || lowerOpt.includes("mcq")) break;
+
+            // Kiểm tra xem có đáp án đúng (dấu *) hay không
+            let isCorrect = false;
+            if (optLine.trim().startsWith("*") || optLine.trim().endsWith("*")) {
+              isCorrect = true;
             }
+
+            // Làm sạch nội dung đáp án (bỏ *, bỏ tiền tố a/b/c/d nếu có do gõ tay)
+            let cleanOpt = optLine.replace(/\*/g, "").trim();
+            if (optionPrefixPattern.test(cleanOpt)) {
+              cleanOpt = cleanOpt.replace(optionPrefixPattern, "").trim();
+            }
+
+            // Ghi nhận đáp án đúng
+            if (isCorrect) {
+              correctOption = options.length;
+            }
+
+            if (cleanOpt) {
+              options.push(cleanOpt);
+            }
+            nextI++;
           }
 
           if (options.length >= 2) {
@@ -417,6 +433,7 @@ const AssignExam = () => {
           }
           rowData[colNumber - 1] = value ?? '';
         });
+        rowData._rowNumber = rowNumber;
         jsonData.push(rowData);
       });
 
@@ -470,6 +487,8 @@ const AssignExam = () => {
             rowIndex++;
             continue;
           }
+          const mcqPointMatch = questionText.match(/\((\d+(?:[.,]\d+)?)(?:đ|pts|points?)\)/i);
+          const mcqPoints = mcqPointMatch ? parseFloat(mcqPointMatch[1].replace(",", ".")) : null;
 
           // Loại bỏ đánh số câu tự động (Câu 1:, Câu 2:, 1., 1:, etc.)
           const cleanedQuestionText = questionText
@@ -484,10 +503,11 @@ const AssignExam = () => {
             }
           }
           const questionData = {
-            row: rowIndex + 1,
+            row: row._rowNumber || rowIndex + 1,
             question_text: cleanedQuestionText,
             original_question_text: questionText, // Lưu câu hỏi gốc để so sánh
             type: "MCQ",
+            points: mcqPoints,
             errors: [],
           };
           // Find correct answer (marked with *)
@@ -530,12 +550,12 @@ const AssignExam = () => {
           ) || cleanedFullText.match(/(.+?)(?=Câu trả lời|Đáp án|$)/ims); // Thêm cờ 's' (dotAll) để regex match được xuống dòng
           const answerMatch = cleanedFullText.match(/(?:Câu trả lời|Đáp án)\s*[:.]?\s*(.+)/ims);
 
-          const pointMatch = cleanedFullText.match(/\((\d+(?:[.,]\d+)?)đ\)/i);
+          const pointMatch = cleanedFullText.match(/\((\d+(?:[.,]\d+)?)(?:đ|pts|points?)\)/i);
           const points = pointMatch ? parseFloat(pointMatch[1].replace(",", ".")) : null;
 
           if (questionMatch || answerMatch) {
             const questionData = {
-              row: rowIndex + 1,
+              row: row._rowNumber || rowIndex + 1,
               question_text: questionMatch ? questionMatch[1].trim() : "",
               original_question_text: fullText, // Lưu câu hỏi gốc để so sánh
               type: "Essay",
@@ -839,10 +859,8 @@ const AssignExam = () => {
   };
 
   const renderQuestionText = (q) => {
-    // Chỉ thêm số câu (Câu N:) và giữ nguyên nội dung câu hỏi (đã có sẵn điểm từ file)
-    // Dọn dẹp số thứ tự cũ nếu còn sót lại để tránh "Câu 1: Câu 1:"
     const cleanBody = q.question_text.replace(questionPrefixPattern, "").trim();
-    return `Câu ${q.row}: ${cleanBody}`;
+    return `Câu ${q.autoNumber || q.row}: ${cleanBody}`;
   };
   return (
     <div className="p-6 max-lg:p-4 max-sm:p-0 bg-gray-50 min-h-screen">

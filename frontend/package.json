@@ -11,6 +11,9 @@
     "test:e2e": "powershell -Command \"Remove-Item -Recurse -Force test-results,playwright-report -ErrorAction SilentlyContinue\"; npx playwright test --output test-results; npx playwright show-report --host 0.0.0.0 --port 9323"
   },
   "dependencies": {
+    "@mediapipe/camera_utils": "^0.3.1675466862",
+    "@mediapipe/drawing_utils": "^0.3.1675466124",
+    "@mediapipe/face_mesh": "^0.4.1633559619",
     "@react-oauth/google": "^0.12.2",
     "@tailwindcss/vite": "^4.1.14",
     "axios": "^1.12.2",

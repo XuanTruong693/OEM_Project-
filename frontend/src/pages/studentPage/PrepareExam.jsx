@@ -4,6 +4,8 @@ import axiosClient from "../../api/axiosClient";
 import { SOCKET_URL } from "../../api/config";
 import { useUi } from "../../context/UiContext";
 import io from "socket.io-client";
+import { Check, AlertTriangle, RefreshCw } from "lucide-react";
+import { CameraGuard } from "../../utils/CameraGuard";
 
 export default function PrepareExam() {
   const { examId } = useParams();
@@ -77,6 +79,8 @@ export default function PrepareExam() {
   const [leftEyePct, setLeftEyePct] = useState(0);
   const [rightEyePct, setRightEyePct] = useState(0);
   const [blinkFaceOk, setBlinkFaceOk] = useState(false); // Mặt đang nằm trong khung oval không
+  const [virtualCameraDetected, setVirtualCameraDetected] = useState(false);
+  const [detectedDevices, setDetectedDevices] = useState([]);
 
   const submissionId = search.get("submission_id");
   const duration = Number(
@@ -178,6 +182,22 @@ export default function PrepareExam() {
     else document.documentElement.classList.add("dark");
   }, [theme]);
 
+  // Virtual Camera Pre-check (Passive)
+  useEffect(() => {
+    const checkVirtual = async () => {
+      const { detected, devices } = await CameraGuard.detectVirtualCameras();
+      if (detected) {
+        // Just store the devices, don't block the UI yet
+        setDetectedDevices(devices);
+      }
+    };
+    checkVirtual();
+    CameraGuard.onDeviceChange(async () => {
+      const { detected, devices } = await CameraGuard.detectVirtualCameras();
+      setDetectedDevices(devices);
+    });
+  }, []);
+
   useEffect(() => {
     if (!submissionId || !examId || isVerifyingRef.current) return;
     isVerifyingRef.current = true;
@@ -217,6 +237,8 @@ export default function PrepareExam() {
             room_token: roomToken,
           });
           const sid = res.data?.submission_id;
+          const attemptNo = res.data?.attempt_no;
+          if (attemptNo) sessionStorage.setItem("current_attempt_no", attemptNo);
           try {
             sessionStorage.setItem(
               "exam_flags",
@@ -269,10 +291,18 @@ export default function PrepareExam() {
             if (subRes.data.face_image_url || subRes.data.face_verified) {
               setFaceOk(true);
               setFaceErr("");
+              if (subRes.data.face_image_url) {
+                setFacePreviewUrl(subRes.data.face_image_url);
+                setFaceUploaded(true);
+              }
             }
             if (subRes.data.student_card_url || subRes.data.card_verified) {
               setCardOk(true);
               setCardErr("");
+              if (subRes.data.student_card_url) {
+                setCardPreviewUrl(subRes.data.student_card_url);
+                setCardUploaded(true);
+              }
             }
           }
         }
@@ -283,7 +313,7 @@ export default function PrepareExam() {
   // WebSocket for real-time bypass
   useEffect(() => {
     if (!submissionId) return;
-    
+
     const socket = io(SOCKET_URL || window.location.origin, {
       transports: ["websocket", "polling"],
     });
@@ -298,6 +328,7 @@ export default function PrepareExam() {
         studentId: parseInt(user.id),
         examId: parseInt(examId),
         studentName,
+        attempt_no: Number(sessionStorage.getItem("current_attempt_no") || 1)
       });
     });
 
@@ -310,12 +341,21 @@ export default function PrepareExam() {
       setIsBypassed(true);
       // Không cần alert nữa vì ta sẽ hiển thị trực tiếp ở phần Actions
     });
-    
+
     socket.on(`student:kicked:${submissionId}`, (data) => {
-      setToast({ message: data.message || "Bạn đã bị giảng viên mời ra khỏi phòng thi.", type: "error" });
+      console.log("🚨 [Socket] Kicked by instructor during preparation");
+      setToast({ message: "Bạn đã bị giảng viên mời ra khỏi phòng thi.", type: "error" });
+
+      // Stop all camera/face processing
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      isVerifyingRef.current = false;
+
+      // Force redirect to dashboard after 5 seconds so student can read the message
       setTimeout(() => {
-        navigate("/student-dashboard");
-      }, 3000);
+        window.location.href = "/student-dashboard";
+      }, 5000);
     });
 
     return () => {
@@ -636,7 +676,7 @@ export default function PrepareExam() {
     setIsSearchingCard(true);
     setCardVerifyLog("⏳ Đang tìm kiếm thẻ sinh viên...");
     setCardErr("");
-    
+
     try {
       const res = await axiosClient.post(
         `/submissions/${submissionId}/verify-student-code`,
@@ -656,7 +696,7 @@ export default function PrepareExam() {
         // Đánh dấu thẻ đã sẵn sàng
         setCardUploaded(true);
         setCardErr("");
-        
+
         // Tự động PASS OCR (xác minh luôn ngay tại đây mà không chờ đợi như form OCR cũ)
         setCardVerified(true);
         setCardOk(true);
@@ -758,6 +798,22 @@ export default function PrepareExam() {
   // Camera - với kiểm tra và xử lý permission
   const startCamera = async () => {
     try {
+      // 1. Kiểm tra camera ảo TRƯỚC KHI mở luồng chính
+      const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const videoTrack = tempStream.getVideoTracks()[0];
+      const activeLabel = videoTrack.label;
+
+      if (CameraGuard.isVirtual(activeLabel)) {
+        setVirtualCameraDetected(true);
+        setDetectedDevices([{ label: activeLabel }]);
+        setToast({ message: "Camera đang sử dụng là Camera ảo! Vui lòng chọn Camera thực.", type: "error" });
+        tempStream.getTracks().forEach(track => track.stop());
+        return;
+      }
+
+      // Nếu là cam thật, tắt stream tạm và tiếp tục logic
+      tempStream.getTracks().forEach(track => track.stop());
+      setVirtualCameraDetected(false);
       // Kiểm tra trạng thái permission trước
       if (navigator.permissions) {
         try {
@@ -832,9 +888,10 @@ export default function PrepareExam() {
         setLeftEyePct(0);
         setRightEyePct(0);
 
-        // Thu thập EAR khi mắt mở trong ~40 frame đầu (~4 giây) để tính ngưỡng
+        // Thu thập EAR khi mắt mở trong ~25 frame đầu (~2 giây) để tính ngưỡng
         const baselineSamples = [];
         let baselineEAR = null; // null = chưa xong calibration
+        let faceLostCount = 0; // Đếm số frame mất dấu mặt
 
         blinkIntervalRef.current = setInterval(async () => {
           const v = videoRef.current;
@@ -848,13 +905,19 @@ export default function PrepareExam() {
               .withFaceLandmarks();
 
             if (!det) {
+              faceLostCount++;
               setLeftEyePct(0);
               setRightEyePct(0);
               setBlinkFaceOk(false);
-              // Mặt khuất/rời khỏi camera → reset state để tránh đếm nháy mắt ảo
-              blinkStateRef.current = "open";
+
+              // Chỉ reset state nếu mất dấu mặt quá lâu (> 1.5 giây)
+              if (faceLostCount > 15) {
+                blinkStateRef.current = "open";
+              }
               return;
             }
+
+            faceLostCount = 0; // Reset khi thấy mặt
 
             // Xóa canvas (không còn vẽ landmarks nữa)
             if (canvas) {
@@ -888,7 +951,7 @@ export default function PrepareExam() {
               setRightEyePct(calPct);
               if (isDebugBlink) console.log(`[Nháy Mắt] Calibrating... ${baselineSamples.length}/40 EAR=${avgEAR.toFixed(4)}`);
 
-              if (baselineSamples.length >= 40) {
+              if (baselineSamples.length >= 25) {
                 // Lấy percentile 70 làm baseline (loại bỏ giá trị thấp do chớp mắt lúc calibrate)
                 const sorted = [...baselineSamples].sort((a, b) => b - a);
                 baselineEAR = sorted[Math.floor(sorted.length * 0.3)]; // top 30%
@@ -899,10 +962,10 @@ export default function PrepareExam() {
             }
 
             // ── GIAI ĐOẠN 2: Phát hiện nháy mắt theo ngưỡng tương đối
-            // NHẮM: avgEAR giảm xuống 87% baseline (giảm 13%)
-            // MỞ LẠI: avgEAR phục hồi về 95% baseline
-            const closedThreshold = baselineEAR * 0.87;
-            const openThreshold = baselineEAR * 0.95;
+            // NHẮM: avgEAR giảm xuống 88% baseline (giảm 12%)
+            // MỞ LẠI: avgEAR phục hồi về 92% baseline
+            const closedThreshold = baselineEAR * 0.88;
+            const openThreshold = baselineEAR * 0.92;
 
             // Chuyển EAR sang % để hiển thị: 0% = mở, 100% = đạt ngưỡng nhắm
             const lPct = Math.round(Math.max(0, Math.min(100,
@@ -949,7 +1012,7 @@ export default function PrepareExam() {
           } catch (e) {
             console.error("[Blink loop error]", e);
           }
-        }, 100);
+        }, 80);
       };
 
       // Vòng lặp hướng dẫn chụp tĩnh
@@ -1415,6 +1478,11 @@ export default function PrepareExam() {
         throw new Error("Không thể upload ảnh để verify");
       }
 
+      // 🆕 Cập nhật ảnh preview từ server ngay sau khi upload thành công
+      if (uploadRes.data.face_preview) {
+        setFacePreviewUrl(uploadRes.data.face_preview);
+      }
+
       // Gọi API verify liveness
       const res = await axiosClient.post(
         `/submissions/${submissionId}/verify-face`
@@ -1562,9 +1630,9 @@ export default function PrepareExam() {
         }
       );
 
+      const threshold = 50;
       if (res?.data?.ok && res.data.match) {
         const confidence = res.data.confidence?.toFixed(1) || "N/A";
-        const threshold = 50;
 
         setCompareLog(
           `✅ So sánh pass (${confidence}%, yêu cầu ≥${threshold}%)!\n` +
@@ -1584,10 +1652,14 @@ export default function PrepareExam() {
           form.append("student_card_image", cardBlob);
           form.append("face_image", faceBlob);
 
-          await axiosClient.post(
+          const finalUploadRes = await axiosClient.post(
             `/submissions/${submissionId}/upload-images`,
             form
           );
+
+          // Cập nhật lại ảnh preview chính thức từ database
+          if (finalUploadRes.data.face_preview) setFacePreviewUrl(finalUploadRes.data.face_preview);
+          if (finalUploadRes.data.card_preview) setCardPreviewUrl(finalUploadRes.data.card_preview);
 
           // Xóa localStorage sau khi lưu thành công
           localStorage.removeItem(`exam_${submissionId}_card`);
@@ -1994,13 +2066,13 @@ export default function PrepareExam() {
                 <div className="mt-3">
                   <button
                     onClick={() => {
-                        setCardUploaded(false);
-                        setCardVerified(false);
-                        setCardOk(false);
-                        setCardVerifyLog("");
-                        setCardErr("");
-                        setStudentCode("");
-                        setCardPreviewUrl("");
+                      setCardUploaded(false);
+                      setCardVerified(false);
+                      setCardOk(false);
+                      setCardVerifyLog("");
+                      setCardErr("");
+                      setStudentCode("");
+                      setCardPreviewUrl("");
                     }}
                     className={`inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg cursor-pointer border transition bg-amber-500 hover:bg-amber-600 text-white font-semibold shadow w-full`}
                   >
@@ -2011,13 +2083,13 @@ export default function PrepareExam() {
 
               {isBypassed && (
                 <div className={`mt-3 p-3 rounded-lg border flex items-center gap-3 ${theme === "dark" ? "bg-emerald-500/10 border-emerald-500/30" : "bg-emerald-50 border-emerald-200"}`}>
-                   <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xl shadow-lg shadow-emerald-500/20">
-                      ✓
-                   </div>
-                   <div>
-                      <p className={`font-bold ${theme === "dark" ? "text-emerald-400" : "text-emerald-700"}`}>Bước này đã được bỏ qua</p>
-                      <p className={`text-xs ${theme === "dark" ? "text-slate-400" : "text-slate-600"}`}>Giảng viên đã phê duyệt quyền vào thi cho bạn.</p>
-                   </div>
+                  <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xl shadow-lg shadow-emerald-500/20">
+                    ✓
+                  </div>
+                  <div>
+                    <p className={`font-bold ${theme === "dark" ? "text-emerald-400" : "text-emerald-700"}`}>Bước này đã được bỏ qua</p>
+                    <p className={`text-xs ${theme === "dark" ? "text-slate-400" : "text-slate-600"}`}>Giảng viên đã phê duyệt quyền vào thi cho bạn.</p>
+                  </div>
                 </div>
               )}
 
@@ -2236,14 +2308,21 @@ export default function PrepareExam() {
                 </>
               )}
 
-              {/* Preview ảnh đã chụp - hiện khi có preview nhưng chưa upload */}
-              {facePreviewUrl && !faceUploaded && !isBypassed && (
+              {/* Preview ảnh đã chụp - hiện luôn khi có preview */}
+              {facePreviewUrl && !isBypassed && (
                 <div className="mt-3">
-                  <img
-                    src={facePreviewUrl}
-                    alt="preview"
-                    className="w-full max-w-md rounded-lg border border-white/10"
-                  />
+                  <div className="relative inline-block group">
+                    <img
+                      src={facePreviewUrl}
+                      alt="preview"
+                      className="w-full max-w-md rounded-lg border border-white/10 shadow-lg"
+                    />
+                    {faceOk && (
+                      <div className="absolute top-2 right-2 bg-emerald-500 text-white p-1 rounded-full shadow-xl animate-bounce-short">
+                        <Check size={18} />
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -2278,13 +2357,13 @@ export default function PrepareExam() {
               {/* Nút so sánh - Hiện sau khi verify pass */}
               {isBypassed && (
                 <div className={`mt-3 p-4 rounded-xl border flex items-center gap-4 ${theme === "dark" ? "bg-indigo-500/10 border-indigo-500/30" : "bg-indigo-50 border-indigo-200"}`}>
-                   <div className="w-12 h-12 rounded-2xl bg-indigo-500 flex items-center justify-center text-white text-2xl shadow-xl shadow-indigo-500/20">
-                      🛡️
-                   </div>
-                   <div>
-                      <p className={`text-lg font-bold ${theme === "dark" ? "text-indigo-300" : "text-indigo-800"}`}>Xác minh được miễn trừ</p>
-                      <p className={`text-sm ${theme === "dark" ? "text-slate-300" : "text-slate-600"}`}>Bạn không cần thực hiện bước xác minh khuôn mặt này.</p>
-                   </div>
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-500 flex items-center justify-center text-white text-2xl shadow-xl shadow-indigo-500/20">
+                    🛡️
+                  </div>
+                  <div>
+                    <p className={`text-lg font-bold ${theme === "dark" ? "text-indigo-300" : "text-indigo-800"}`}>Xác minh được miễn trừ</p>
+                    <p className={`text-sm ${theme === "dark" ? "text-slate-300" : "text-slate-600"}`}>Bạn không cần thực hiện bước xác minh khuôn mặt này.</p>
+                  </div>
                 </div>
               )}
 
@@ -2645,21 +2724,21 @@ export default function PrepareExam() {
               } text-sm flex-1`}
           >
             {isBypassed ? (
-               <span className="text-emerald-500 font-bold flex items-center gap-2">
-                  <span className="text-xl">✅</span> Bạn đã được giảng viên phê duyệt vào thi. 
-                  {reqs.monitor && !monitorOk && " Vui lòng hoàn tất Bước 3 để bắt đầu."}
-               </span>
+              <span className="text-emerald-500 font-bold flex items-center gap-2">
+                <span className="text-xl">✅</span> Bạn đã được giảng viên phê duyệt vào thi.
+                {reqs.monitor && !monitorOk && " Vui lòng hoàn tất Bước 3 để bắt đầu."}
+              </span>
             ) : (!reqs.face || faceOk) && (!reqs.card || cardOk) && reqs.monitor && !monitorOk ? (
-                <span className="text-blue-500 font-bold animate-pulse">
-                    ⚠️ Bạn đã hoàn thành xác minh (hoặc được cho phép). Hãy nhấn "Bật toàn màn hình" ở Bước 3 để vào thi.
-                </span>
+              <span className="text-blue-500 font-bold animate-pulse">
+                ⚠️ Bạn đã hoàn thành xác minh (hoặc được cho phép). Hãy nhấn "Bật toàn màn hình" ở Bước 3 để vào thi.
+              </span>
             ) : (
-                "Vui lòng hoàn tất các bước yêu lại trước khi bắt đầu làm bài."
+              "Vui lòng hoàn tất các bước yêu lại trước khi bắt đầu làm bài."
             )}
             {(faceOk || cardOk || isBypassed) && (
-                 <p className="text-[10px] text-emerald-500 mt-1 uppercase font-black tracking-widest">
-                    ℹ️ Trạng thái: {isBypassed ? "Được miễn trừ xác minh" : "Đã xác minh danh tính"}
-                 </p>
+              <p className="text-[10px] text-emerald-500 mt-1 uppercase font-black tracking-widest">
+                ℹ️ Trạng thái: {isBypassed ? "Được miễn trừ xác minh" : "Đã xác minh danh tính"}
+              </p>
             )}
           </div>
           <button
@@ -3051,6 +3130,45 @@ export default function PrepareExam() {
                 ✕ Đóng
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Virtual Camera Blocking Overlay */}
+      {virtualCameraDetected && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-6">
+          <div className="bg-slate-900 border-2 border-red-500/50 rounded-[2.5rem] p-10 max-w-xl w-full text-center shadow-2xl shadow-red-500/10">
+            <div className="w-24 h-24 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <AlertTriangle className="w-12 h-12 text-red-500" />
+            </div>
+            <h2 className="text-3xl font-bold text-white mb-4 uppercase tracking-tight">Phát hiện Camera ảo!</h2>
+            <p className="text-slate-400 text-lg mb-8">
+              Hệ thống phát hiện bạn đang sử dụng driver camera không hợp lệ:
+              <span className="text-red-400 font-bold block mt-2">
+                {detectedDevices.map(d => d.label).join(', ')}
+              </span>
+            </p>
+            <div className="bg-slate-800/50 rounded-2xl p-6 text-left mb-8 border border-slate-700">
+              <p className="text-white font-semibold mb-2 flex items-center gap-2">
+                <span className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-xs">?</span>
+                Làm sao để khắc phục?
+              </p>
+              <ul className="text-sm text-slate-400 space-y-2 list-disc ml-8">
+                <li>Tắt phần mềm OBS, ManyCam, Snap Camera, v.v.</li>
+                <li>Gỡ cài đặt driver camera ảo nếu cần thiết.</li>
+                <li>Khởi động lại trình duyệt sau khi tắt.</li>
+              </ul>
+            </div>
+            <button
+              onClick={async () => {
+                const { detected, devices } = await CameraGuard.detectVirtualCameras();
+                setVirtualCameraDetected(detected);
+                setDetectedDevices(devices);
+              }}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl font-bold text-lg transition-all shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2"
+            >
+              <RefreshCw className="w-5 h-5" /> Đã tắt, quét lại thiết bị
+            </button>
           </div>
         </div>
       )}

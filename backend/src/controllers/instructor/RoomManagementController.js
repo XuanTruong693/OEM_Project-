@@ -233,6 +233,7 @@ async function getRoomStudents(req, res) {
                 u.full_name as name,
                 u.email,
                 s.status,
+                s.attempt_no,
                 s.cheating_count,
                 s.started_at,
                 (SELECT COUNT(*) FROM cheating_logs cl WHERE cl.submission_id = s.id AND cl.event_type = 'admin_bypass') > 0 as is_bypassed
@@ -278,12 +279,20 @@ async function performStudentAction(req, res) {
 
         const { exam_id: examId, user_id: studentId } = subInfo[0];
         const io = getIO();
+        const { sendToSubmission } = require("../../services/socketService");
 
         if (action === 'kick') {
-            // Updated: Instructor kick is now immediate via socket
+            // Updated: Instructor kick is now immediate via targeted socket
             if (io) {
-                io.emit(`student:kicked:${submissionId}`, {
+                sendToSubmission(submissionId, `student:kicked:${submissionId}`, {
                     message: "Giảng viên đã kết thúc bài thi của bạn."
+                });
+
+                // Broadcast to instructor room to update UI
+                io.to(`exam:${examId}`).emit("instructor:student-status-updated", {
+                    submissionId,
+                    action: 'kick',
+                    status: 'submitted'
                 });
             }
             res.json({ success: true, message: "Student kicked" });
@@ -298,6 +307,12 @@ async function performStudentAction(req, res) {
             // Notify student to refresh or proceed
             if (io) {
                 io.emit(`student:bypass-granted:${submissionId}`);
+                // Broadcast to instructor room to update UI
+                io.to(`exam:${examId}`).emit("instructor:student-status-updated", {
+                    submissionId,
+                    action: 'bypass',
+                    is_bypassed: true
+                });
             }
             
             res.json({ success: true, message: "Bypass granted" });

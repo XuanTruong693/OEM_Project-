@@ -32,7 +32,7 @@ from .faker_detector import is_meaningless_answer
 from .tokenizer import (
     ANTONYM_PAIRS, PASSIVE_MARKERS, HARD_LOCATIONS,
     expand_abbreviations, check_passive_voice, remove_vietnamese_diacritics,
-    normalize_synonyms, normalize_code_snippets, deep_clean_text,
+    normalize_synonyms, normalize_code_snippets, deep_clean_text, strip_student_preamble,
     remove_safe_stopwords, normalize_units, normalize_number_format, SQL_CONTRADICTIONS
 )
 
@@ -116,9 +116,30 @@ class UniversityGrader:
         stopwords.update(SAFE_STOPWORDS)
         return {w for w in words if len(w) >= min_len and w not in stopwords}
 
-    def _chunk_into_sentences(self, text: str) -> List[str]:
+    def _chunk_into_sentences(self, text: str, split_connectors: bool = False) -> List[str]:
         if not text: return []
-        return [c.strip() for c in re.split(r'(?<=[.!?])\s+', text.strip()) if len(c.strip()) > 5]
+        chunks = [c.strip() for c in re.split(r'(?<=[.!?])\s+', text.strip()) if len(c.strip()) > 5]
+        
+        if split_connectors and len(chunks) <= 2:
+            # Nếu câu quá dài và không có dấu chấm, nỗ lực chia nhỏ bằng liên từ để đánh giá từng vế
+            connector_pattern = r'\s+(và|đồng thời|mà|nhằm|để|vốn là)\s+'
+            parts = re.split(connector_pattern, text.strip())
+            new_chunks = []
+            current = ""
+            for i, p in enumerate(parts):
+                if i % 2 == 0: # Nội dung
+                    current += p
+                else: # Liên từ
+                    if len(current.strip()) > 15: # Chỉ split nếu vế trước đủ dài
+                        new_chunks.append(current.strip())
+                        current = p + " "
+                    else:
+                        current += " " + p + " "
+            if current.strip():
+                new_chunks.append(current.strip())
+            if len(new_chunks) > len(chunks):
+                return [c for c in new_chunks if len(c) > 5]
+        return chunks
 
     def _get_fuzzy_coverage(self, m_kws: Set[str], s_kws: Set[str]) -> float:
         if not m_kws: return 1.0
@@ -136,11 +157,53 @@ class UniversityGrader:
                     break
         
         return matched / len(m_kws)
-        
-    def _calculate_coverage_ratio(self, student_text: str, model_text: str) -> float:
+
+    def _calculate_semantic_coverage(self, student_text: str, model_text: str) -> float:
+        """Vector Semantic Coverage: So sánh bao phủ ngữ nghĩa bằng Bi-Encoder.
+        Thay vì chỉ đếm từ khóa trùng nhau (string match), hàm này encode từng
+        ý chính của đáp án mẫu thành vector, rồi tìm vùng ngữ nghĩa tương đương
+        trong câu trả lời của sinh viên. Điều này cho phép sinh viên diễn đạt theo
+        cách hiểu (paraphrase) mà vẫn được ghi nhận là 'bao phủ đúng ý'."""
+        try:
+            model_chunks = self._chunk_into_sentences(model_text, split_connectors=True) or [model_text]
+            student_chunks = self._chunk_into_sentences(student_text, split_connectors=True) or [student_text]
+            
+            if not model_chunks or not student_chunks:
+                return self._calculate_keyword_coverage(student_text, model_text)
+            
+            # Encode all chunks
+            m_embs = [self.ai.bi_encoder.encode(c, convert_to_tensor=True) for c in model_chunks]
+            s_embs = [self.ai.bi_encoder.encode(c, convert_to_tensor=True) for c in student_chunks]
+            
+            # For each model concept, find the best matching student chunk
+            concept_scores = []
+            for m_emb in m_embs:
+                best_sim = max(util.cos_sim(m_emb, s_emb).item() for s_emb in s_embs)
+                concept_scores.append(best_sim)
+            
+            # Concept is "covered" if similarity > 0.55 (soft threshold)
+            covered = sum(1 for s in concept_scores if s >= 0.55)
+            semantic_ratio = covered / len(concept_scores)
+            
+            # Blend: 60% semantic + 40% keyword (giữ keyword để chống hallucination)
+            keyword_ratio = self._calculate_keyword_coverage(student_text, model_text)
+            blended = 0.60 * semantic_ratio + 0.40 * keyword_ratio
+            
+            logger.debug(f"[SemanticCov] semantic={semantic_ratio:.2f} keyword={keyword_ratio:.2f} blended={blended:.2f}")
+            return blended
+        except Exception as e:
+            logger.warning(f"[SemanticCov] Fallback to keyword: {e}")
+            return self._calculate_keyword_coverage(student_text, model_text)
+
+    def _calculate_keyword_coverage(self, student_text: str, model_text: str) -> float:
+        """Keyword-based coverage (legacy fallback)."""
         m_kws = self._extract_keywords(model_text, min_len=1)
         s_kws = self._extract_keywords(student_text, min_len=1)
         return self._get_fuzzy_coverage(m_kws, s_kws)
+        
+    def _calculate_coverage_ratio(self, student_text: str, model_text: str) -> float:
+        """Main coverage: sử dụng Semantic Coverage cho General mode."""
+        return self._calculate_semantic_coverage(student_text, model_text)
     
     def _contains_passive_markers(self, text: str) -> bool:
         return check_passive_voice(text)
@@ -190,14 +253,17 @@ class UniversityGrader:
     def _build_result(self, score: float, explanation: str, result_type: str) -> Dict[str, Any]:
         return {"score": round(score, 2), "explanation": explanation, "type": result_type, "confidence": 1.0, "fact_multiplier": 1.0}
 
-    def _analyze_core_ideas(self, model_text: str) -> List[Dict[str, Any]]:
-        chunks = self._chunk_into_sentences(model_text) or [model_text]
+    def _analyze_core_ideas(self, model_text: str, mode: str = "general") -> List[Dict[str, Any]]:
+        # Đối với môn đại cương (general), ưu tiên chia nhỏ ý bằng liên từ if no periods
+        split_conn = (mode == "general")
+        chunks = self._chunk_into_sentences(model_text, split_connectors=split_conn) or [model_text]
         analyzed_chunks = []
         total_weight = 0
         for chunk in chunks:
             kws = self._extract_keywords(chunk, min_len=1)
             weight = len(kws) + 1  
-            is_core = len(kws) >= 3 
+            # Nếu vế câu dài hoặc chứa nhiều keyword
+            is_core = len(kws) >= 3 or len(chunk.split()) > 6
             analyzed_chunks.append({"text": chunk, "keywords": kws, "weight": weight, "is_core": is_core})
             total_weight += weight
             
@@ -217,7 +283,7 @@ class UniversityGrader:
         kw_overlap = len(s_kws & m_kws) / len(m_kws)
         seq_ratio = SequenceMatcher(None, s_words, m_words).ratio()
         if kw_overlap > 0.65 and seq_ratio < 0.50:
-            # Nếu phát hiện cấu trúc bị động (được, bởi), nới lỏng yêu cầu seq_ratio
+            # Nếu phát hiện cấu trúc bị động, nới lỏng yêu cầu seq_ratio
             # Vì câu bị động đảo lộn hoàn toàn cấu trúc câu nhưng vẫn giữ đúng nghĩa.
             if self._contains_passive_markers(student_text) and seq_ratio >= 0.10:
                 return False 
@@ -310,19 +376,43 @@ class UniversityGrader:
     # =========================================================================
     def _grade_general_model(self, student_text: str, model_text: str, s_clean: str, m_syn: str, s_norm: str, m_norm: str, max_points: float, is_long_answer: bool) -> Dict[str, Any]:
         if self._check_template_reversal(student_text, model_text):
-            return self._build_result(0.0, "Đảo ngược chiều logic (A tổng hợp B vs B tổng hợp A).", "Logic Reversal")
+            return self._build_result(0.0, f"Đảo ngược chiều logic: Đáp án yêu cầu 'A tổng hợp B' nhưng SV viết 'B tổng hợp A'. Sai hoàn toàn bản chất.", "Logic Reversal")
         is_rev, verb = self._check_directional_logic(student_text, model_text)
-        if is_rev: return self._build_result(max_points * 0.10, f"Đảo ngược logic ('{verb}').", "Logic Reversal")
+        if is_rev: return self._build_result(0.0, f"Đảo ngược chiều logic: SV đảo ngược hướng tác động của '{verb}'. Sai bản chất quan hệ nhân quả.", "Logic Reversal")
+
+        if self._check_antonym_contradiction(student_text, model_text):
+            # Tìm cặp từ trái nghĩa cụ thể để hiển thị
+            s_lower, m_lower = student_text.lower(), model_text.lower()
+            all_antonyms = {**ANTONYM_PAIRS, **self.custom_antonyms}
+            conflict_detail = ""
+            for word, antonyms in all_antonyms.items():
+                if word in m_lower:
+                    for ant in antonyms:
+                        if ant in s_lower and not (ant in m_lower and word in s_lower):
+                            conflict_detail = f" Đáp án chứa '{word}' nhưng SV dùng '{ant}'."
+                            break
+                if conflict_detail: break
+            return self._build_result(0.0, f"Mâu thuẫn logic/Từ trái nghĩa.{conflict_detail} Sai lệch bản chất cốt lõi.", "Logic Contradiction")
 
         length_ratio = len(s_clean) / len(model_text) if len(model_text) > 0 else 0
         if is_long_answer and length_ratio < 0.4:
-            return self._build_result(max_points * 0.30, "Câu trả lời quá ngắn.", "Partial")
+            return self._build_result(max_points * 0.30, f"Câu trả lời quá ngắn ({int(length_ratio*100)}% so với đáp án). Thiếu nhiều ý chính, chỉ chấm tối đa 30%.", "Partial")
 
         lev_ratio = SequenceMatcher(None, s_norm, m_norm).ratio()
         if lev_ratio >= 0.95: return self._build_result(max_points, "Khớp hoàn toàn.", "Typo")
 
-        model_ideas = self._analyze_core_ideas(m_norm)
-        student_chunks = self._chunk_into_sentences(s_norm) or [s_norm]
+        # [AI Fast-Track (V3)] - Đặt sau Guardrails để không bị lừa bởi câu có từ vựng giống nhưng sai logic
+        try:
+            if self.ai.finetuned_encoder is not None:
+                emb_model = self.ai.finetuned_encoder.encode(m_norm, convert_to_tensor=True)
+                emb_student = self.ai.finetuned_encoder.encode(s_norm, convert_to_tensor=True)
+                sim_score = util.cos_sim(emb_model, emb_student).item()
+                if sim_score >= 0.93: return self._build_result(max_points, f"Khớp ý chính hoàn toàn (AI V3: {int(sim_score*100)}%).", "AI Fast-Track (V3)")
+                if sim_score < 0.10: return self._build_result(0.0, f"Dữ liệu sai lệch hoàn toàn (AI V3: {int(sim_score*100)}%).", "Contradiction")
+        except: pass
+
+        model_ideas = self._analyze_core_ideas(m_norm, mode="general")
+        student_chunks = self._chunk_into_sentences(s_norm, split_connectors=True) or [s_norm]
         student_kws = self._extract_keywords(s_norm, min_len=1)
         
         # [1. PHẦN TỔNG (Σ) - Khởi tạo]
@@ -330,73 +420,131 @@ class UniversityGrader:
         feedback_details = []
         is_fully_entailed = False
         
+        # Tối ưu: Encode sẵn toàn bộ student chunks
+        student_embs = [self.ai.bi_encoder.encode(s, convert_to_tensor=True) for s in student_chunks]
+        
         # [Vòng lặp duyệt qua từng ý chính của đáp án mẫu]
         for i, idea in enumerate(model_ideas):
             chunk_max_points = max_points * idea["point_ratio"]
             m_chunk = idea["text"]
-            # [s_i: Tính toán độ tương đồng (Similarity) bằng Cross-Encoder Reranker]
-            # B1: Tìm chunk tiềm năng nhất bằng Bi-Encoder (nhanh)
+            
+            # [s_i: Similarity Calculation]
             emb_m = self.ai.bi_encoder.encode(m_chunk, convert_to_tensor=True)
             best_sim_bi, best_s_chunk = -1, ""
-            for s_chunk in student_chunks:
-                sim = util.cos_sim(self.ai.bi_encoder.encode(s_chunk, convert_to_tensor=True), emb_m).item()
-                if sim > best_sim_bi: best_sim_bi, best_s_chunk = sim, s_chunk
+            for idx, s_chunk in enumerate(student_chunks):
+                sim = util.cos_sim(student_embs[idx], emb_m).item()
+                if sim > best_sim_bi:
+                    best_sim_bi, best_s_chunk = sim, s_chunk
             
-            # B2: Cải tế: Dùng Cross-Encoder (Reranker) để tính điểm chính xác cho cặp câu này
-            # Đây là bước "đưa cả 2 câu vào cùng lúc"
+            # [Tính toán các chỉ số phụ trước]
+            chunk_kws_cov = self._get_fuzzy_coverage(idea["keywords"], student_kws)
+            core_tag = "TRỌNG TÂM" if idea["is_core"] else "phụ"
+
+            # [FAST-TRACK: ƯU TIÊN BI-ENCODER (Semantic First)]
+            if best_sim_bi >= 0.60:
+                bonus = 0.10 if chunk_kws_cov >= 0.60 else 0.0
+                bi_final_score = min(1.0, best_sim_bi + bonus)
+                total_score += chunk_max_points * bi_final_score
+                feedback_details.append(f"Ý {i+1} ({core_tag}): ĐẠT (Hiểu ý - BiEnc {int(best_sim_bi*100)}%).")
+                logger.info(f"[FastTrack-Bi-General] Ý {i+1}: BiEnc={best_sim_bi:.2f} >= 0.65 → CHỐT ĐIỂM")
+                continue
+
             if best_s_chunk:
                 rerank_prob = self.ai.reranker.predict([(best_s_chunk, m_chunk)])
                 best_sim = float(rerank_prob[0])
             else:
                 best_sim = 0.0
 
-            # [l_i: Kiểm tra tầng Logic NLI để điều chỉnh điểm]
-            # (Giữ nguyên NLI để check mâu thuẫn/confirm)
+            # [l_i: Logic Analysis]
             logic_label, logic_conf = self.logic_analyzer.analyze(best_s_chunk, m_chunk)
-            chunk_kws_cov = self._get_fuzzy_coverage(idea["keywords"], student_kws)
             
-            if logic_label == 'entailment' and chunk_kws_cov < 0.60: logic_label = 'neutral' 
-            # Safe Guard: Nếu thiếu từ khóa cốt lõi, không cho phép đạt điểm Tốt (Capped at Khá)
-            if idea["is_core"] and chunk_kws_cov < 0.60 and best_sim < 0.80: best_sim = min(best_sim, 0.65) 
+            # Nới lỏng keyword cap nếu NLI cực kỳ tự tin (SV giỏi diễn đạt theo cách hiểu)
+            if logic_label == 'entailment' and chunk_kws_cov < 0.60:
+                if logic_conf >= 0.80:
+                    # NLI rất tự tin SV nói đúng ý -> giữ entailment, chỉ giảm nhẹ sim
+                    best_sim = max(best_sim, 0.75)
+                    logger.debug(f"[NLI Override] Keeping entailment despite low kw_cov={chunk_kws_cov:.2f}, conf={logic_conf:.2f}")
+                else:
+                    logic_label = 'neutral'
+            if idea["is_core"] and chunk_kws_cov < 0.60 and best_sim < 0.80 and logic_conf < 0.80:
+                best_sim = min(best_sim, 0.65) 
+            
+            # Trích xuất ngắn gọn ý chính để hiển thị cho GV
+            m_chunk_short = m_chunk[:50] + '...' if len(m_chunk) > 50 else m_chunk
+            core_tag = "TRỌNG TÂM" if idea["is_core"] else "phụ"
+            sim_pct = int(best_sim * 100)
+            kw_pct = int(chunk_kws_cov * 100)
             
             if best_sim < 0.35:
-                feedback_details.append(f"Ý {i+1} (TRỌNG TÂM): Thiếu." if idea["is_core"] else f"Ý {i+1}: Thiếu.")
+                # [SEMANTIC RESCUE - 3 TẦNG PHÂN XỬ] cho General Pipeline
+                if best_sim_bi >= 0.55 and chunk_kws_cov >= 0.45:
+                    
+                    if logic_label == 'contradiction' and logic_conf > 0.50:
+                        feedback_details.append(f"Ý {i+1} ({core_tag}): NGƯỢC Ý — NLI phát hiện mâu thuẫn với '{m_chunk_short}' (NLI={int(logic_conf*100)}%).")
+                        logger.info(f"[SemanticRescue-General] Ý {i+1}: BiEnc={best_sim_bi:.2f} nhưng NLI=contradiction → KHÔNG CỨU")
+                        continue
+                    elif logic_label == 'entailment':
+                        rescue_score = (best_sim_bi * 0.60) + (chunk_kws_cov * 0.20) + (logic_conf * 0.20)
+                        total_score += chunk_max_points * rescue_score
+                        feedback_details.append(f"Ý {i+1} ({core_tag}): HIỂU Ý — Đúng bản chất '{m_chunk_short}' (NLI={int(logic_conf*100)}%, BiEnc={int(best_sim_bi*100)}%).")
+                        logger.info(f"[SemanticRescue-General] Ý {i+1}: NLI=entailment + BiEnc={best_sim_bi:.2f} → rescue={rescue_score:.2f}")
+                        continue
+                    else:
+                        rescue_score = (best_sim_bi * 0.50) + (chunk_kws_cov * 0.30)
+                        total_score += chunk_max_points * rescue_score
+                        feedback_details.append(f"Ý {i+1} ({core_tag}): CÓ LIÊN QUAN — Hiểu một phần '{m_chunk_short}' (BiEnc={int(best_sim_bi*100)}%, KW={kw_pct}%).")
+                        logger.info(f"[SemanticRescue-General] Ý {i+1}: NLI=neutral + BiEnc={best_sim_bi:.2f} → partial={rescue_score:.2f}")
+                        continue
+                feedback_details.append(f"Ý {i+1} ({core_tag}): THIẾU — Không tìm thấy nội dung tương ứng với '{m_chunk_short}' (similarity {sim_pct}%, keywords {kw_pct}%).")
                 continue
                 
             if logic_label == 'contradiction' and logic_conf > 0.65 and not self._contains_passive_markers(best_s_chunk):
-                feedback_details.append(f"Ý {i+1}: Ngược ý.")
+                s_chunk_short = best_s_chunk[:50] + '...' if len(best_s_chunk) > 50 else best_s_chunk
+                feedback_details.append(f"Ý {i+1} ({core_tag}): NGƯỢC Ý — SV viết '{s_chunk_short}' nhưng đáp án yêu cầu '{m_chunk_short}' (NLI: contradiction {int(logic_conf*100)}%).")
                 continue
 
             if logic_label == 'entailment' and logic_conf > 0.55:
                 is_fully_entailed = True
                 best_sim = max(best_sim, 0.90)
 
-            # [f(s_i, l_i): Tổng hợp điểm cho từng ý (Ý chính có trọng số point_ratio)]
+            # [f(s_i, l_i): Final chunk scoring]
             if best_sim >= 0.80:
-                total_score += chunk_max_points; feedback_details.append(f"Ý {i+1}: Tốt.")
+                total_score += chunk_max_points
+                feedback_details.append(f"Ý {i+1} ({core_tag}): ĐẠT — Khớp tốt với '{m_chunk_short}' (similarity {sim_pct}%, keywords {kw_pct}%).")
             elif best_sim >= 0.40:
                 boost_factor = 1.3 if chunk_kws_cov >= 0.65 else 1.0 
                 if chunk_kws_cov < 0.65:
                     best_sim = min(best_sim, 0.65)
-                total_score += chunk_max_points * min(1.0, best_sim * boost_factor)
-                feedback_details.append(f"Ý {i+1}: Khá." if chunk_kws_cov >= 0.60 else f"Ý {i+1}: Thiếu vế/keyword.")
+                earned = chunk_max_points * min(1.0, best_sim * boost_factor)
+                total_score += earned
+                if chunk_kws_cov >= 0.60:
+                    feedback_details.append(f"Ý {i+1} ({core_tag}): KHÁ — Đúng hướng nhưng chưa đầy đủ '{m_chunk_short}' (similarity {sim_pct}%, keywords {kw_pct}%).")
+                else:
+                    feedback_details.append(f"Ý {i+1} ({core_tag}): THIẾU TỪ KHÓA — Có đề cập nhưng thiếu thuật ngữ quan trọng cho '{m_chunk_short}' (similarity {sim_pct}%, keywords {kw_pct}%).")
             else:
-                total_score += chunk_max_points * (best_sim * 0.6); feedback_details.append(f"Ý {i+1}: Mờ nhạt.")
+                total_score += chunk_max_points * (best_sim * 0.6)
+                feedback_details.append(f"Ý {i+1} ({core_tag}): MỜ NHẠT — Đề cập rất sơ sài '{m_chunk_short}' (similarity {sim_pct}%, keywords {kw_pct}%).")
 
         # [2. HỆ SỐ BAO PHỦ C (Coverage Factor)]
         coverage_ratio = self._calculate_coverage_ratio(s_norm, m_norm) 
         base_ratio = total_score / max_points if max_points > 0 else 0
         coverage_multiplier = 1.0
         
-        if (is_fully_entailed or base_ratio >= 0.75) and coverage_ratio >= 0.65:
+        # Nếu NLI đã xác nhận entailment HOẶC đa số ý đã đạt tốt
+        if is_fully_entailed and coverage_ratio >= 0.25:
             coverage_multiplier = 1.0
-            feedback_details.append(f"(Chấp nhận diễn đạt tương đương)")
+            feedback_details.append(f"(Chấp nhận diễn đạt tương đương - NLI confirmed)")
+        elif base_ratio >= 0.60 and coverage_ratio >= 0.25:
+            coverage_multiplier = max(0.85, min(1.0, coverage_ratio + 0.35))
+            feedback_details.append(f"(Diễn đạt theo cách hiểu, coverage semantic: {int(coverage_ratio*100)}%)")
         else:
-            if coverage_ratio < 0.20: coverage_multiplier = 0.40 
-            elif coverage_ratio < 0.40: coverage_multiplier = 0.60 
-            elif coverage_ratio < 0.60: coverage_multiplier = 0.80
-            elif coverage_ratio < 0.80: coverage_multiplier = 0.90
-            elif coverage_ratio < 0.90: coverage_multiplier = 0.95
+            # SIẾT CHẶT COVERAGE CHO GENERAL MODE: Social Science requires precision
+            if coverage_ratio < 0.15: coverage_multiplier = 0.10 
+            elif coverage_ratio < 0.35: coverage_multiplier = 0.40 
+            elif coverage_ratio < 0.55: coverage_multiplier = 0.70
+            elif coverage_ratio < 0.70: coverage_multiplier = 0.78
+            elif coverage_ratio < 0.85: coverage_multiplier = 0.88
+            elif coverage_ratio < 0.95: coverage_multiplier = 0.95
 
         # [3. HỆ SỐ PHẠT B (Babble Penalty)]
         babble_penalty = 1.0
@@ -420,7 +568,7 @@ class UniversityGrader:
              # Neutralizing diacritic penalty (Tham số vs tham so match 100%)
              return self._build_result(max_points, "Khớp chính xác (Bao gồm đồng bộ dấu Tiếng Việt).", "Exact Match")
 
-        if diac_ratio >= 0.85 and (final_score / max_points) < 0.85:
+        if diac_ratio >= 0.85 and (final_score / max_points) < 0.85 and final_score > 0:
             final_score = max(final_score, max_points * 0.75)
             return self._build_result(final_score, "Đúng ý nhưng sai lỗi chính tả.", "Typo")
 
@@ -437,8 +585,9 @@ class UniversityGrader:
         
         is_model_code = bool(re.search(strong_code, model_text)) or len(re.findall(generic_code, model_text)) >= 2
         is_student_code = bool(re.search(strong_code, student_text)) or len(re.findall(generic_code, student_text)) >= 2
+        is_any_code = is_model_code or is_student_code
         
-        if is_model_code or is_student_code:
+        if is_any_code:
             tech_result = self.code_analyzer.grade(model_text, student_text, max_points)
             if tech_result:
                 # Nếu code_analyzer trả về điểm (kể cả 0), return
@@ -459,7 +608,7 @@ class UniversityGrader:
         lev_ratio = SequenceMatcher(None, s_norm, m_norm).ratio()
         if lev_ratio >= 0.95: return self._build_result(max_points, "Khớp hoàn toàn.", "Typo")
 
-        model_ideas = self._analyze_core_ideas(m_norm)
+        model_ideas = self._analyze_core_ideas(m_norm, mode="technical")
         student_chunks = self._chunk_into_sentences(s_norm) or [s_norm]
         student_kws = self._extract_keywords(s_norm, min_len=1)
         
@@ -481,6 +630,24 @@ class UniversityGrader:
                 sim = util.cos_sim(self.ai.bi_encoder.encode(s_chunk, convert_to_tensor=True), emb_m).item()
                 if sim > best_sim_bi: best_sim_bi, best_s_chunk = sim, s_chunk
             
+            # [Tính toán các chỉ số phụ trước để phục vụ Fast-track]
+            # Tính Coverage THÔNG MINH (Fuzzy Coverage) thay vì khớp tuyệt đối
+            chunk_kws_cov = self._get_fuzzy_coverage(idea["keywords"], student_kws)
+            # [SCORING THRESHOLDS]
+            is_strict = len(m_chunk) < 15 or len(m_chunk.split()) <= 2
+
+            # [FAST-TRACK: ƯU TIÊN BI-ENCODER (Semantic First)]
+            # Nếu Bi-Encoder thấy tương đồng cao (>=60%), chốt điểm ngay + điểm thưởng
+            if best_sim_bi >= 0.60 and not is_strict:
+                # Tính điểm dựa trên Bi-Encoder + Bonus dựa trên Keyword Coverage
+                bonus = 0.15 if chunk_kws_cov >= 0.60 else 0.0
+                bi_final_score = min(1.0, best_sim_bi + bonus)
+                total_score += chunk_max_points * bi_final_score
+                feedback_details.append(f"Ý {i+1}: Tốt (Diễn đạt tương đương - BiEnc {int(best_sim_bi*100)}%).")
+                logger.info(f"[FastTrack-Bi] Ý {i+1}: BiEnc={best_sim_bi:.2f} >= 0.65 → CHỐT ĐIỂM (score={bi_final_score:.2f})")
+                continue
+
+            # Nếu Bi-Encoder < ngưỡng ưu tiên, đưa xuống 2 tầng còn lại để phân tích sâu
             # B2: Dùng Cross-Encoder (Reranker) để tính điểm chính xác
             if best_s_chunk:
                 rerank_prob = self.ai.reranker.predict([(best_s_chunk, m_chunk)])
@@ -491,29 +658,26 @@ class UniversityGrader:
             # Bật NLI để nhận diện sinh viên giải thích đúng bản chất dù khác từ
             # [l_i: Kiểm tra tầng Logic NLI để điều chỉnh điểm]
             logic_label, logic_conf = self.logic_analyzer.analyze(best_s_chunk, m_chunk)
-            
-            # Tính Coverage THÔNG MINH (Fuzzy Coverage) thay vì khớp tuyệt đối
-            chunk_kws_cov = self._get_fuzzy_coverage(idea["keywords"], student_kws)
-            
-            if (is_model_code or is_student_code):
-                best_sim = min(1.0, best_sim * 1.3) # Thưởng nóng Code Snippet (Điều chỉnh tỷ lệ cho Cross-Encoder)
-                
-            if logic_label == 'entailment' and logic_conf > 0.50:
-                if chunk_kws_cov < 0.65 and not is_model_code:
-                    is_fully_entailed = False
-                    best_sim = max(best_sim, 0.60)
-                else:
-                    is_fully_entailed = True
-                    best_sim = max(best_sim, 0.85)
-
-            is_any_code = is_model_code or is_student_code
-            
-            # [SCORING THRESHOLDS]
-            is_strict = len(m_chunk) < 15 or len(m_chunk.split()) <= 2
             min_sim_threshold = 0.50 if is_strict else 0.25
             min_kws_threshold = 0.40 if is_strict else 0.20
 
             if best_sim < min_sim_threshold or (best_sim < (min_sim_threshold + 0.1) and chunk_kws_cov < min_kws_threshold):
+                # [SEMANTIC RESCUE - TẦNG PHÂN XỬ CUỐI CÙNG]
+                # Chỉ chạy khi Bi-Encoder lúc đầu không đủ cao để Fast-track
+                if best_sim_bi >= 0.50 and chunk_kws_cov >= 0.45 and not is_strict:
+                    if logic_label == 'contradiction' and logic_conf > 0.65:
+                        feedback_details.append(f"Ý {i+1}: Sai bản chất (NLI phát hiện mâu thuẫn {logic_conf:.0%}).")
+                        continue
+                    elif logic_label == 'entailment':
+                        rescue_score = (best_sim_bi * 0.50) + (logic_conf * 0.50)
+                        total_score += chunk_max_points * rescue_score
+                        feedback_details.append(f"Ý {i+1}: Hiểu ý (NLI={logic_conf:.0%}, BiEnc={best_sim_bi:.0%}).")
+                        continue
+                    else:
+                        rescue_score = (best_sim_bi * 0.40) + (chunk_kws_cov * 0.40)
+                        total_score += chunk_max_points * rescue_score
+                        feedback_details.append(f"Ý {i+1}: Có liên quan (BiEnc={best_sim_bi:.0%}).")
+                        continue
                 feedback_details.append(f"Ý {i+1} (QUAN TRỌNG): Thiếu thuật ngữ." if idea["is_core"] else f"Ý {i+1}: Thiếu.")
                 continue
 
@@ -576,7 +740,7 @@ class UniversityGrader:
              # Neutralizing diacritic penalty (Tham số vs tham so match 100%)
              return self._build_result(max_points, "Khớp chính xác (Bao gồm đồng bộ dấu Tiếng Việt).", "Exact Match")
 
-        if diac_ratio >= 0.85 and (final_score / max_points) < 0.85:
+        if diac_ratio >= 0.85 and (final_score / max_points) < 0.85 and final_score > 0:
             final_score = max(final_score, max_points * 0.75)
             return self._build_result(final_score, "Đúng ý nhưng sai lỗi chính tả.", "Typo")
 
@@ -618,7 +782,6 @@ class UniversityGrader:
                 return self._build_result(0.0, f"Reasoning: {faker_reason}. Không chấm điểm cho câu trả lời đối phó.", "Đối phó")
 
         # === SUPPORT ALTERNATIVE MODEL ANSWERS (;) ===
-        # Do not split Code or SQL by semicolon, as it breaks syntax structure
         m_type = self.code_analyzer.detect_answer_type(model_text)
         if m_type in ["code", "sql"]:
             model_options = [model_text.strip()]
@@ -641,6 +804,12 @@ class UniversityGrader:
         if is_faker:
             return self._build_result(0, f"Reasoning: {reason}. Không chấm điểm cho câu trả lời đối phó.", "Faker")
 
+        # === 1.5 DYNAMIC GRADING MODE ROUTING ===
+        is_actually_tech = self.code_analyzer.is_technical_answer(student_text) or self.code_analyzer.is_technical_answer(model_text)
+        if is_actually_tech and grading_mode != "technical":
+            logger.info("Auto-switching to technical grading mode due to code snippet/SQL detection.")
+            grading_mode = "technical"
+
         # === 2. KEYWORD SPAM GUARD ===
         s_words = student_text.strip().lower().split()
         m_words = model_text.strip().lower().split()
@@ -650,7 +819,7 @@ class UniversityGrader:
                 return self._build_result(0, "Reasoning: Câu trả lời quá ngắn (chỉ chứa từ khóa khung). Không đủ dữ kiện để chấm điểm logic.", "SpamGuard")
 
         # === 3. WORD SALAD GUARD (Structural Check) ===
-        if not (self.code_analyzer.is_technical_answer(student_text) or self.code_analyzer.is_technical_answer(model_text)):
+        if not is_actually_tech:
             if self._is_word_salad(student_text, model_text):
                 return self._build_result(0.0, "Phát hiện nhồi từ vô nghĩa (Word Salad). Không thành câu hoàn chỉnh.", "WordSalad")
 
@@ -746,19 +915,7 @@ class UniversityGrader:
                 return self._build_result(dataset_result['score'], f"{dataset_result['feedback']} (AI learned)", "Dataset Match")
         except: pass
 
-        # D. AI Fast-Track (V3)
-        try:
-            if self.ai.finetuned_encoder is not None:
-                emb_model = self.ai.finetuned_encoder.encode(m_norm, convert_to_tensor=True)
-                emb_student = self.ai.finetuned_encoder.encode(s_norm, convert_to_tensor=True)
-                sim_score = util.cos_sim(emb_model, emb_student).item()
-                
-                # Tightened thresholds for Fast-Track
-                if sim_score >= 0.93:
-                    return self._build_result(max_points, f"Khớp ý chính hoàn toàn (AI V3: {int(sim_score*100)}%).", "AI Fast-Track (V3)")
-                elif sim_score < 0.10:
-                    return self._build_result(0.0, f"Dữ liệu sai lệch hoàn toàn (AI V3: {int(sim_score*100)}%).", "Contradiction")
-        except: pass
+        # D. AI Fast-Track (V3) đã được di chuyển vào trong _grade_general_model để đứng sau Logic Guardrails
 
         # E. Detailed General Model
         return self._grade_general_model(student_text, model_text, s_clean, m_syn, s_norm, m_norm, max_points, is_long_answer)
