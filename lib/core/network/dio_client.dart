@@ -6,8 +6,9 @@ class DioClient {
   static const String baseUrl = 'http://10.0.2.2:5000/api';
 
   final Dio dio;
+  final Function()? onLogout;
 
-  DioClient()
+  DioClient({this.onLogout})
     : dio = Dio(
         BaseOptions(
           baseUrl: baseUrl,
@@ -70,11 +71,12 @@ class DioClient {
               } catch (refreshError) {
                 // Nếu refresh cũng lỗi (hết hạn nốt) -> Xóa sạch, đuổi về Login
                 await SecureStorageHelper.clearAll();
-                // TODO: Bắn event văng ra màn hình Login (Sẽ làm ở Phase BLoC)
+                onLogout?.call();
                 print("❌ Refresh Token failed. Logging out.");
               }
             } else {
               await SecureStorageHelper.clearAll();
+              onLogout?.call();
             }
           }
 
