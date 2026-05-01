@@ -15,9 +15,10 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Flutter
-        uses: subosito/flutter-action@1a44944d13778a46e100f7e4f165a2512f458145
-        with:
-          channel: stable
+        run: |
+          git clone https://github.com/flutter/flutter.git -b stable --depth 1
+          echo "$GITHUB_WORKSPACE/flutter/bin" >> $GITHUB_PATH
+          echo "$GITHUB_WORKSPACE/flutter/bin/cache/dart-sdk/bin" >> $GITHUB_PATH
 
       - name: Create Dummy .env and Asset Placeholders
         run: |
@@ -66,7 +67,7 @@ jobs:
           zip -r Runner.ipa Payload
 
       - name: Archive IPA Artifact
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ios-ipa-build
           path: Runner.ipa
