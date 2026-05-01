@@ -21,6 +21,12 @@ jobs:
           echo "$GITHUB_WORKSPACE/flutter/bin/cache/dart-sdk/bin" >> $GITHUB_PATH
 
 
+      - name: Create Dummy .env and Asset Placeholders
+        run: |
+          mkdir -p assets/images assets/files
+          echo "API_URL=https://dummy.com" > .env
+          touch assets/images/.gitkeep assets/files/.gitkeep
+
       - name: Install dependencies
         run: flutter pub get
 
