@@ -24,11 +24,17 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build IPA (No codesign)
-        run: flutter build ipa --no-codesign
+      - name: Build iOS App Bundle
+        run: flutter build ios --release --no-codesign
+
+      - name: Create Unsigned IPA
+        run: |
+          mkdir Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          zip -r Runner.ipa Payload
 
       - name: Archive IPA Artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ios-ipa-build
-          path: build/ios/archive/Runner.xcarchive
+          path: Runner.ipa
