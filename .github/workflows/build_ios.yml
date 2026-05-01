@@ -12,45 +12,61 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@v4
 
       - name: Set up Flutter
-        run: |
-          git clone https://github.com/flutter/flutter.git -b stable --depth 1
-          echo "$GITHUB_WORKSPACE/flutter/bin" >> $GITHUB_PATH
-          echo "$GITHUB_WORKSPACE/flutter/bin/cache/dart-sdk/bin" >> $GITHUB_PATH
-
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
 
       - name: Create Dummy .env and Asset Placeholders
         run: |
+          echo "Creating dummy .env and placeholders everywhere to be absolutely safe"
           mkdir -p assets/images assets/files
           echo "API_URL=https://dummy.com" > .env
+          echo "API_URL=https://dummy.com" > assets/.env
+          mkdir -p ios && echo "API_URL=https://dummy.com" > ios/.env
+          mkdir -p ios/Runner && echo "API_URL=https://dummy.com" > ios/Runner/.env
           touch assets/images/.gitkeep assets/files/.gitkeep
+          echo "Listing root directory files:"
+          ls -la
+          echo "Listing assets files:"
+          ls -la assets
 
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build with Xcode directly
+      - name: Build iOS App Bundle
         run: |
-          flutter build ios --config-only || true
-          xcodebuild -workspace ios/Runner.xcworkspace \
-                     -scheme Runner \
-                     -configuration Release \
-                     -sdk iphoneos \
-                     CODE_SIGNING_ALLOWED=NO \
-                     CODE_SIGNING_REQUIRED=NO \
-                     CODE_SIGN_IDENTITY="" \
-                     clean build
+          echo "Attempting to build with Flutter CLI"
+          flutter build ios --release --no-codesign || echo "Flutter build returned exit code but may have succeeded in generating Runner.app"
+          
+          if [ -d "build/ios/iphoneos/Runner.app" ]; then
+            echo "Runner.app generated successfully via Flutter CLI!"
+          else
+            echo "Flutter CLI did not generate Runner.app. Falling back to manual xcodebuild."
+            flutter build ios --config-only || true
+            xcodebuild -workspace ios/Runner.xcworkspace \
+                       -scheme Runner \
+                       -configuration Release \
+                       -sdk iphoneos \
+                       CODE_SIGNING_ALLOWED=NO \
+                       CODE_SIGNING_REQUIRED=NO \
+                       CODE_SIGN_IDENTITY="" \
+                       clean build
+          fi
 
       - name: Create Unsigned IPA
         run: |
           mkdir Payload
           cp -r build/ios/iphoneos/Runner.app Payload/ || true
           cp -r ios/build/Release-iphoneos/Runner.app Payload/ || true
+          cp -r build/ios/iphoneos/Runner.app Payload/ || echo "No Flutter CLI app bundle found"
+          cp -r ios/build/Release-iphoneos/Runner.app Payload/ || echo "No Xcode fallback app bundle found"
           zip -r Runner.ipa Payload
 
       - name: Archive IPA Artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@v4
         with:
           name: ios-ipa-build
           path: Runner.ipa
