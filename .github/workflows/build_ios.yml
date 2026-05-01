@@ -25,7 +25,7 @@ jobs:
         run: flutter pub get
 
       - name: Build iOS App Bundle
-        run: flutter build ios --release --no-codesign -t lib/main.dart -- CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+        run: flutter build ios --release --no-codesign -t lib/main.dart -- CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=YES
 
       - name: Create Unsigned IPA
         run: |
