@@ -1,6 +1,9 @@
-import '../datasources/auth_remote_data_source.dart';
-import '../../domain/entities/user_entity.dart';
-//import '../../domain/repositories/auth_repository.dart';
+import 'package:dartz/dartz.dart';
+import 'package:mobile/core/error/failures.dart';
+import 'package:mobile/features/auth/data/datasources/auth_remote_data_source.dart';
+import 'package:mobile/features/auth/domain/entities/user_entity.dart';
+import 'package:mobile/features/auth/domain/entities/room_verification_entity.dart';
+import 'package:mobile/features/auth/domain/repositories/auth_repository.dart';
 
 // Bản thực thi Hợp đồng
 class AuthRepositoryImpl implements AuthRepository {
@@ -40,5 +43,41 @@ class AuthRepositoryImpl implements AuthRepository {
       role: role,
       roomCode: roomCode,
     );
+  }
+
+  @override
+  Future<UserEntity> googleAuth({
+    required String idToken,
+    required String role,
+    String? roomId,
+  }) async {
+    return await authRemoteDataSource.googleAuth(
+      idToken: idToken,
+      role: role,
+      roomId: roomId,
+    );
+  }
+
+  @override
+  Future<void> setServerRole(String role) async {}
+
+  @override
+  Future<void> sendOtp(String email) async {}
+
+  @override
+  Future<void> verifyOtp({required String email, required String otp}) async {}
+
+  @override
+  Future<Either<Failure, RoomVerificationEntity>> verifyRoom(String roomCode) async {
+    try {
+      final result = await authRemoteDataSource.verifyRoom(roomCode);
+      if (result.isValid) {
+        return Right(result);
+      } else {
+        return Left(ServerFailure(result.message ?? 'Mã phòng không hợp lệ'));
+      }
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
   }
 }

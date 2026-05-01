@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import '../../../../core/network/dio_client.dart';
 import '../models/user_model.dart';
+import '../models/room_verification_model.dart';
 
 class AuthRemoteDataSource {
   final DioClient dioClient;
@@ -58,6 +59,46 @@ class AuthRemoteDataSource {
       );
 
       return UserModel.fromJson(response.data);
+    } on DioException catch (e) {
+      final errorMessage = e.response?.data['message'] ?? 'Lỗi kết nối máy chủ';
+      throw Exception(errorMessage);
+    }
+  }
+
+  // --- GOOGLE AUTH ---
+  Future<UserModel> googleAuth({
+    required String idToken,
+    required String role,
+    String? roomId,
+  }) async {
+    try {
+      final response = await dioClient.dio.post(
+        '/auth/google',
+        data: {
+          'idToken': idToken,
+          'role': role,
+          if (role == 'student' && roomId != null) 'roomId': roomId,
+        },
+      );
+
+      return UserModel.fromJson(response.data);
+    } on DioException catch (e) {
+      final errorMessage = e.response?.data['message'] ?? 'Lỗi kết nối máy chủ';
+      throw Exception(errorMessage);
+    }
+  }
+
+  // --- API XÁC THỰC MÃ PHÒNG THI ---
+  Future<RoomVerificationModel> verifyRoom(String roomCode) async {
+    try {
+      final response = await dioClient.dio.post(
+        '/exams/verify-room',
+        data: {
+          'room_code': roomCode,
+        },
+      );
+
+      return RoomVerificationModel.fromJson(response.data);
     } on DioException catch (e) {
       final errorMessage = e.response?.data['message'] ?? 'Lỗi kết nối máy chủ';
       throw Exception(errorMessage);

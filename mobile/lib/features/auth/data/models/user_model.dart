@@ -23,14 +23,15 @@ class UserModel extends UserEntity {
     final userData = json['user'];
 
     return UserModel(
-      id: userData['id'],
+      id: userData['id'] ?? 0,
       fullName:
           userData['full_name'] ??
-          userData['fullName'], // Phòng hờ API trả về camelCase
-      email: userData['email'],
-      role: userData['role'],
-      accessToken: json['token'], // Lấy chữ 'token' ở vòng ngoài
-      refreshToken: json['refreshToken'], // Lấy ở vòng ngoài
+          userData['fullName'] ??
+          '', // Phòng hờ API trả về camelCase hoặc null
+      email: userData['email'] ?? '',
+      role: userData['role'] ?? '',
+      accessToken: json['token'] ?? '', // Lấy chữ 'token' ở vòng ngoài
+      refreshToken: json['refreshToken'] ?? '', // Lấy ở vòng ngoài
     );
   }
 }
