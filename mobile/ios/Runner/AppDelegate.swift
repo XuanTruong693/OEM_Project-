@@ -35,11 +35,9 @@ import UIKit
     if secureField == nil {
       let field = UITextField()
       field.isSecureTextEntry = true
+      field.translatesAutoresizingMaskIntoConstraints = false
       if let view = window?.rootViewController?.view {
         view.addSubview(field)
-        field.centerYAnchor.constraint(equalTo: view.centerYAnchor).isActive = true
-        field.centerXAnchor.constraint(equalTo: view.centerXAnchor).isActive = true
-        field.layer.superlayer?.addSublayer(field.layer)
         secureField = field
       }
     }
