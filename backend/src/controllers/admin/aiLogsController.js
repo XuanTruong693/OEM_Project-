@@ -20,16 +20,16 @@ exports.getAIGradingLogs = async (req, res) => {
       EXISTS (
         SELECT 1 FROM student_answers sa_mod
         JOIN (
-            SELECT al1.question_id, al1.student_id, al1.ai_suggested_score
+            SELECT al1.question_id, al1.submission_id, al1.ai_suggested_score
             FROM ai_logs al1
             INNER JOIN (
-                SELECT question_id, student_id, MAX(created_at) as max_time 
+                SELECT question_id, submission_id, MAX(created_at) as max_time 
                 FROM ai_logs 
-                GROUP BY question_id, student_id
+                GROUP BY question_id, submission_id
             ) al2 ON al1.question_id = al2.question_id 
-                 AND al1.student_id = al2.student_id 
+                 AND al1.submission_id = al2.submission_id 
                  AND al1.created_at = al2.max_time
-        ) latest_al ON sa_mod.question_id = latest_al.question_id AND s.user_id = latest_al.student_id
+        ) latest_al ON sa_mod.question_id = latest_al.question_id AND s.id = latest_al.submission_id
         WHERE sa_mod.submission_id = s.id 
         AND (
             (latest_al.ai_suggested_score IS NOT NULL AND ABS(sa_mod.score - latest_al.ai_suggested_score) > 0.001)
@@ -77,16 +77,16 @@ exports.getAIGradingLogs = async (req, res) => {
         (
           SELECT 1 FROM student_answers sa_check
           JOIN (
-              SELECT al3.question_id, al3.student_id, al3.ai_suggested_score
+              SELECT al3.question_id, al3.submission_id, al3.ai_suggested_score
               FROM ai_logs al3
               INNER JOIN (
-                  SELECT question_id, student_id, MAX(created_at) as max_time 
+                  SELECT question_id, submission_id, MAX(created_at) as max_time 
                   FROM ai_logs 
-                  GROUP BY question_id, student_id
+                  GROUP BY question_id, submission_id
               ) al4 ON al3.question_id = al4.question_id 
-                   AND al3.student_id = al4.student_id 
+                   AND al3.submission_id = al4.submission_id 
                    AND al3.created_at = al4.max_time
-          ) latest_check ON sa_check.question_id = latest_check.question_id AND s.user_id = latest_check.student_id
+          ) latest_check ON sa_check.question_id = latest_check.question_id AND s.id = latest_check.submission_id
           WHERE sa_check.submission_id = s.id 
           AND (
               (latest_check.ai_suggested_score IS NOT NULL AND ABS(sa_check.score - latest_check.ai_suggested_score) > 0.001)
@@ -208,9 +208,9 @@ exports.getAIGradingLogDetail = async (req, res) => {
             JOIN exam_questions q ON sa.question_id = q.id
             LEFT JOIN (
                 SELECT t1.* FROM ai_logs t1
-                JOIN (SELECT question_id, student_id, MAX(created_at) as max_time FROM ai_logs GROUP BY question_id, student_id) t2 
-                ON t1.question_id = t2.question_id AND t1.student_id = t2.student_id AND t1.created_at = t2.max_time
-            ) al ON al.question_id = q.id AND al.student_id = (SELECT user_id FROM submissions WHERE id = ?)
+                JOIN (SELECT question_id, submission_id, MAX(created_at) as max_time FROM ai_logs GROUP BY question_id, submission_id) t2 
+                ON t1.question_id = t2.question_id AND t1.submission_id = t2.submission_id AND t1.created_at = t2.max_time
+            ) al ON al.question_id = q.id AND al.submission_id = ?
             WHERE sa.submission_id = ? AND q.type = 'Essay'
             ORDER BY q.order_index ASC, q.id ASC
         `, [submissionId, submissionId]);

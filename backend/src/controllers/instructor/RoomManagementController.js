@@ -20,8 +20,8 @@ async function getActiveRooms(req, res) {
                 e.title, 
                 e.exam_room_code, 
                 e.status, 
-                e.time_open, 
-                e.time_close,
+                DATE_FORMAT(e.time_open, '%Y-%m-%d %H:%i:%s') as time_open, 
+                DATE_FORMAT(e.time_close, '%Y-%m-%d %H:%i:%s') as time_close,
                 e.duration_minutes,
                 e.require_face_check,
                 e.require_student_card,
@@ -38,7 +38,7 @@ async function getActiveRooms(req, res) {
             GROUP BY e.id
             ORDER BY e.updated_at DESC
             `,
-            { 
+            {
                 replacements: { instructorId },
                 type: QueryTypes.SELECT
             }
@@ -65,14 +65,16 @@ async function getRoomDetail(req, res) {
             `
             SELECT 
                 id, title, exam_room_code, status, 
-                time_open, time_close, duration_minutes,
+                DATE_FORMAT(time_open, '%Y-%m-%d %H:%i:%s') as time_open, 
+                DATE_FORMAT(time_close, '%Y-%m-%d %H:%i:%s') as time_close,
+                duration_minutes,
                 require_face_check, require_student_card, 
                 monitor_screen, grading_mode, allow_view_answers
             FROM exams 
             WHERE id = :examId AND instructor_id = :instructorId
             LIMIT 1
             `,
-            { 
+            {
                 replacements: { examId, instructorId },
                 type: QueryTypes.SELECT
             }
@@ -150,23 +152,23 @@ async function updateRoomConfig(req, res) {
 
         // Build update query dynamically
         const allowedFields = [
-            'duration_minutes', 'time_open', 'time_close', 
-            'require_face_check', 'require_student_card', 
+            'duration_minutes', 'time_open', 'time_close',
+            'require_face_check', 'require_student_card',
             'monitor_screen', 'grading_mode', 'allow_view_answers'
         ];
-        
+
         const setClauses = [];
         const replacements = [];
-        
+
         for (const field of allowedFields) {
             if (updates[field] !== undefined) {
                 if (field === 'time_open' || field === 'time_close') {
-                    // Use STR_TO_DATE to bypass Sequelize's auto-timezone conversion
                     setClauses.push(`${field} = STR_TO_DATE(?, '%Y-%m-%d %H:%i:%s')`);
+                    replacements.push(updates[field]);
                 } else {
                     setClauses.push(`${field} = ?`);
+                    replacements.push(updates[field]);
                 }
-                replacements.push(updates[field]);
             }
         }
 
@@ -177,17 +179,12 @@ async function updateRoomConfig(req, res) {
         replacements.push(examId);
         await sequelize.query(
             `UPDATE exams SET ${setClauses.join(', ')}, updated_at = NOW() WHERE id = ?`,
-            { 
+            {
                 replacements,
                 type: QueryTypes.UPDATE
             }
         );
-
-        // Prepare broadcast data (Use ISO for absolute time consistency across different client timezones)
         const broadcastData = { ...updates };
-        if (broadcastData.time_close) {
-            broadcastData.time_close = new Date(broadcastData.time_close).toISOString();
-        }
 
         // Detailed logging for debugging
         const [[{ serverNow }]] = await sequelize.query("SELECT NOW() as serverNow");
@@ -242,7 +239,7 @@ async function getRoomStudents(req, res) {
             WHERE s.exam_id = :examId
             ORDER BY s.started_at DESC
             `,
-            { 
+            {
                 replacements: { examId },
                 type: QueryTypes.SELECT
             }
@@ -303,7 +300,7 @@ async function performStudentAction(req, res) {
                  VALUES (?, ?, ?, 'admin_bypass', 'low', ?)`,
                 { replacements: [submissionId, studentId, examId, JSON.stringify({ granted_by: instructorId })] }
             );
-            
+
             // Notify student to refresh or proceed
             if (io) {
                 io.emit(`student:bypass-granted:${submissionId}`);
@@ -314,7 +311,7 @@ async function performStudentAction(req, res) {
                     is_bypassed: true
                 });
             }
-            
+
             res.json({ success: true, message: "Bypass granted" });
         } else {
             res.status(400).json({ message: "Invalid action" });

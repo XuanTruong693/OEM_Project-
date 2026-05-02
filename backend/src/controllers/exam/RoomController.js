@@ -231,51 +231,70 @@ async function joinExam(req, res) {
         let submissionId;
         let nextAttempt;
 
-        const [existing] = await sequelize.query(
-            `SELECT id, attempt_no FROM submissions 
-             WHERE exam_id = ? AND user_id = ? AND status IN ('pending', 'in_progress') ORDER BY id DESC LIMIT 1`,
-            { replacements: [exam_id, userId] }
-        );
+        const conn = await sequelize.connectionManager.getConnection({ type: 'write' });
+        try {
+            // Raw connection from sequelize needs .promise() to work with async/await
+            const promiseConn = conn.promise ? conn.promise() : conn;
 
-        if (Array.isArray(existing) && existing.length > 0) {
-            submissionId = existing[0].id;
-            nextAttempt = existing[0].attempt_no;
-            console.log(`✅ [joinExam] Reusing active submission ${submissionId} for user ${userId}, exam ${exam_id}, attempt ${nextAttempt}`);
-        } else {
-            if (maxAttempts > 0) {
-                const [attemptCount] = await sequelize.query(
-                    `SELECT COUNT(*) as attempt_count FROM submissions WHERE exam_id = ? AND user_id = ? AND status NOT IN ('pending', 'in_progress')`,
-                    { replacements: [exam_id, userId] }
+            await promiseConn.query('START TRANSACTION');
+
+            // 1. Check for existing active submission with LOCK
+            const [existing] = await promiseConn.query(
+                `SELECT id, attempt_no FROM submissions 
+                 WHERE exam_id = ? AND user_id = ? AND status IN ('pending', 'in_progress') 
+                 ORDER BY id DESC LIMIT 1 FOR UPDATE`,
+                [exam_id, userId]
+            );
+
+            if (existing && existing.length > 0) {
+                submissionId = existing[0].id;
+                nextAttempt = existing[0].attempt_no;
+                console.log(`✅ [joinExam] Reusing active submission ${submissionId} for user ${userId}, exam ${exam_id}, attempt ${nextAttempt}`);
+                await promiseConn.query('COMMIT');
+            } else {
+                // 2. Calculate next attempt with LOCK on all student submissions
+                const [maxAttemptRows] = await promiseConn.query(
+                    `SELECT COALESCE(MAX(attempt_no), 0) AS max_attempt FROM submissions 
+                     WHERE exam_id = ? AND user_id = ? FOR UPDATE`,
+                    [exam_id, userId]
                 );
-                const currentAttempts = attemptCount[0]?.attempt_count || 0;
-
-                if (currentAttempts >= maxAttempts) {
+                
+                const currentAttemptCount = maxAttemptRows[0]?.max_attempt || 0;
+                
+                // 3. Re-verify max attempts if limit exists
+                if (maxAttempts > 0 && currentAttemptCount >= maxAttempts) {
+                    await promiseConn.query('ROLLBACK');
                     return res.status(403).json({
                         message: `Bạn đã hết lượt thi. Số lần thi tối đa: ${maxAttempts}`,
                         max_attempts: maxAttempts,
-                        current_attempts: currentAttempts,
+                        current_attempts: currentAttemptCount,
                         reason: "max_attempts_exceeded"
                     });
                 }
+
+                nextAttempt = currentAttemptCount + 1;
+
+                // 4. Create new submission
+                const [ins] = await promiseConn.query(
+                    `INSERT INTO submissions (exam_id, user_id, status, attempt_no, submitted_at, cheating_count, created_at, updated_at) 
+                     VALUES (?, ?, 'pending', ?, NULL, 0, NOW(), NOW())`,
+                    [exam_id, userId, nextAttempt]
+                );
+                
+                submissionId = ins?.insertId || ins;
+                await promiseConn.query('COMMIT');
+
+                console.log(
+                    `✅ [joinExam] Created new submission ${submissionId} for user ${userId}, exam ${exam_id}, attempt ${nextAttempt}`
+                );
             }
-
-            const [maxAttempt] = await sequelize.query(
-                `SELECT COALESCE(MAX(attempt_no), 0) AS max_attempt FROM submissions WHERE exam_id = ? AND user_id = ?`,
-                { replacements: [exam_id, userId] }
-            );
-
-            nextAttempt = (maxAttempt[0]?.max_attempt || 0) + 1;
-
-            const [ins] = await sequelize.query(
-                `INSERT INTO submissions (exam_id, user_id, status, attempt_no, submitted_at, cheating_count) 
-                 VALUES (?, ?, 'pending', ?, NULL, 0)`,
-                { replacements: [exam_id, userId, nextAttempt] }
-            );
-            submissionId = ins?.insertId || ins;
-
-            console.log(
-                `✅ [joinExam] Created new submission ${submissionId} for user ${userId}, exam ${exam_id}, attempt ${nextAttempt}`
-            );
+        } catch (lockErr) {
+            // Make sure we have the promise version for rollback too
+            const promiseConn = conn.promise ? conn.promise() : conn;
+            await promiseConn.query('ROLLBACK');
+            throw lockErr;
+        } finally {
+            await sequelize.connectionManager.releaseConnection(conn);
         }
 
         // Record verified room (if table exists)

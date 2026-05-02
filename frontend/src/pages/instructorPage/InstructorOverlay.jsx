@@ -266,7 +266,7 @@ export default function InstructorOverlay() {
       const severityEmoji = data.severity === "high" ? "🔴" : data.severity === "medium" ? "🟡" : "🟠";
 
       const notification = new Notification("🚨 GIAN LẬN - " + data.studentName, {
-        body: `${severityEmoji} ${eventTypeText}\nLần vi phạm: ${data.cheatingCount}/5`,
+        body: `${severityEmoji} ${eventTypeText}\nLần vi phạm: ${data.cheatingCount}/10`,
         icon: "/icons/icon-192x192.png",
         tag: `cheating-${data.submissionId}-${Date.now()}`, // Unique tag to allow multiple notifications
         requireInteraction: true, // Don't auto-dismiss
@@ -463,10 +463,10 @@ export default function InstructorOverlay() {
                 Lần vi phạm
               </p>
               <p
-                className={`text-lg font-bold ${event.cheating_count >= 5 ? "text-red-600" : "text-orange-600"
+                className={`text-lg font-bold ${event.cheating_count >= 10 ? "text-red-600" : "text-orange-600"
                   }`}
               >
-                {event.cheating_count} / 5
+                {event.cheating_count} / 10
               </p>
             </div>
           </div>
@@ -483,11 +483,11 @@ export default function InstructorOverlay() {
         </div>
 
         {/* Warning Message - If auto-submit */}
-        {event.cheating_count >= 5 && (
+        {event.cheating_count >= 10 && (
           <div className="bg-red-50 border-t border-red-200 px-6 py-4 flex items-start gap-3">
             <span className="text-2xl">⚠️</span>
             <p className="text-red-800 font-semibold text-sm leading-relaxed">
-              Sinh viên vượt quá giới hạn vi phạm (5/5). Bài thi sẽ được tự động
+              Sinh viên vượt quá giới hạn vi phạm (10/10). Bài thi sẽ được tự động
               nộp.
             </p>
           </div>

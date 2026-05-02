@@ -13,4 +13,5 @@ class GradeResponse(BaseModel):
     confidence: float
     explanation: str
     fact_multiplier: float
+    type: Optional[str] = None
     error: Optional[str] = None

@@ -73,53 +73,11 @@ router.post("/answers/:answerId/confirm-ai", ...auth, confirmAIScore);
 router.post("/grading/retry-failed", ...auth, retryFailedGrading);
 router.post("/grading/:submissionId/finalize", ...auth, finalizeSubmission);
 // POST /api/instructor/exams/:examId/approve-all-scores
-// RESTORED: Exact original inline handler
+// Delegated to GradingController.approveAllExamScores (includes results sync)
 router.post(
   "/exams/:examId/approve-all-scores",
-  verifyToken,
-  authorizeRole(["instructor"]),
-  async (req, res) => {
-    try {
-      const examId = parseInt(req.params.examId, 10);
-      if (!Number.isFinite(examId))
-        return res.status(400).json({ message: "examId invalid" });
-
-      const { ensureExamOwnership } = require("../controllers/instructor");
-      const ok = await ensureExamOwnership(examId, req.user.id);
-      if (!ok) {
-        return res.status(403).json({ message: "Not owner of exam" });
-      }
-
-      console.log(`📝 [ApproveAll] Starting bulk approval for exam ${examId}`);
-
-      // Update all submissions: copy suggested_total_score to total_score, set instructor_confirmed=1
-      const [result] = await sequelize.query(
-        `UPDATE submissions 
-         SET total_score = suggested_total_score,
-             instructor_confirmed = 1,
-             status = 'confirmed'
-         WHERE exam_id = ? 
-           AND instructor_confirmed = 0`,
-        { replacements: [examId] }
-      );
-
-      const approvedCount = result.affectedRows || 0;
-      console.log(
-        `✅ [ApproveAll] Approved ${approvedCount} submissions for exam ${examId}`
-      );
-
-      return res.json({
-        success: true,
-        approved: approvedCount,
-        message: `Đã duyệt ${approvedCount} bài thi`,
-      });
-    } catch (err) {
-      console.error("❌ [ApproveAll] Error:", err);
-      return res
-        .status(500)
-        .json({ message: "Server error", error: err.message });
-    }
-  }
+  ...auth,
+  approveAllExamScores
 );
 
 // PUT /api/instructor/exams/:examId/students/:studentId/score

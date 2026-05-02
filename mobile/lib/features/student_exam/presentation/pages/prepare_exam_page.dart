@@ -21,10 +21,10 @@ class PrepareExamPage extends StatefulWidget {
   final String roomToken;
 
   const PrepareExamPage({
-    Key? key,
+    super.key,
     required this.examId,
     required this.roomToken,
-  }) : super(key: key);
+  });
 
   @override
   State<PrepareExamPage> createState() => _PrepareExamPageState();
@@ -49,7 +49,11 @@ class _PrepareExamPageState extends State<PrepareExamPage> {
       appBar: AppBar(
         title: const Text(
           'Chuẩn bị vào thi',
-          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, letterSpacing: -0.5),
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 18,
+            letterSpacing: -0.5,
+          ),
         ),
         centerTitle: true,
         backgroundColor: Colors.white,
@@ -57,10 +61,7 @@ class _PrepareExamPageState extends State<PrepareExamPage> {
         elevation: 0,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(
-            color: const Color(0xFFE2E8F0),
-            height: 1,
-          ),
+          child: Container(color: const Color(0xFFE2E8F0), height: 1),
         ),
       ),
 
@@ -97,12 +98,18 @@ class _PrepareExamPageState extends State<PrepareExamPage> {
                 children: [
                   const CircularProgressIndicator(
                     strokeWidth: 3,
-                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2563EB)),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Color(0xFF2563EB),
+                    ),
                   ),
                   const SizedBox(height: 20),
                   Text(
                     'Đang kết nối phòng thi...',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade700,
+                    ),
                   ),
                 ],
               ),
@@ -124,17 +131,28 @@ class _PrepareExamPageState extends State<PrepareExamPage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                      const Icon(
+                        Icons.error_outline,
+                        color: Colors.red,
+                        size: 48,
+                      ),
                       const SizedBox(height: 12),
                       Text(
                         'Không thể vào phòng thi',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.grey.shade800),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.grey.shade800,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       Text(
                         joinState.message,
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey.shade600,
+                        ),
                       ),
                       const SizedBox(height: 20),
                       SizedBox(
@@ -148,7 +166,13 @@ class _PrepareExamPageState extends State<PrepareExamPage> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: const Text('Quay lại', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                          child: const Text(
+                            'Quay lại',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -199,7 +223,10 @@ class _PrepareExamPageState extends State<PrepareExamPage> {
           return Center(
             child: Text(
               verifyState.errorMessage!,
-              style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                color: Colors.red,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           );
         }

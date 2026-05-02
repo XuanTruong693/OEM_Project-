@@ -38,6 +38,7 @@ const InstructorDashboard = () => {
     fetchStats();
   }, []);
 
+
   // 🧭 Fetch user info
   useEffect(() => {
     // Prefer avatar stored in localStorage (updated by Profile page upload)
@@ -162,7 +163,6 @@ const InstructorDashboard = () => {
             <FiLogOut className="w-5 h-5 text-gray-600" />
           </button>
         </div>
-
         {/* Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {/* Tổng số đề đã tạo */}

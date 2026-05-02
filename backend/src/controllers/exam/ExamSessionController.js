@@ -10,14 +10,13 @@ async function startExam(req, res) {
         const submissionId = req.params.id;
         const userId = req.user.id;
 
-        // 1) Lấy submission với verification status và check bypass
+        // 1) Lấy submission với verification status
         const [subRows] = await sequelize.query(
             `SELECT 
         s.id, s.exam_id, s.user_id, s.status, s.submitted_at,
         (CASE WHEN s.face_image_url IS NOT NULL OR s.face_image_blob IS NOT NULL THEN 1 ELSE 0 END) AS face_verified,
         (CASE WHEN s.student_card_url IS NOT NULL OR s.student_card_blob IS NOT NULL THEN 1 ELSE 0 END) AS card_verified,
-        e.require_face_check, e.require_student_card, e.monitor_screen,
-        (SELECT COUNT(*) FROM cheating_logs WHERE submission_id = s.id AND event_type = 'admin_bypass') AS bypass_count
+        e.require_face_check, e.require_student_card, e.monitor_screen
        FROM submissions s
        JOIN exams e ON e.id = s.exam_id
        WHERE s.id = ? AND s.user_id = ?
@@ -26,47 +25,38 @@ async function startExam(req, res) {
         );
         const sub =
             Array.isArray(subRows) && subRows.length > 0 ? subRows[0] : null;
-
-        if (!sub) {
-            console.error(`❌ [startExam] Submission ${submissionId} not found for user ${userId}`);
-            return res.status(404).json({ message: "Submission not found" });
-        }
-
-        // Robust bypass check - handles strings, numbers, bigints
-        const isBypassed = Number(sub.bypass_count || sub.is_bypassed || 0) > 0;
-
-        console.log(`🔍 [startExam] Checking sub ${submissionId}:`, {
-            face_verified: sub.face_verified,
-            card_verified: sub.card_verified,
-            require_face: sub.require_face_check,
-            require_card: sub.require_student_card,
-            isBypassed: isBypassed,
-            bypass_count: sub.bypass_count
-        });
+        if (!sub) return res.status(404).json({ message: "Submission not found" });
 
         // 2) Kiểm tra verification requirements TRƯỚC KHI cho start
-        // BỎ QUA kiểm tra nếu đã được admin bypass
-        if (!isBypassed) {
-            if (sub.require_face_check && !Number(sub.face_verified)) {
-                console.warn(`❌ Student ${userId} blocked: Face verification required`);
-                return res.status(403).json({
-                    message: "Bạn cần xác minh khuôn mặt trước khi bắt đầu thi",
-                    requireFaceCheck: true,
-                    exam_id: sub.exam_id,
-                    submission_id: submissionId,
-                });
-            }
-            if (sub.require_student_card && !Number(sub.card_verified)) {
-                console.warn(`❌ Student ${userId} blocked: Student card verification required`);
-                return res.status(403).json({
-                    message: "Bạn cần xác minh thẻ sinh viên trước khi bắt đầu thi",
-                    requireStudentCard: true,
-                    exam_id: sub.exam_id,
-                    submission_id: submissionId,
-                });
-            }
-        } else {
-            console.log(`[startExam] Admin bypass active for submission ${submissionId}. Skipping verification checks.`);
+        // Kiểm tra xem sinh viên có được Giảng viên bypass (admin_bypass) cho submission này không
+        const [bypassRows] = await sequelize.query(
+            `SELECT id FROM cheating_logs WHERE submission_id = ? AND event_type = 'admin_bypass' LIMIT 1`,
+            { replacements: [submissionId] }
+        );
+        const isBypassed = Array.isArray(bypassRows) && bypassRows.length > 0;
+
+        if (!isBypassed && sub.require_face_check && !sub.face_verified) {
+            console.warn(
+                `❌ Student ${userId} cố start exam ${sub.exam_id} nhưng chưa verify face`
+            );
+            return res.status(403).json({
+                message: "Bạn cần xác minh khuôn mặt trước khi bắt đầu thi",
+                requireFaceCheck: true,
+                exam_id: sub.exam_id,
+                submission_id: submissionId,
+            });
+        }
+
+        if (!isBypassed && sub.require_student_card && !sub.card_verified) {
+            console.warn(
+                `❌ Student ${userId} cố start exam ${sub.exam_id} nhưng chưa verify card`
+            );
+            return res.status(403).json({
+                message: "Bạn cần xác minh thẻ sinh viên trước khi bắt đầu thi",
+                requireCardCheck: true,
+                exam_id: sub.exam_id,
+                submission_id: submissionId,
+            });
         }
 
         // 3) Kiểm tra status - CHỈ CHẶN nếu đã nộp bài (có submitted_at)
@@ -136,17 +126,6 @@ async function startExam(req, res) {
                     `UPDATE submissions SET status = 'in_progress', started_at = COALESCE(started_at, NOW()) WHERE id = ?`,
                     { replacements: [submissionId] }
                 );
-
-                // Real-time broadcast to instructor
-                const { getIO } = require("../../services/socketService");
-                const io = getIO();
-                if (io) {
-                    io.to(`exam:${sub.exam_id}`).emit("instructor:student-status-updated", {
-                        submissionId,
-                        status: 'in_progress',
-                        started_at: new Date().toISOString()
-                    });
-                }
             } else if (hasStartedAt) {
                 await sequelize.query(
                     `UPDATE submissions SET started_at = COALESCE(started_at, NOW()) WHERE id = ?`,
@@ -451,7 +430,7 @@ async function submitExam(req, res) {
             });
         }
 
-        // ✅ Trigger AI Grading for Essays (Fire & Forget)
+        //Trigger AI Grading for Essays (Fire & Forget)
         // NOTE: gradeSubmission() has built-in deduplication — safe to call multiple times
         gradeSubmission(submissionId).catch(e => {
             console.warn("⚠️ [submitExam] Failed to queue AI grading:", e.message);
@@ -466,42 +445,7 @@ async function submitExam(req, res) {
             /* ignore if SP missing */
         }
 
-        // LOGIC TỰ ĐỘNG SO SÁNH ĐIỂM CAO NHẤT
-        try {
-            const [allScores] = await sequelize.query(
-                `SELECT id, total_score, attempt_no 
-         FROM submissions 
-         WHERE exam_id = ? AND user_id = ? AND status = 'graded' AND total_score IS NOT NULL
-         ORDER BY total_score DESC, submitted_at DESC`,
-                { replacements: [sub.exam_id, userId] }
-            );
-
-            if (allScores && allScores.length > 0) {
-                const bestSubmission = allScores[0];
-                const currentScore = totalScore;
-
-                console.log(`📊 [submitExam] Score comparison:`, {
-                    user_id: userId,
-                    exam_id: sub.exam_id,
-                    current_score: currentScore,
-                    best_score: bestSubmission.total_score,
-                    best_submission_id: bestSubmission.id,
-                    total_attempts: allScores.length,
-                });
-
-                if (bestSubmission.id === submissionId) {
-                    console.log(
-                        `🏆 [submitExam] NEW BEST SCORE! User ${userId} achieved ${currentScore} points (attempt ${bestSubmission.attempt_no})`
-                    );
-                } else {
-                    console.log(
-                        `ℹ️ [submitExam] Not best score. Current: ${currentScore}, Best: ${bestSubmission.total_score} (submission ${bestSubmission.id})`
-                    );
-                }
-            }
-        } catch (e) {
-            console.warn("⚠️ [submitExam] Could not analyze best score:", e.message);
-        }
+        // Logic so sánh điểm đã được chuyển sang AIService sau khi AI chấm xong
 
         const [finalRows] = await sequelize.query(
             `SELECT total_score, ai_score, suggested_total_score, status FROM submissions WHERE id = ?`,
@@ -515,8 +459,8 @@ async function submitExam(req, res) {
             suggested_total_score: resp?.suggested_total_score || totalScore,
         });
     } catch (err) {
-        console.error("submitExam error:", err);
-        return res.status(500).json({ message: "Server error" });
+        console.error("submitExam error:", err.message, err.stack);
+        return res.status(500).json({ message: "Server error", error: err.message });
     }
 }
 
@@ -526,3 +470,4 @@ module.exports = {
     proctorEvent,
     submitExam,
 };
+

@@ -12,8 +12,15 @@ const sequelize = new Sequelize(
     port: process.env.DB_PORT,
     logging: false,
     timezone: process.env.APP_TZ || "+07:00",
+    pool: {
+      max: 400,
+      min: 0,
+      acquire: 15000, // Thất bại nhanh sau 5s để thử lại đợt mới
+      idle: 30000
+    },
     dialectOptions: {
-      charset: 'utf8mb4'
+      charset: 'utf8mb4',
+      connectTimeout: 5000 // Thất bại nhanh sau 5s
     }
   }
 );
@@ -26,8 +33,9 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME,
   port: process.env.DB_PORT || 3306,
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit: 400, // Đồng bộ lên 400 kết nối
   queueLimit: 0,
+  connectTimeout: 5000, // Thất bại nhanh sau 5s để đồng bộ
   timezone: process.env.APP_TZ || '+07:00',
   charset: 'utf8mb4'
 });
@@ -65,8 +73,15 @@ const adminSequelize = new Sequelize(
     port: process.env.ADMIN_DB_PORT || process.env.DB_PORT,
     logging: false,
     timezone: process.env.APP_TZ || "+07:00",
+    pool: {
+      max: 10,
+      min: 0,
+      acquire: 30000,
+      idle: 10000
+    },
     dialectOptions: {
-      charset: 'utf8mb4'
+      charset: 'utf8mb4',
+      connectTimeout: 10000
     }
   }
 );

@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from typing import Dict, Set, List, Optional
 
 # =========================================================================
@@ -101,6 +102,7 @@ SAFE_STOPWORDS: Set[str] = {
 }
 
 ABBREVIATIONS: Dict[str, str] = {
+    # Địa danh / Tổ chức
     "tphcm": "hồ chí minh", "tp.hcm": "hồ chí minh", "tp hcm": "hồ chí minh",
     "hcm": "hồ chí minh", "sg": "sài gòn", "hn": "hà nội", "dn": "đà nẵng",
     "vn": "việt nam", "tq": "trung quốc", "lx": "liên xô",
@@ -108,9 +110,12 @@ ABBREVIATIONS: Dict[str, str] = {
     "qh": "quốc hội", "cp": "chính phủ", "ubnd": "ủy ban nhân dân",
     "đcs": "đảng cộng sản", "đcsvn": "đảng cộng sản việt nam",
     "lhq": "liên hợp quốc", "un": "liên hợp quốc", "asean": "hiệp hội các quốc gia đông nam á",
-    "hs": "học sinh", "sv": "sinh viên", "gv": "giáo viên", "bgd": "bộ giáo dục",
+    
+    # Học thuật / Chuyên ngành
+    "hs": "học sinh", "sv": "sinh viên", "gv": "giảng viên", "bgd": "bộ giáo dục",
+    "đh": "đại học", "thpt": "trung học phổ thông", "thcs": "trung học cơ sở",
     "cntt": "công nghệ thông tin", "it": "công nghệ thông tin",
-    "csdl": "cơ sở dữ liệu", "db": "cơ sở dữ liệu",
+    "csdl": "cơ sở dữ liệu", "db": "cơ sở dữ liệu", "dbms": "hệ quản trị cơ sở dữ liệu",
     "pm": "phần mềm", "sw": "phần mềm", "hw": "phần cứng",
     "oop": "lập trình hướng đối tượng",
     "gdp": "tổng sản phẩm quốc nội", "fdi": "đầu tư trực tiếp nước ngoài",
@@ -118,6 +123,24 @@ ABBREVIATIONS: Dict[str, str] = {
     "params": "tham số", "parameter": "tham số", "parm": "tham số", "proc": "thủ tục",
     "trigger": "trình kích hoạt", "func": "hàm", "fn": "hàm",
     "event": "sự kiện", "action": "hành động", "evt": "sự kiện",
+    "vđ": "vấn đề", "qt": "quan trọng", "kn": "kỹ năng",
+    "đk": "điều kiện", "tk": "tài khoản", "mk": "mật khẩu",
+    "mt": "máy tính", "đt": "điện thoại",
+    
+    # Ngôn ngữ Gen Z / Chat (Chỉ giữ lại các từ "An toàn" - High Confidence)
+    "ko": "không", "k": "không", "hok": "không", "hong": "không", "khg": "không",
+    "đc": "được", "dc": "được", "dk": "được",
+    "ntn": "như thế nào", "nt": "nhắn tin", "ib": "nhắn tin", "rep": "trả lời", "tl": "trả lời",
+    "bik": "biết", "bít": "biết",
+    "vs": "với", "ms": "mới", "trc": "trước", "sau": "sau",
+    "ncl": "nói chung là", "ks": "không sao", "z": "vậy",
+    "ak": "à", "uk": "ừ", "r": "rồi", "j": "gì", "gi": "gì",
+    "cj": "chị", "ae": "anh em", "mik": "mình",
+    "wa": "quá", "lun": "luôn", "đag": "đang", "đg": "đang",
+    "zv": "như vậy",
+    "lm": "làm", "nhe": "nhé", "nha": "nhé",
+    
+    # Xin xỏ (Noise)
     "xin xỏ": "noise", "thầy ơi": "noise", "giúp em": "noise",
     "cảm ơn": "noise", "đáp án": "noise", "bài làm": "noise", "thưa thầy": "noise",
     "thưa cô": "noise", "nới tay": "noise", "giúp con": "noise",
@@ -273,6 +296,8 @@ SYNONYM_PAIRS: Dict[str, str] = {
     "method": "hàm", "function": "hàm", "phương thức": "hàm",
     "biến thành viên": "thuộc tính", "member variable": "thuộc tính",
     "property": "thuộc tính", "attribute": "thuộc tính",
+    "đóng nhiều vai trò": "giao diện duy nhất", "nhiều hình thái": "giao diện duy nhất",
+    "nhiều vai trò": "giao diện duy nhất", "một giao diện": "giao diện duy nhất",
     
     # SLANG & VIẾT TẮT
     "ko": "không", "k": "không", "khg": "không", "hông": "không", "hong": "không", "hok": "không",
@@ -362,6 +387,18 @@ CODE_SNIPPETS_MAP: Dict[str, str] = {
     r"\bupdate\b": "cập nhật dữ liệu",
     r"\bdelete\b": "xóa dữ liệu",
     r"\bjoin\b": "kết nối",
+    r"\bgroup by\b": "nhóm",
+    r"\border by\b": "sắp xếp",
+}
+
+TEMPORAL_MARKERS: Set[str] = {
+    "trước khi", "sau khi", "sau đó", "trước", "sau", "rồi mới", "ngay sau khi",
+    "tiếp theo", "trước tiên", "ban đầu", "cuối cùng"
+}
+
+CAUSAL_MARKERS: Set[str] = {
+    "vì", "do", "bởi vì", "nên", "do đó", "dẫn đến", "kết quả là", "tại vì",
+    "nhờ có", "khiến cho", "làm cho"
 }
 
 
@@ -389,11 +426,57 @@ def remove_safe_stopwords(text: str) -> str:
 def is_stopword(word: str) -> bool:
     return word.lower() in VIETNAMESE_STOPWORDS
 
-def expand_abbreviations(text: str) -> str:
+def unicode_normalize(text: str) -> str:
+    """Normalize text to NFC (Precomposed) to ensure consistent Vietnamese diacritics."""
     if not text: return ""
-    words = text.lower().split()
-    expanded_words = [ABBREVIATIONS.get(w, w) for w in words]
-    return " ".join(expanded_words)
+    return unicodedata.normalize('NFC', text)
+
+def repair_text_for_ai(text: str) -> str:
+    """
+    [V26] Intelligent Repair: Standardizes Gen Z slang and technical abbreviations.
+    Sử dụng Regex \b để xử lý chính xác từ viết tắt ngay cả khi đứng cạnh dấu câu.
+    """
+    if not text: return ""
+    
+    # 1. Unicode Normalize
+    text = unicode_normalize(text)
+    
+    # 2. Deep clean (preserve marks and basic punctuation)
+    text = deep_clean_text(text)
+    
+    # 3. Intelligent Repair using Regex
+    repaired_text = text
+    # Sort keys by length descending to replace "ko" before "k"
+    sorted_keys = sorted(ABBREVIATIONS.keys(), key=len, reverse=True)
+    
+    for key in sorted_keys:
+        value = ABBREVIATIONS[key]
+        if value == "noise": continue
+        pattern = rf'(?<![a-zA-ZÀ-ỹ]){re.escape(key)}(?![a-zA-ZÀ-ỹ])'
+        repaired_text = re.sub(pattern, value, repaired_text, flags=re.IGNORECASE)
+            
+    return repaired_text
+
+def expand_abbreviations(text: str) -> str:
+    """
+    [V26] Intelligent Abbreviation Expansion.
+    Handles Gen Z and technical abbreviations with word boundaries.
+    """
+    if not text: return ""
+    
+    # Sort by length descending to avoid partial matches
+    sorted_keys = sorted(ABBREVIATIONS.keys(), key=len, reverse=True)
+    result = text.lower()
+    
+    for key in sorted_keys:
+        value = ABBREVIATIONS[key]
+        if value == "noise": continue
+        
+        # pattern = rf'\b{re.escape(key)}\b'
+        pattern = rf'(?<![a-zA-ZÀ-ỹ]){re.escape(key)}(?![a-zA-ZÀ-ỹ])'
+        result = re.sub(pattern, value, result, flags=re.IGNORECASE)
+        
+    return result
 
 def check_passive_voice(text: str) -> bool:
     if not text: return False
@@ -401,9 +484,6 @@ def check_passive_voice(text: str) -> bool:
     return any(marker in words for marker in PASSIVE_MARKERS)
 
 def strip_student_preamble(text: str) -> str:
-    """Bóc tách tiền ngữ mào đầu (preamble) của sinh viên khỏi câu trả lời.
-    Ví dụ: 'Em xin trả lời là: Hormone insulin...' -> 'Hormone insulin...'
-    Patterns được sắp xếp dài → ngắn để tránh partial match."""
     if not text: return ""
     cleaned = text.strip()
     cleaned_lower = cleaned.lower()

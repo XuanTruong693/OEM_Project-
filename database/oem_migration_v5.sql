@@ -82,7 +82,7 @@ CREATE TABLE exam_questions (
     type ENUM('MCQ', 'Essay', 'Unknown') DEFAULT 'Unknown',
     model_answer TEXT NULL,
     points FLOAT DEFAULT 1 CHECK (points >= 0),
-    order_index INT NULL,
+    order_index INT DEFAULT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     created_by INT UNSIGNED NULL,
@@ -162,6 +162,7 @@ CREATE TABLE student_answers (
     selected_option_id INT UNSIGNED NULL,
     score FLOAT DEFAULT 0 CHECK (score >= 0),
     instructor_feedback TEXT DEFAULT NULL,
+    ai_explanation JSON DEFAULT NULL,
     status ENUM(
         'pending',
         'graded',
@@ -211,7 +212,8 @@ CREATE TABLE ai_logs (
     INDEX idx_ai_logs_question (question_id),
     INDEX idx_ai_logs_student (student_id),
     CONSTRAINT fk_ai_logs_question FOREIGN KEY (question_id) REFERENCES exam_questions (id) ON UPDATE CASCADE ON DELETE CASCADE,
-    CONSTRAINT fk_ai_logs_student FOREIGN KEY (student_id) REFERENCES users (id) ON UPDATE CASCADE ON DELETE CASCADE
+    CONSTRAINT fk_ai_logs_student FOREIGN KEY (student_id) REFERENCES users (id) ON UPDATE CASCADE ON DELETE CASCADE,
+    INDEX idx_ai_logs_created (created_at)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
 -- 2.9 user_verified_rooms
@@ -247,9 +249,9 @@ CREATE TABLE cheating_logs (
 -- 2.11 student_cards
 CREATE TABLE student_cards (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    student_code VARCHAR(20) NOT NULL UNIQUE COMMENT 'Mã số sinh viên',
+    student_code VARCHAR(50) NOT NULL UNIQUE COMMENT 'Mã số sinh viên (MSSV) — duy nhất',
     student_name VARCHAR(100) NOT NULL COMMENT 'Tên sinh viên',
-    card_image_blob LONGBLOB NOT NULL COMMENT 'Ảnh thẻ SV upload lưu vào DB',
+    card_image LONGBLOB NOT NULL COMMENT 'Blob ảnh thẻ sinh viên',
     card_image_mimetype VARCHAR(100) NOT NULL DEFAULT 'image/jpeg' COMMENT 'MIME type của ảnh thẻ',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT 'Ngày nhập',
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Ngày sửa',
@@ -286,26 +288,21 @@ CREATE TRIGGER trg_update_submission_score
 AFTER UPDATE ON student_answers
 FOR EACH ROW
 BEGIN
-  DECLARE mcq_total FLOAT DEFAULT 0;
-  DECLARE essay_total FLOAT DEFAULT 0;
-  
-  -- Chỉ tính tổng điểm MCQ
-  SELECT COALESCE(SUM(sa.score),0) INTO mcq_total
-    FROM student_answers sa
-    JOIN exam_questions q ON q.id = sa.question_id
-    WHERE sa.submission_id = NEW.submission_id AND q.type = 'MCQ';
-  
-  -- Tính riêng điểm Essay
-  SELECT COALESCE(SUM(sa.score),0) INTO essay_total
-    FROM student_answers sa
-    JOIN exam_questions q ON q.id = sa.question_id
-    WHERE sa.submission_id = NEW.submission_id AND q.type = 'Essay';
-
-  UPDATE submissions
-     SET total_score = mcq_total,
-         ai_score = essay_total,
-         suggested_total_score = mcq_total + essay_total
-   WHERE id = NEW.submission_id;
+  IF OLD.score <> NEW.score OR (OLD.score IS NULL AND NEW.score IS NOT NULL) THEN
+    SET @q_type = (SELECT type FROM exam_questions WHERE id = NEW.question_id);
+    
+    IF @q_type = 'MCQ' THEN
+      UPDATE submissions
+         SET total_score = COALESCE(total_score, 0) - COALESCE(OLD.score, 0) + COALESCE(NEW.score, 0),
+             suggested_total_score = COALESCE(suggested_total_score, 0) - COALESCE(OLD.score, 0) + COALESCE(NEW.score, 0)
+       WHERE id = NEW.submission_id;
+    ELSEIF @q_type = 'Essay' THEN
+      UPDATE submissions
+         SET ai_score = COALESCE(ai_score, 0) - COALESCE(OLD.score, 0) + COALESCE(NEW.score, 0),
+             suggested_total_score = COALESCE(suggested_total_score, 0) - COALESCE(OLD.score, 0) + COALESCE(NEW.score, 0)
+       WHERE id = NEW.submission_id;
+    END IF;
+  END IF;
 END$$
 
 CREATE TRIGGER trg_check_submission_status
@@ -328,10 +325,9 @@ CREATE TRIGGER trg_update_cheating_count
 AFTER INSERT ON cheating_logs
 FOR EACH ROW
 BEGIN
+  -- Optimized: Incremental +1 instead of expensive COUNT(*)
   UPDATE submissions
-  SET cheating_count = (
-    SELECT COUNT(*) FROM cheating_logs WHERE submission_id = NEW.submission_id
-  )
+  SET cheating_count = COALESCE(cheating_count, 0) + 1
   WHERE id = NEW.submission_id;
 END$$
 
@@ -385,6 +381,9 @@ BEGIN
      AND user_id = p_student_id;
 END$$
 
+-- FIX: sp_update_student_exam_record
+-- Vấn đề: Dòng `SET r.total_score = s.total_score` gán MCQ score vào results
+--          thay vì tổng điểm (suggested_total_score)
 CREATE PROCEDURE sp_update_student_exam_record(
   IN p_exam_id INT,
   IN p_student_id INT,
@@ -395,6 +394,7 @@ CREATE PROCEDURE sp_update_student_exam_record(
 BEGIN
   START TRANSACTION;
 
+  -- 1. Cập nhật submissions: total_score = MCQ, ai_score = Essay, suggested = tổng
   UPDATE submissions
      SET total_score = COALESCE(p_mcq_score, 0),
          ai_score = COALESCE(p_ai_score, 0),
@@ -408,11 +408,12 @@ BEGIN
   JOIN submissions s
     ON s.exam_id = r.exam_id
    AND s.user_id = r.student_id
-     SET r.total_score = s.total_score,
+     SET r.total_score = s.suggested_total_score,
          r.status = 'confirmed'
    WHERE r.exam_id    = p_exam_id
      AND r.student_id = p_student_id;
 
+  -- 3. Cập nhật tên sinh viên nếu cần
   IF p_student_name IS NOT NULL AND LENGTH(TRIM(p_student_name)) > 0 THEN
     UPDATE users SET full_name = p_student_name WHERE id = p_student_id;
   END IF;

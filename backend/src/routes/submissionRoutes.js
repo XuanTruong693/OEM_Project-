@@ -14,8 +14,11 @@ router.delete(
   submissionController.deleteProctorEvent
 );
 
+const upload = require("../config/multer");
+
 router.post(
   "/submissions/:submissionId/snapshots",
+  upload.array("frames"),
   snapshotController.uploadSnapshots
 );
 

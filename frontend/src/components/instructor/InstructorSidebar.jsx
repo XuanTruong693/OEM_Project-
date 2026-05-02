@@ -9,6 +9,7 @@ import {
   FiChevronDown,
   FiMenu,
   FiX,
+  FiLogOut,
 } from "react-icons/fi";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useUi } from "../../context/UiContext.jsx";
@@ -20,6 +21,14 @@ const InstructorSidebar = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const { t } = useUi();
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const menu = [
     {
@@ -76,7 +85,7 @@ const InstructorSidebar = () => {
     <div className="flex flex-col w-full justify-between h-full p-5 text-slate-800">
       <div>
         <div
-          className="flex items-center justify-center mb-8 cursor-pointer"
+          className="flex items-center justify-center mb-2 cursor-pointer"
           onClick={() => navigate("/instructor-dashboard")}
         >
           <img
@@ -84,6 +93,25 @@ const InstructorSidebar = () => {
             alt="OEM Logo"
             className="h-20 w-auto drop-shadow-md"
           />
+        </div>
+
+        {/* ⏰ Digital Clock */}
+        <div className="flex flex-col items-center mb-2">
+          <div className="text-xl font-bold font-mono text-[#0080FF] tracking-widest leading-none">
+            {currentTime.toLocaleTimeString("vi-VN", {
+              hour12: false,
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            })}
+          </div>
+          <div className="text-[9px] uppercase font-bold text-gray-500 mt-1 tracking-widest opacity-80">
+            {currentTime.toLocaleDateString("vi-VN", {
+              weekday: "short",
+              day: "2-digit",
+              month: "2-digit",
+            })}
+          </div>
         </div>
 
         <nav className="flex flex-col gap-2 relative">
@@ -202,31 +230,36 @@ const InstructorSidebar = () => {
         </nav>
       </div>
 
-      <div className="border-t border-blue-100 pt-3 mt-3">
+      <div className="border-t border-blue-100 pt-3 mt-3 flex items-center justify-between gap-1">
         <button
           onClick={() => {
             navigate(setting.path);
             setMobileOpen(false);
           }}
-          className={`group flex items-center gap-3 text-lg font-medium px-4 py-3 rounded-xl transition-all duration-200 w-full ${location.pathname === setting.path
-              ? "bg-[#0080FF]/10 border-l-4 border-[#0080FF] text-[#0080FF] shadow-sm"
-              : "text-gray-700 hover:bg-[#A0D4FF]/60 hover:text-[#0080FF]"
+          className={`group flex items-center gap-3 text-lg font-medium px-4 py-3 rounded-xl transition-all duration-200 flex-grow ${location.pathname === setting.path
+            ? "bg-[#0080FF]/10 border-l-4 border-[#0080FF] text-[#0080FF] shadow-sm"
+            : "text-gray-700 hover:bg-[#A0D4FF]/60 hover:text-[#0080FF]"
             }`}
         >
-          {/* render icon safely */}
-          {(() => {
-            const SettingIcon = setting.icon;
-            return (
-              <SettingIcon
-                className={`w-6 h-6 transition-colors duration-200 ${location.pathname === setting.path
-                    ? "text-[#0080FF]"
-                    : "text-gray-600 group-hover:text-[#0080FF]"
-                  }`}
-              />
-            );
-          })()}
+          <FiSettings
+            className={`w-6 h-6 transition-colors duration-200 ${location.pathname === setting.path
+              ? "text-[#0080FF]"
+              : "text-gray-600 group-hover:text-[#0080FF]"
+              }`}
+          />
+          <span className="truncate">{setting.label}</span>
+        </button>
 
-          <span>{setting.label}</span>
+        <button
+          onClick={() => {
+            localStorage.clear();
+            sessionStorage.clear();
+            navigate("/login");
+          }}
+          title="Đăng xuất"
+          className="flex items-center justify-center p-2.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all duration-200"
+        >
+          <FiLogOut className="w-5 h-5" />
         </button>
       </div>
     </div>

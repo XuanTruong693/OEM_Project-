@@ -15,10 +15,10 @@ class StepFaceVerifyWidget extends StatefulWidget {
   final String submissionId;
 
   const StepFaceVerifyWidget({
-    Key? key,
+    super.key,
     required this.state,
     required this.submissionId,
-  }) : super(key: key);
+  });
 
   @override
   State<StepFaceVerifyWidget> createState() => _StepFaceVerifyWidgetState();

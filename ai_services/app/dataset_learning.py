@@ -1,6 +1,7 @@
 # Dataset Learning Module for AI Grading
 import json
 import os
+import re
 from typing import Dict, List, Optional, Tuple
 
 # Path to unified training data file
@@ -17,7 +18,6 @@ def _normalize_key(text: str) -> str:
     # Normalize text for indexing (remove punctuation, lower, compact spaces).
     if not text:
         return ""
-    import re
     # Lowercase and strip
     text = text.lower().strip()
     # Remove all punctuation/special chars

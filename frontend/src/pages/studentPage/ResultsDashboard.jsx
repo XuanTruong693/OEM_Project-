@@ -116,23 +116,22 @@ export default function ResultsDashboard() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/40">
       {/* Sticky Header */}
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-2">
           <button
             onClick={() => navigate("/student-dashboard")}
-            className="flex items-center gap-2 px-3 py-2 text-slate-700 rounded-lg hover:bg-slate-100 transition-all"
+            className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 text-slate-700 rounded-lg hover:bg-slate-100 transition-all flex-shrink-0"
           >
-            <FiArrowLeft className="w-5 h-5" />
-            <span className="font-semibold hidden sm:inline">Quay lại</span>
+            <FiArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="font-semibold text-xs sm:text-base hidden xs:inline">Quay lại</span>
           </button>
 
-          <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-2">
-            <img src="/Logo.png" alt="Logo" className="h-10 sm:h-12 w-auto" />
-            <span className="hidden sm:inline text-base font-semibold text-slate-700"></span>
+          <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+            <img src="/Logo.png" alt="Logo" className="h-7 sm:h-12 w-auto" />
           </div>
 
-          <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
-            <FiCalendar className="w-4 h-4 text-slate-500" />
-            <span className="text-sm text-slate-600 hidden sm:inline">{new Date().toLocaleDateString('vi-VN')}</span>
+          <div className="flex items-center gap-1 px-2 sm:px-3 py-1.5 sm:py-2 bg-slate-50 rounded-lg border border-slate-200 flex-shrink-0">
+            <FiCalendar className="w-3.5 h-3.5 sm:w-4 h-4 text-slate-500" />
+            <span className="text-xs sm:text-sm text-slate-600">{new Date().toLocaleDateString('vi-VN')}</span>
           </div>
         </div>
       </header>
@@ -233,33 +232,31 @@ export default function ResultsDashboard() {
               return (
                 <div
                   key={r.submission_id}
-                  className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all"
+                  className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all"
                 >
                   <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                     {/* Left: Exam Info */}
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-start gap-3">
-                        <div className="p-2 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-xl text-2xl">
+                        <div className="p-2 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-xl text-xl sm:text-2xl flex-shrink-0">
                           {totalBadge.icon}
                         </div>
-                        <div className="flex-1">
-                          <h3 className="text-lg font-semibold text-slate-800 mb-1">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-base sm:text-lg font-semibold text-slate-800 mb-1 break-words">
                             {r.exam_title || `Bài thi #${r.exam_id}`}
                           </h3>
-                          <div className="flex items-center gap-3 text-sm text-slate-500">
-                            <span className="flex items-center gap-1">
-                              <FiCalendar className="w-4 h-4" />
+                          <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-slate-500">
+                            <span className="flex items-center gap-1 shrink-0">
+                              <FiCalendar className="w-3.5 h-3.5 sm:w-4 h-4" />
                               {r.submitted_at ? new Date(r.submitted_at).toLocaleDateString('vi-VN', {
                                 day: '2-digit',
                                 month: '2-digit',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
+                                year: 'numeric'
                               }) : '-'}
                             </span>
 
                             {/* Status Badge */}
-                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 ${statusColor === 'emerald'
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold flex items-center gap-0.5 shrink-0 ${statusColor === 'emerald'
                               ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
                               : 'bg-amber-100 text-amber-700 border border-amber-200'
                               }`}>
@@ -267,7 +264,7 @@ export default function ResultsDashboard() {
                             </span>
 
                             {totalBadge.grade && (
-                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${totalBadge.color === 'emerald' ? 'bg-emerald-100 text-emerald-700' :
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-medium shrink-0 ${totalBadge.color === 'emerald' ? 'bg-emerald-100 text-emerald-700' :
                                 totalBadge.color === 'amber' ? 'bg-amber-100 text-amber-700' :
                                   'bg-rose-100 text-rose-700'
                                 }`}>
@@ -280,10 +277,10 @@ export default function ResultsDashboard() {
                     </div>
 
                     {/* Right: Scores */}
-                    <div className="flex items-center gap-4 lg:gap-6">
-                      <div className="text-center">
-                        <div className="text-xs text-slate-500 mb-1">Trắc nghiệm</div>
-                        <div className={`text-2xl font-bold ${mcqBadge.color === 'emerald' ? 'text-emerald-600' :
+                    <div className="flex flex-wrap items-center justify-between lg:justify-end gap-3 sm:gap-4 lg:gap-6 w-full lg:w-auto border-t border-slate-100 lg:border-t-0 pt-3 lg:pt-0">
+                      <div className="text-center min-w-[50px]">
+                        <div className="text-[10px] sm:text-xs text-slate-500 mb-0.5">Trắc nghiệm</div>
+                        <div className={`text-xl sm:text-2xl font-bold ${mcqBadge.color === 'emerald' ? 'text-emerald-600' :
                           mcqBadge.color === 'amber' ? 'text-amber-600' :
                             mcqBadge.color === 'rose' ? 'text-rose-600' :
                               'text-slate-400'
@@ -292,9 +289,9 @@ export default function ResultsDashboard() {
                         </div>
                       </div>
 
-                      <div className="text-center">
-                        <div className="text-xs text-slate-500 mb-1">Tự luận</div>
-                        <div className={`text-2xl font-bold ${essayBadge.color === 'emerald' ? 'text-emerald-600' :
+                      <div className="text-center min-w-[50px]">
+                        <div className="text-[10px] sm:text-xs text-slate-500 mb-0.5">Tự luận</div>
+                        <div className={`text-xl sm:text-2xl font-bold ${essayBadge.color === 'emerald' ? 'text-emerald-600' :
                           essayBadge.color === 'amber' ? 'text-amber-600' :
                             essayBadge.color === 'rose' ? 'text-rose-600' :
                               'text-slate-400'
@@ -303,14 +300,14 @@ export default function ResultsDashboard() {
                         </div>
                       </div>
 
-                      <div className="h-12 w-px bg-slate-200"></div>
+                      <div className="h-8 sm:h-12 w-px bg-slate-200 hidden xs:block"></div>
 
-                      <div className="text-center">
-                        <div className="text-xs text-slate-500 mb-1 flex items-center gap-1 justify-center">
+                      <div className="text-center min-w-[50px]">
+                        <div className="text-[10px] sm:text-xs text-slate-500 mb-0.5 flex items-center gap-1 justify-center">
                           Tổng điểm
                           {isConfirmed && <span className="text-emerald-600">✓</span>}
                         </div>
-                        <div className={`text-3xl font-bold ${totalBadge.color === 'emerald' ? 'text-emerald-600' :
+                        <div className={`text-2xl sm:text-3xl font-bold ${totalBadge.color === 'emerald' ? 'text-emerald-600' :
                           totalBadge.color === 'amber' ? 'text-amber-600' :
                             totalBadge.color === 'rose' ? 'text-rose-600' :
                               'text-slate-400'
@@ -318,7 +315,7 @@ export default function ResultsDashboard() {
                           {totalBadge.label}
                         </div>
                         {isConfirmed && (
-                          <div className="text-[10px] text-emerald-600 font-semibold mt-0.5">
+                          <div className="text-[9px] text-emerald-600 font-semibold mt-0.5">
                             Điểm chính thức
                           </div>
                         )}
@@ -328,7 +325,7 @@ export default function ResultsDashboard() {
                       {r.allow_view_answers ? (
                         <button
                           onClick={() => setDetailModal({ isOpen: true, submissionId: r.submission_id })}
-                          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all active:scale-95 shrink-0"
+                          className="flex items-center gap-2 px-3 sm:px-5 py-2 sm:py-2.5 bg-blue-600 text-white rounded-xl text-xs sm:text-sm font-bold hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all active:scale-95 shrink-0"
                         >
                           <FiCheckCircle /> Xem đáp án
                         </button>

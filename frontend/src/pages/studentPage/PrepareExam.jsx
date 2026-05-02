@@ -13,6 +13,13 @@ export default function PrepareExam() {
   const navigate = useNavigate();
   const { setToast } = useUi();
 
+  const isMobileDevice = useMemo(() => {
+    const ua = navigator.userAgent.toLowerCase();
+    const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    const isWidth = window.innerWidth < 768;
+    return isTouch && (isWidth || /iphone|ipad|android|blackberry|mini|windows\sphone/.test(ua));
+  }, []);
+
   const [theme, setTheme] = useState(
     () => localStorage.getItem("examTheme") || "dark"
   );
@@ -106,6 +113,8 @@ export default function PrepareExam() {
   const blinkStateRef = useRef("open");          // Trạng thái hiện tại: 'open' | 'closed'
   const blinkCountRef = useRef(0);               // Bản sao ref của blinkCount (tránh stale closure)
   const blinkCanvasRef = useRef(null);           // Canvas để vẽ landmarks lên video
+  const smoothedEarRef = useRef(null);           // Giá trị EAR làm mượt
+  const rollingMaxEarRef = useRef(0.3);          // Baseline động (giá trị mắt mở nhất)
 
   // ── Tính Eye Aspect Ratio (EAR)
   const calcEAR = (eye) => {
@@ -164,7 +173,7 @@ export default function PrepareExam() {
       await window.faceapi.nets.tinyFaceDetector.loadFromUri(modelBase);
       await window.faceapi.nets.faceLandmark68Net.loadFromUri(modelBase);
       faceApiRef.current.loaded = true;
-      console.log("[FaceAPI] ✅ Models loaded. Backend:", window.faceapi.tf?.getBackend?.());
+      console.log("[FaceAPI] ✅ Models loaded (Tiny + Landmarks). Backend:", window.faceapi.tf?.getBackend?.());
       return true;
     } catch (e) {
       console.error("[FaceAPI] Tải model thất bại:", e);
@@ -365,6 +374,7 @@ export default function PrepareExam() {
 
   // 🆕 Fullscreen lock - Tự động trở lại fullscreen khi thoát
   useEffect(() => {
+    if (isMobileDevice) return;
     if (!monitorOk || !fullscreenLockRef.current) return;
 
     const handleFullscreenChange = async () => {
@@ -561,7 +571,7 @@ export default function PrepareExam() {
         clearTimeout(violationTimerRef.current);
       }
     };
-  }, [monitorOk, submissionId]);
+  }, [monitorOk, submissionId, isMobileDevice]);
 
   // Chặn một số phím (chỉ để bảo vệ UI, không tính vi phạm)
   // VI PHẠM CHỈ ĐƯỢC TÍNH TRONG TakeExam, KHÔNG PHẢI PrepareExam
@@ -847,8 +857,6 @@ export default function PrepareExam() {
         audio: false,
       });
 
-      // Quyền đã được cấp
-      setCameraPermission('granted');
       setShowCameraPermissionModal(false);
       setFaceErr("");
 
@@ -880,139 +888,109 @@ export default function PrepareExam() {
 
       // ── BƯỚC 1: Vòng lặp phát hiện nháy mắt (adaptive baseline) ──────────
       const startBlinkLoop = () => {
-        clearInterval(blinkIntervalRef.current); // Dừng vòng lặp cũ nếu còn
+        clearInterval(blinkIntervalRef.current);
         blinkCountRef.current = 0;
-        blinkStateRef.current = "calibrating"; // Các trạng thái: 'calibrating' | 'open' | 'closed'
+        blinkStateRef.current = "calibrating";
+        smoothedEarRef.current = null;
+        rollingMaxEarRef.current = 0.3; 
         setBlinkCount(0);
         setBlinkPhase("detecting");
         setLeftEyePct(0);
         setRightEyePct(0);
 
-        // Thu thập EAR khi mắt mở trong ~25 frame đầu (~2 giây) để tính ngưỡng
         const baselineSamples = [];
-        let baselineEAR = null; // null = chưa xong calibration
-        let faceLostCount = 0; // Đếm số frame mất dấu mặt
+        const EMA_ALPHA = 0.4; 
+        let faceLostCount = 0;
 
         blinkIntervalRef.current = setInterval(async () => {
           const v = videoRef.current;
-          const canvas = blinkCanvasRef.current;
           if (!v || v.readyState < 2 || !v.videoWidth) return;
           if (!window.faceapi || !faceApiRef.current.loaded) return;
 
           try {
+            // Quay lại TinyFaceDetector nhưng tăng inputSize lên 512 để chính xác nhất có thể
             const det = await window.faceapi
-              .detectSingleFace(v, new window.faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 }))
+              .detectSingleFace(v, new window.faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.4 }))
               .withFaceLandmarks();
 
             if (!det) {
               faceLostCount++;
-              setLeftEyePct(0);
-              setRightEyePct(0);
-              setBlinkFaceOk(false);
-
-              // Chỉ reset state nếu mất dấu mặt quá lâu (> 1.5 giây)
-              if (faceLostCount > 15) {
-                blinkStateRef.current = "open";
+              if (faceLostCount > 10) {
+                blinkStateRef.current = "calibrating";
+                baselineSamples.length = 0;
               }
               return;
             }
 
-            faceLostCount = 0; // Reset khi thấy mặt
-
-            // Xóa canvas (không còn vẽ landmarks nữa)
-            if (canvas) {
-              const ctx = canvas.getContext("2d");
-              if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
-            }
-
-            // Kiểm tra mặt nằm đúng vị trí: trong 25% tâm khung hình
+            faceLostCount = 0;
             const box = det.detection.box;
-            const cx = box.x + box.width / 2;
-            const cy = box.y + box.height / 2;
             const vW = v.videoWidth || 640;
             const vH = v.videoHeight || 480;
+            const cx = box.x + box.width / 2;
+            const cy = box.y + box.height / 2;
             const dx = Math.abs(cx - vW / 2) / vW;
             const dy = Math.abs(cy - vH / 2) / vH;
-            const sizeRatio = Math.max(box.width / vW, box.height / vH);
-            const faceInFrame = dx <= 0.25 && dy <= 0.25 && sizeRatio >= 0.08;
+            const faceInFrame = dx <= 0.35 && dy <= 0.35;
             setBlinkFaceOk(faceInFrame);
 
             const lm = det.landmarks;
-            const lEAR = calcEAR(lm.getLeftEye());
-            const rEAR = calcEAR(lm.getRightEye());
-            const avgEAR = (lEAR + rEAR) / 2;
+            const rawAvgEAR = (calcEAR(lm.getLeftEye()) + calcEAR(lm.getRightEye())) / 2;
 
-            // ── GIAI ĐOẠN 1: Thu thập baseline (40 mẫu đầu khi có mặt)
-            if (baselineEAR === null) {
-              baselineSamples.push(avgEAR);
-              // Hiển thị % tiến độ calibration cho người dùng
-              const calPct = Math.round((baselineSamples.length / 40) * 100);
-              setLeftEyePct(calPct);
-              setRightEyePct(calPct);
-              if (isDebugBlink) console.log(`[Nháy Mắt] Calibrating... ${baselineSamples.length}/40 EAR=${avgEAR.toFixed(4)}`);
+            if (smoothedEarRef.current === null) smoothedEarRef.current = rawAvgEAR;
+            else smoothedEarRef.current = EMA_ALPHA * rawAvgEAR + (1 - EMA_ALPHA) * smoothedEarRef.current;
+            
+            const currentEar = smoothedEarRef.current;
 
-              if (baselineSamples.length >= 25) {
-                // Lấy percentile 70 làm baseline (loại bỏ giá trị thấp do chớp mắt lúc calibrate)
-                const sorted = [...baselineSamples].sort((a, b) => b - a);
-                baselineEAR = sorted[Math.floor(sorted.length * 0.3)]; // top 30%
-                blinkStateRef.current = "open";
-                console.log(`[Nháy Mắt] ✅ Baseline EAR = ${baselineEAR.toFixed(4)}`);
+            // ── GIAI ĐOẠN 1: Calibration (1 giây)
+            if (blinkStateRef.current === "calibrating") {
+              if (faceInFrame) {
+                baselineSamples.push(currentEar);
+                const calPct = Math.round((baselineSamples.length / 25) * 100);
+                setLeftEyePct(calPct);
+                setRightEyePct(calPct);
+                
+                if (baselineSamples.length >= 25) {
+                  const sorted = [...baselineSamples].sort((a, b) => b - a);
+                  rollingMaxEarRef.current = sorted[Math.floor(sorted.length * 0.2)]; 
+                  blinkStateRef.current = "open";
+                }
               }
               return;
             }
 
-            // ── GIAI ĐOẠN 2: Phát hiện nháy mắt theo ngưỡng tương đối
-            // NHẮM: avgEAR giảm xuống 88% baseline (giảm 12%)
-            // MỞ LẠI: avgEAR phục hồi về 92% baseline
-            const closedThreshold = baselineEAR * 0.88;
-            const openThreshold = baselineEAR * 0.92;
+            // ── GIAI ĐOẠN 2: Phát hiện (Ngưỡng siêu nhạy - nhắm nửa mắt)
+            const base = rollingMaxEarRef.current;
+            // Chỉ cần giảm 5% EAR (nhắm hờ) là tính nhắm, phục hồi về 98% là tính mở
+            const closedThreshold = base * 0.95;
+            const openThreshold = base * 0.98;
 
-            // Chuyển EAR sang % để hiển thị: 0% = mở, 100% = đạt ngưỡng nhắm
-            const lPct = Math.round(Math.max(0, Math.min(100,
-              (1 - (lEAR - closedThreshold) / (baselineEAR - closedThreshold)) * 100
-            )));
-            const rPct = Math.round(Math.max(0, Math.min(100,
-              (1 - (rEAR - closedThreshold) / (baselineEAR - closedThreshold)) * 100
-            )));
-
-            setLeftEyePct(lPct);
-            setRightEyePct(rPct);
-
-            // Bảo vệ: khi mặt KHÔNG đúng vị trí, reset state machine → không đếm nháy ảo
-            if (!faceInFrame) {
-              blinkStateRef.current = "open";
-              return;
-            }
-
-            const eyesClosed = avgEAR < closedThreshold; // EAR thấp hơn ngưỡng nhắm
-            const eyesOpen = avgEAR > openThreshold;   // EAR cao hơn ngưỡng mở lại
-
-            if (isDebugBlink) {
-              console.log(`[Nháy Mắt] EAR:${avgEAR.toFixed(3)} base:${baselineEAR.toFixed(3)} T:${lPct}% P:${rPct}% state:${blinkStateRef.current}`);
-            }
+            const eyesClosed = currentEar < closedThreshold;
+            const eyesOpen = currentEar > openThreshold;
 
             if (blinkStateRef.current === "open" && eyesClosed) {
-              blinkStateRef.current = "closed"; // Mắt đang nhắm
+              blinkStateRef.current = "closed";
             } else if (blinkStateRef.current === "closed" && eyesOpen) {
-              blinkStateRef.current = "open";   // Mắt mở lại → đếm 1 lần nháy
+              blinkStateRef.current = "open";
               blinkCountRef.current += 1;
               setBlinkCount(blinkCountRef.current);
-              console.log(`[Nháy Mắt] ✅ Nháy mắt #${blinkCountRef.current}`);
+              console.log(`[Blink] ✅ Nháy mắt #${blinkCountRef.current} (EAR: ${currentEar.toFixed(3)})`);
 
               if (blinkCountRef.current >= 3) {
                 clearInterval(blinkIntervalRef.current);
-                if (blinkCanvasRef.current) {
-                  const ctx = blinkCanvasRef.current.getContext("2d");
-                  ctx.clearRect(0, 0, blinkCanvasRef.current.width, blinkCanvasRef.current.height);
-                }
                 setBlinkPhase("done");
-                setTimeout(() => startStaticLoop(), 600);
+                setTimeout(() => startStaticLoop(), 500);
               }
             }
+
+            // % hiển thị: 0% open, 100% đạt ngưỡng closed
+            const displayPct = Math.round(Math.max(0, Math.min(100, (1 - (currentEar - closedThreshold) / (base - closedThreshold)) * 100)));
+            setLeftEyePct(displayPct);
+            setRightEyePct(displayPct);
+
           } catch (e) {
-            console.error("[Blink loop error]", e);
+            console.error("[Blink Error]", e);
           }
-        }, 80);
+        }, 40);
       };
 
       // Vòng lặp hướng dẫn chụp tĩnh
@@ -1209,11 +1187,15 @@ export default function PrepareExam() {
                 stableOkCountRef.current = 0; // Ngăn chặn việc kích hoạt lại trước khi quá trình xử lý dữ liệu hoàn tất
                 clearInterval(guideIntervalRef.current); // stop interval immediately
                 const snap = document.createElement("canvas");
-                snap.width = v.videoWidth || 640;
-                snap.height = v.videoHeight || 480;
+                snap.width = c?.width || v?.videoWidth || 640;
+                snap.height = c?.height || v?.videoHeight || 480;
                 const sctx = snap.getContext("2d");
                 if (!sctx) return;
-                sctx.drawImage(v, 0, 0);
+                if (c) {
+                  sctx.drawImage(c, 0, 0);
+                } else {
+                  sctx.drawImage(v, 0, 0, snap.width, snap.height);
+                }
                 snap.toBlob(
                   async (blob) => {
                     if (!blob) return;
@@ -2544,7 +2526,7 @@ export default function PrepareExam() {
                   <span className="inline-flex items-center justify-center w-6 h-6 mr-2 rounded-full bg-blue-600 text-white text-xs font-bold">
                     3
                   </span>
-                  Bật giám sát
+                  {isMobileDevice ? "Cam kết thi nghiêm túc" : "Bật giám sát"}
                 </p>
                 <span
                   className={`text-xs ${monitorOk
@@ -2554,162 +2536,192 @@ export default function PrepareExam() {
                       : "text-slate-500"
                     }`}
                 >
-                  {monitorOk ? "✅ Đã bật" : "⏳ Chưa bật"}
+                  {monitorOk ? "✅ Đã chấp nhận" : "⏳ Chưa chấp nhận"}
                 </span>
               </div>
-              <p
-                className={`${theme === "dark" ? "text-slate-300" : "text-slate-600"
-                  } text-sm`}
-              >
-                Yêu cầu bật toàn màn hình. Hệ thống sẽ ghi nhận rời tab/thoát
-                fullscreen.
-              </p>
 
-              {/* Cảnh báo */}
-              {monitorWarning && (
-                <div
-                  className={`mt-3 p-4 rounded-xl border-2 shadow-lg ${multiScreenDetected
-                    ? "bg-red-50 border-red-300 dark:bg-red-900/20 dark:border-red-500"
-                    : "bg-yellow-50 border-yellow-300 dark:bg-yellow-900/20 dark:border-yellow-500"
-                    }`}
-                >
-                  <p
-                    className={`text-sm font-bold ${multiScreenDetected
-                      ? "text-red-700 dark:text-red-300"
-                      : "text-yellow-700 dark:text-yellow-300"
-                      }`}
-                  >
-                    {monitorWarning}
-                  </p>
-
-                  {multiScreenDetected && (
-                    <div className="mt-2 text-xs text-red-600 dark:text-red-400">
-                      <p className="font-bold">📌 Hướng dẫn:</p>
-                      <ul className="list-disc list-inside mt-1 space-y-1">
-                        <li>
-                          Ngắt kết nối màn hình phụ (rút dây HDMI/DisplayPort)
-                        </li>
-                        <li>
-                          Hoặc vào Settings → Display → chọn "Show only on 1"
-                        </li>
-                        <li>Sau đó nhấn lại nút "Bật toàn màn hình"</li>
-                      </ul>
-                      <p className="mt-2 font-semibold">
-                        🖥️ Số màn hình phát hiện:{" "}
-                        <span className="text-red-700 dark:text-red-300">
-                          {screenCount}
-                        </span>
-                      </p>
-                    </div>
+              {isMobileDevice ? (
+                <div className="mt-3 p-4 rounded-xl border border-blue-500/30 bg-blue-50/10 dark:bg-blue-900/10 flex flex-col gap-3">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={monitorOk}
+                      disabled={!allowMonitor}
+                      onChange={(e) => {
+                        setMonitorOk(e.target.checked);
+                        if (e.target.checked) {
+                          fullscreenLockRef.current = true;
+                        }
+                      }}
+                      className="w-5 h-5 mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <span className={`${theme === "dark" ? "text-slate-300" : "text-slate-600"} text-sm font-semibold leading-normal`}>
+                      Tôi chấp nhận cam kết làm bài nghiêm túc dưới sự giám sát gian lận!
+                    </span>
+                  </label>
+                  {!allowMonitor && (
+                    <p className="text-xs text-yellow-500 font-medium">
+                      ⚠️ Vui lòng hoàn tất các bước trên để mở khóa.
+                    </p>
                   )}
                 </div>
-              )}
-              {monitorOk && !multiScreenDetected && (
-                <div className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-300 dark:bg-emerald-900/20 dark:border-emerald-500">
-                  <p className="text-sm text-emerald-700 dark:text-emerald-300 font-semibold mb-2">
-                    ✅ <strong>Chế độ fullscreen đã khóa</strong>
+              ) : (
+                <>
+                  <p
+                    className={`${theme === "dark" ? "text-slate-300" : "text-slate-600"
+                      } text-sm`}
+                  >
+                    Yêu cầu bật toàn màn hình. Hệ thống sẽ ghi nhận rời tab/thoát
+                    fullscreen.
                   </p>
-                  <p className="text-xs text-emerald-600 dark:text-emerald-400 mb-2">
-                    Hệ thống sẽ tự động khôi phục fullscreen nếu bạn cố thoát.
-                    Giảng viên sẽ nhận được thông báo về mọi vi phạm.
-                  </p>
-                  <details className="text-xs text-emerald-600 dark:text-emerald-400">
-                    <summary className="cursor-pointer font-semibold hover:text-emerald-700 dark:hover:text-emerald-300">
-                      🔒 Các phím/hành động bị chặn (click để xem)
-                    </summary>
-                    <ul className="mt-2 ml-4 space-y-1 list-disc">
-                      <li>
-                        <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
-                          Esc
-                        </kbd>{" "}
-                        - Thoát fullscreen
-                      </li>
-                      <li>
-                        <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
-                          F11
-                        </kbd>{" "}
-                        - Toggle fullscreen
-                        <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
-                          F5
-                        </kbd>{" "}
-                        - Refresh trang
-                      </li>
-                      <li>
-                        <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
-                          F3
-                        </kbd>{" "}
-                        - Tìm kiếm
-                      </li>
-                      <li>
-                        <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
-                          F12
-                        </kbd>{" "}
-                        - DevTools
-                      </li>
-                      <li>
-                        <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
-                          Alt+Tab
-                        </kbd>{" "}
-                        - Chuyển cửa sổ
-                      </li>
-                      <li>
-                        <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
-                          Alt+F4
-                        </kbd>{" "}
-                        - Đóng cửa sổ
-                      </li>
-                      <li>
-                        <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
-                          Ctrl+W
-                        </kbd>{" "}
-                        - Đóng tab
-                      </li>
-                      <li>
-                        <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
-                          Ctrl+R
-                        </kbd>{" "}
-                        - Refresh
-                      </li>
-                      <li>
-                        <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
-                          Ctrl+Shift+I/J/C
-                        </kbd>{" "}
-                        - DevTools
-                      </li>
-                      <li>
-                        <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
-                          Ctrl+U
-                        </kbd>{" "}
-                        - View source
-                      </li>
-                      <li>
-                        🖱️ <strong>Chuột phải</strong> - Menu context
-                      </li>
-                      <li>
-                        🖨️ <strong>Print Screen</strong> - In màn hình
-                      </li>
-                    </ul>
-                  </details>
-                </div>
-              )}
 
-              <button
-                className={`mt-3 px-3 py-2 rounded-lg text-white font-semibold shadow transition hover:brightness-105 disabled:opacity-60 disabled:cursor-not-allowed
-                ${monitorOk
-                    ? "bg-emerald-600"
-                    : multiScreenDetected
-                      ? "bg-red-600"
-                      : "bg-blue-600"
-                  }`}
-                onClick={enableMonitor}
-                disabled={!allowMonitor}
-              >
-                {monitorOk
-                  ? "✔️ Đã bật giám sát"
-                  : multiScreenDetected
-                    ? "🔄 Kiểm tra lại màn hình"
-                    : "Bật toàn màn hình"}
-              </button>
+                  {/* Cảnh báo */}
+                  {monitorWarning && (
+                    <div
+                      className={`mt-3 p-4 rounded-xl border-2 shadow-lg ${multiScreenDetected
+                        ? "bg-red-50 border-red-300 dark:bg-red-900/20 dark:border-red-500"
+                        : "bg-yellow-50 border-yellow-300 dark:bg-yellow-900/20 dark:border-yellow-500"
+                        }`}
+                    >
+                      <p
+                        className={`text-sm font-bold ${multiScreenDetected
+                          ? "text-red-700 dark:text-red-300"
+                          : "text-yellow-700 dark:text-yellow-300"
+                          }`}
+                      >
+                        {monitorWarning}
+                      </p>
+
+                      {multiScreenDetected && (
+                        <div className="mt-2 text-xs text-red-600 dark:text-red-400">
+                          <p className="font-bold">📌 Hướng dẫn:</p>
+                          <ul className="list-disc list-inside mt-1 space-y-1">
+                            <li>
+                              Ngắt kết nối màn hình phụ (rút dây HDMI/DisplayPort)
+                            </li>
+                            <li>
+                              Hoặc vào Settings → Display → chọn "Show only on 1"
+                            </li>
+                            <li>Sau đó nhấn lại nút "Bật toàn màn hình"</li>
+                          </ul>
+                          <p className="mt-2 font-semibold">
+                            🖥️ Số màn hình phát hiện:{" "}
+                            <span className="text-red-700 dark:text-red-300">
+                              {screenCount}
+                            </span>
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {monitorOk && !multiScreenDetected && (
+                    <div className="mt-3 p-3 rounded-lg bg-emerald-50 border border-emerald-300 dark:bg-emerald-900/20 dark:border-emerald-500">
+                      <p className="text-sm text-emerald-700 dark:text-emerald-300 font-semibold mb-2">
+                        ✅ <strong>Chế độ fullscreen đã khóa</strong>
+                      </p>
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400 mb-2">
+                        Hệ thống sẽ tự động khôi phục fullscreen nếu bạn cố thoát.
+                        Giảng viên sẽ nhận được thông báo về mọi vi phạm.
+                      </p>
+                      <details className="text-xs text-emerald-600 dark:text-emerald-400">
+                        <summary className="cursor-pointer font-semibold hover:text-emerald-700 dark:hover:text-emerald-300">
+                          🔒 Các phím/hành động bị chặn (click để xem)
+                        </summary>
+                        <ul className="mt-2 ml-4 space-y-1 list-disc">
+                          <li>
+                            <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
+                              Esc
+                            </kbd>{" "}
+                            - Thoát fullscreen
+                          </li>
+                          <li>
+                            <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
+                              F11
+                            </kbd>{" "}
+                            - Toggle fullscreen
+                            <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
+                              F5
+                            </kbd>{" "}
+                            - Refresh trang
+                          </li>
+                          <li>
+                            <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
+                              F3
+                            </kbd>{" "}
+                            - Tìm kiếm
+                          </li>
+                          <li>
+                            <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
+                              F12
+                            </kbd>{" "}
+                            - DevTools
+                          </li>
+                          <li>
+                            <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
+                              Alt+Tab
+                            </kbd>{" "}
+                            - Chuyển cửa sổ
+                          </li>
+                          <li>
+                            <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
+                              Alt+F4
+                            </kbd>{" "}
+                            - Đóng cửa sổ
+                          </li>
+                          <li>
+                            <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
+                              Ctrl+W
+                            </kbd>{" "}
+                            - Đóng tab
+                          </li>
+                          <li>
+                            <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
+                              Ctrl+R
+                            </kbd>{" "}
+                            - Refresh
+                          </li>
+                          <li>
+                            <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
+                              Ctrl+Shift+I/J/C
+                            </kbd>{" "}
+                            - DevTools
+                          </li>
+                          <li>
+                            <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-xs">
+                              Ctrl+U
+                            </kbd>{" "}
+                            - View source
+                          </li>
+                          <li>
+                            🖱️ <strong>Chuột phải</strong> - Menu context
+                          </li>
+                          <li>
+                            🖨️ <strong>Print Screen</strong> - In màn hình
+                          </li>
+                        </ul>
+                      </details>
+                    </div>
+                  )}
+
+                  <button
+                    className={`mt-3 px-3 py-2 rounded-lg text-white font-semibold shadow transition hover:brightness-105 disabled:opacity-60 disabled:cursor-not-allowed
+                    ${monitorOk
+                        ? "bg-emerald-600"
+                        : multiScreenDetected
+                          ? "bg-red-600"
+                          : "bg-blue-600"
+                      }`}
+                    onClick={enableMonitor}
+                    disabled={!allowMonitor}
+                  >
+                    {monitorOk
+                      ? "✔️ Đã bật giám sát"
+                      : multiScreenDetected
+                        ? "🔄 Kiểm tra lại màn hình"
+                        : "Bật toàn màn hình"}
+                  </button>
+                </>
+              )}
             </div>
           )}
         </section>
@@ -2730,7 +2742,9 @@ export default function PrepareExam() {
               </span>
             ) : (!reqs.face || faceOk) && (!reqs.card || cardOk) && reqs.monitor && !monitorOk ? (
               <span className="text-blue-500 font-bold animate-pulse">
-                ⚠️ Bạn đã hoàn thành xác minh (hoặc được cho phép). Hãy nhấn "Bật toàn màn hình" ở Bước 3 để vào thi.
+                {isMobileDevice
+                  ? '⚠️ Bạn đã hoàn thành xác minh. Hãy tick vào "Cam kết thi nghiêm túc" ở Bước 3 để vào thi.'
+                  : '⚠️ Bạn đã hoàn thành xác minh (hoặc được cho phép). Hãy nhấn "Bật toàn màn hình" ở Bước 3 để vào thi.'}
               </span>
             ) : (
               "Vui lòng hoàn tất các bước yêu lại trước khi bắt đầu làm bài."
@@ -2744,8 +2758,8 @@ export default function PrepareExam() {
           <button
             disabled={!submissionId || !canStart}
             onClick={async () => {
-              // ✅ Kiểm tra lại số màn hình trước khi vào thi
-              if (reqs.monitor) {
+              // ✅ Kiểm tra lại số màn hình trước khi vào thi (chỉ trên PC)
+              if (reqs.monitor && !isMobileDevice) {
                 try {
                   let detectedScreens = 1;
                   if (window.getScreenDetails) {

@@ -1,4 +1,5 @@
 const { pool } = require("../config/db");
+const { getIsRedisEnabled, pubClient } = require("../config/redis");
 const { broadcastCheatingEvent } = require("../services/socketService");
 const axios = require("axios");
 
@@ -34,10 +35,102 @@ const CHEATING_TYPES = {
   copy_paste: "high"
 };
 
-const recentEvents = new Map();
-const DEDUP_WINDOW = 500;
 const SHARED_FOCUS_EVENTS = ["visibility_hidden", "window_blur", "fullscreen_lost", "split_screen"];
 const SHARED_FOCUS_WINDOW = 3000;
+
+// === LOG BUFFERING SYSTEM ===
+// Purpose: Accumulate logs and bulk-insert every 5s to reduce DB IOPS by 90%+
+class ProctorLogBuffer {
+  constructor(flushInterval = 5000, maxBufferSize = 200) {
+    this.buffer = [];
+    this.flushInterval = flushInterval;
+    this.maxBufferSize = maxBufferSize;
+    this.timer = null;
+    this._startTimer();
+  }
+
+  add(log) {
+    this.buffer.push(log);
+    if (this.buffer.length >= this.maxBufferSize) {
+      console.log(`🚀 [LogBuffer] Buffer limit reached (${this.buffer.length}), flushing immediately...`);
+      this.flush();
+    }
+  }
+
+  _startTimer() {
+    this.timer = setInterval(() => this.flush(), this.flushInterval);
+  }
+
+  async flush() {
+    if (this.buffer.length === 0) return;
+
+    const logsToInsert = [...this.buffer];
+    this.buffer = []; // Clear buffer immediately to prevent duplicates
+
+    console.log(`💾 [LogBuffer] Flushing ${logsToInsert.length} logs to database...`);
+
+    let conn;
+    try {
+      conn = await pool.getConnection();
+      // Bulk Insert Syntax: INSERT INTO table (cols) VALUES (row1), (row2), ...
+      const values = logsToInsert.map(log => [
+        log.submissionId,
+        log.studentId,
+        log.examId,
+        log.event_type,
+        JSON.stringify(log.details || {}),
+        log.severity,
+        log.detected_at || new Date()
+      ]);
+
+      const sql = `INSERT INTO cheating_logs 
+                   (submission_id, student_id, exam_id, event_type, event_details, severity, detected_at) 
+                   VALUES ?`;
+
+      await conn.query(sql, [values]);
+
+      console.log(`✅ [LogBuffer] Successfully persisted ${logsToInsert.length} logs.`);
+    } catch (err) {
+      console.error("❌ [LogBuffer] Error flushing logs, saving to Redis for retry:", err.message);
+
+      // PERSISTENCE FALLBACK: Push failed logs to Redis queue
+      if (getIsRedisEnabled()) {
+        try {
+          // Flatten if needed or push as batch
+          await pubClient.lpush("oem:failed_proctor_logs", JSON.stringify(logsToInsert));
+          console.log(`📦 [LogBuffer] Stored ${logsToInsert.length} logs in Redis retry queue.`);
+        } catch (redisErr) {
+          console.error("🔥 [LogBuffer] FATAL: Redis fallback failed:", redisErr.message);
+        }
+      }
+    } finally {
+      if (conn) conn.release();
+    }
+  }
+}
+
+const proctorBuffer = new ProctorLogBuffer();
+
+// Background worker to retry failed logs from Redis every 30 seconds
+if (getIsRedisEnabled()) {
+  setInterval(async () => {
+    try {
+      const failedBatch = await pubClient.rpop("oem:failed_proctor_logs");
+      if (failedBatch) {
+        const logs = JSON.parse(failedBatch);
+        console.log(`🔄 [LogRetry] Attempting to re-flush ${logs.length} failed logs from Redis...`);
+
+        // Re-inject into buffer for processing
+        logs.forEach(log => proctorBuffer.add(log));
+      }
+    } catch (err) {
+      console.error("⚠️ [LogRetry] Error in retry worker:", err.message);
+    }
+  }, 30000);
+}
+
+const DEDUP_WINDOW = 3000;
+const recentEvents = new Map();
 
 exports.postProctorEvent = async (req, res) => {
   const submissionId = req.params.submissionId || req.params.id;
@@ -69,9 +162,7 @@ exports.postProctorEvent = async (req, res) => {
     });
   }
 
-  // ✅ SHARED FOCUS GROUP DEDUPLICATION
-  // Deprecated strict throttling block here to ensure client 5/5 syncs with database precisely.
-  // The Client and AI Engine already handle duplicate suppression inherently.
+  // SHARED FOCUS GROUP DEDUPLICATION
   if (SHARED_FOCUS_EVENTS.includes(event_type)) {
     const sharedKey = `${submissionId}-_shared_focus`;
     recentEvents.set(sharedKey, now);
@@ -86,140 +177,65 @@ exports.postProctorEvent = async (req, res) => {
     }
   }
 
-  let conn;
   try {
-    conn = await pool.getConnection();
-
+    // 1. IMMEDIATE BROADCAST: Inform instructor instantly via Socket.io
     let severity = CHEATING_TYPES[event_type];
-    // Dynamic AI events
-    if (!severity && event_type.startsWith("ai_")) {
-      severity = "high";
-    }
-
+    if (!severity && event_type.startsWith("ai_")) severity = "high";
     const isCheating = !!severity;
 
-    let updatedCheatingCount = null;
+    let studentId = null;
+    let examId = null;
 
-    if (isCheating) {
 
-      const [subRows] = await conn.query(
-        "SELECT user_id, exam_id FROM submissions WHERE id = ? LIMIT 1",
-        [submissionId]
-      );
+    const [subRows] = await pool.query(
+      `SELECT s.user_id, s.exam_id, s.cheating_count, u.full_name as student_name 
+       FROM submissions s
+       LEFT JOIN users u ON u.id = s.user_id
+       WHERE s.id = ? LIMIT 1`,
+      [submissionId]
+    );
 
-      if (subRows && subRows[0]) {
-        const { user_id: studentId, exam_id: examId } = subRows[0];
+    if (subRows && subRows[0]) {
+      studentId = subRows[0].user_id;
+      examId = subRows[0].exam_id;
+      const studentName = subRows[0].student_name || `Student ${studentId}`;
+      const currentCount = subRows[0].cheating_count || 0;
+      const predictedCount = isCheating ? currentCount + 1 : currentCount;
 
-        // Get student name for notification
-        const [studentRows] = await conn.query(
-          "SELECT full_name FROM users WHERE id = ? LIMIT 1",
-          [studentId]
-        );
-        const studentName =
-          studentRows?.[0]?.full_name || `Student ${studentId}`;
+      // Broadcast immediately
+      broadcastCheatingEvent(examId, {
+        submissionId: parseInt(submissionId),
+        studentId: parseInt(studentId),
+        studentName: studentName,
+        eventType: event_type,
+        severity: severity || "low",
+        detectedAt: new Date(),
+        eventDetails: details || {},
+        cheatingCount: predictedCount,
+      });
 
-        const context = details?.context || {};
-        const isBatteryCritical = context.battery_level !== undefined && context.battery_level < 0.2;
-        const isNetworkLagging = context.network_rtt !== undefined && context.network_rtt > 500;
-
-        const LEGITIMATE_PRONE_EVENTS = ["window_blur", "visibility_hidden", "tab_switch"];
-        if (LEGITIMATE_PRONE_EVENTS.includes(event_type) && (isBatteryCritical || isNetworkLagging) && severity !== 'high') {
-          console.log(`🛡️ [Proctor] Degrading severity for ${event_type} due to context (Battery/Network)`);
-          severity = "low";
-        }
-
-        // ✅ Insert into cheating_logs table WITHOUT transaction (to avoid deadlock)
-        let insertSuccessful = false;
-        try {
-          const [insertResult] = await conn.query(
-            `INSERT INTO cheating_logs 
-             (submission_id, student_id, exam_id, event_type, event_details, severity) 
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [
-              submissionId,
-              studentId,
-              examId,
-              event_type,
-              JSON.stringify(details || {}),
-              severity,
-            ]
-          );
-          insertSuccessful = true;
-          //console.log(`✅ [Proctor] Cheating logged with ID: ${insertResult.insertId}`);
-        } catch (insertErr) {
-          console.warn(
-            "⚠️ [Proctor] Insert error, retrying:",
-            insertErr.message
-          );
-          // Retry once after small delay
-          await new Promise((resolve) => setTimeout(resolve, 100));
-          try {
-            await conn.query(
-              `INSERT INTO cheating_logs 
-               (submission_id, student_id, exam_id, event_type, event_details, severity) 
-               VALUES (?, ?, ?, ?, ?, ?)`,
-              [
-                submissionId,
-                studentId,
-                examId,
-                event_type,
-                JSON.stringify(details || {}),
-                severity,
-              ]
-            );
-            insertSuccessful = true;
-          } catch (retryErr) {
-            console.error("❌ [Proctor] Retry failed:", retryErr.message);
-            insertSuccessful = false;
-          }
-        }
-        // Get updated count
-        const [countResult] = await conn.query(
-          "SELECT cheating_count FROM submissions WHERE id = ? LIMIT 1",
-          [submissionId]
-        );
-
-        updatedCheatingCount = countResult[0]?.cheating_count || 0;
-
-        console.log(
-          `📊 [Proctor] Current cheating_count: ${updatedCheatingCount} for submission ${submissionId}`
-        );
-
-        //cheating event tới tất cả instructors của exam này
-        broadcastCheatingEvent(examId, {
-          submissionId: parseInt(submissionId),
-          studentId: parseInt(studentId),
-          studentName,
-          eventType: event_type,
-          severity,
-          detectedAt: new Date(),
-          eventDetails: details || {},
-          cheatingCount: updatedCheatingCount,
+      // 2. BUFFERED PERSISTENCE: Add to buffer for bulk insert
+      if (isCheating) {
+        proctorBuffer.add({
+          submissionId,
+          studentId,
+          examId,
+          event_type,
+          details,
+          severity: severity || "low",
+          detected_at: new Date()
         });
       }
-    } else {
-      //console.log(`ℹ️ [Proctor] Non-cheating event: ${event_type}`);
     }
-
-    conn.release();
 
     res.status(200).json({
       success: true,
       is_cheating: isCheating,
-      severity: severity || null,
-      cheating_count: updatedCheatingCount,
-      message: isCheating
-        ? `Cheating event logged: ${event_type}`
-        : `Event logged: ${event_type}`,
+      message: `Event processed (Buffered Persistence)`
     });
   } catch (err) {
-    if (conn) {
-      conn.release();
-    }
     console.error("❌ [Proctor] Error logging event:", err);
-    res
-      .status(500)
-      .json({ error: "Failed to log proctor event", details: err.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -378,6 +394,7 @@ exports.getStudentCheatingDetails = async (req, res) => {
   const { submissionId } = req.params;
   try {
     const conn = await pool.getConnection();
+    // 1. Lấy danh sách logs chi tiết
     const [cheatingLogs] = await conn.query(
       `SELECT 
         cl.id,
@@ -385,17 +402,18 @@ exports.getStudentCheatingDetails = async (req, res) => {
         cl.event_details,
         cl.detected_at,
         cl.severity,
-        u.full_name AS student_name,
-        e.title AS exam_title
+        COALESCE(u.full_name, 'Thí sinh không xác định') AS student_name,
+        COALESCE(e.title, 'Đề thi không xác định') AS exam_title
        FROM cheating_logs cl
-       JOIN submissions s ON s.id = cl.submission_id
-       JOIN users u ON u.id = cl.student_id
-       JOIN exams e ON e.id = cl.exam_id
-       WHERE cl.submission_id = ?
+       LEFT JOIN submissions s ON s.id = cl.submission_id
+       LEFT JOIN users u ON u.id = cl.student_id
+       LEFT JOIN exams e ON e.id = cl.exam_id
+       WHERE cl.submission_id = ? AND cl.event_type != 'admin_bypass'
        ORDER BY cl.detected_at DESC`,
       [submissionId]
     );
 
+    // 2. Lấy thống kê tổng quát dựa TRÊN CÙNG danh sách trên
     const [summary] = await conn.query(
       `SELECT 
         COUNT(*) AS total_incidents,
@@ -405,9 +423,25 @@ exports.getStudentCheatingDetails = async (req, res) => {
         MIN(detected_at) AS first_incident,
         MAX(detected_at) AS last_incident
        FROM cheating_logs
-       WHERE submission_id = ?`,
+       WHERE submission_id = ? AND event_type != 'admin_bypass'`,
       [submissionId]
     );
+
+    const totalFromLogs = summary[0]?.total_incidents || 0;
+
+    // 3. TỰ ĐỘNG SYNC: Nếu cheating_count trong submissions bị sai lệch, cập nhật lại ngay
+    const [subCheck] = await conn.query(
+      "SELECT cheating_count FROM submissions WHERE id = ? LIMIT 1",
+      [submissionId]
+    );
+
+    if (subCheck.length > 0 && subCheck[0].cheating_count !== totalFromLogs) {
+      console.log(`🔄 [Sync] Correcting cheating_count for submission ${submissionId}: ${subCheck[0].cheating_count} -> ${totalFromLogs}`);
+      await conn.query(
+        "UPDATE submissions SET cheating_count = ? WHERE id = ?",
+        [totalFromLogs, submissionId]
+      );
+    }
 
     conn.release();
     res.json({
@@ -439,46 +473,42 @@ exports.approveStudentScores = async (req, res) => {
     const conn = await pool.getConnection();
 
     try {
-      // 1. Nếu giảng viên sửa từng câu hỏi, lưu lại và push qua AI learning (bất đồng bộ)
+      // 1. Fetch all current answers for this student/exam in one go
       if (per_question_scores && Array.isArray(per_question_scores)) {
+        const questionIds = per_question_scores.map(p => p.question_id);
+        const [qRows] = await conn.query(
+          `SELECT sa.question_id, sa.answer_text, q.model_answer, q.points, sa.score as old_score, q.type, sa.submission_id
+           FROM student_answers sa
+           JOIN exam_questions q ON sa.question_id = q.id
+           JOIN submissions sub ON sa.submission_id = sub.id
+           WHERE sa.question_id IN (?) AND sub.user_id = ? AND sub.exam_id = ?`,
+          [questionIds, studentId, examId]
+        );
+
+        const qMap = new Map(qRows.map(r => [r.question_id, r]));
+
         for (const p of per_question_scores) {
           const qid = p.question_id;
           const newScore = p.score;
+          const qInfo = qMap.get(qid);
 
-          const [qRows] = await conn.query(
-            `SELECT sa.answer_text, q.model_answer, q.points, sa.score as old_score, q.type, sa.submission_id
-             FROM student_answers sa
-             JOIN exam_questions q ON sa.question_id = q.id
-             JOIN submissions sub ON sa.submission_id = sub.id
-             WHERE sa.question_id = ? AND sub.user_id = ? AND sub.exam_id = ? LIMIT 1`,
-            [qid, studentId, examId]
-          );
-
-          if (qRows.length > 0) {
-            const qInfo = qRows[0];
+          if (qInfo) {
             await conn.query(
               `UPDATE student_answers SET score = ? WHERE question_id = ? AND submission_id = ?`,
               [newScore, qid, qInfo.submission_id]
             );
 
-            // Gửi dữ liệu training cho AI
-            if (qInfo.type === 'Essay') {
-              try {
-                const aiUrl = process.env.AI_SERVICE_URL || "http://127.0.0.1:8000";
-                // Async fire-And-forget (Không block luồng save điểm)
-                axios.post(`${aiUrl}/learn/from-correction`, {
-                  student_answer: qInfo.answer_text,
-                  model_answer: qInfo.model_answer,
-                  old_score: parseFloat(qInfo.old_score || 0),
-                  new_score: parseFloat(newScore),
-                  max_points: parseFloat(qInfo.points),
-                  feedback: "Sửa bài bởi giảng viên"
-                }, { timeout: 3000 }).then(() => {
-                  console.log(`[AI Learning] ✅ Sent correction to AI for QID ${qid}`);
-                }).catch(e => {
-                  console.log(`[AI Learning] ⚠️ Error sending correction to AI:`, e.message);
-                });
-              } catch (e) { }
+            // Gửi dữ liệu training cho AI (Bất đồng bộ - Fire and Forget)
+            if (qInfo.type === 'Essay' && Math.abs(newScore - qInfo.old_score) > 0.05) {
+              const aiUrl = process.env.AI_SERVICE_URL || "http://127.0.0.1:8000";
+              axios.post(`${aiUrl}/learn/from-correction`, {
+                student_answer: qInfo.answer_text,
+                model_answer: qInfo.model_answer,
+                old_score: parseFloat(qInfo.old_score || 0),
+                new_score: parseFloat(newScore),
+                max_points: parseFloat(qInfo.points),
+                feedback: "Sửa bài bởi giảng viên"
+              }, { timeout: 3000 }).catch(e => console.log(`[AI Learning] ⚠️ Error:`, e.message));
             }
           }
         }

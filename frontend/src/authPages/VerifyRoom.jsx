@@ -19,8 +19,8 @@ export default function VerifyRoom() {
 
     // Nếu đến từ role selection hoặc student dashboard, cho phép vào
     if (!fromRoleSelection && !fromStudentDashboard) {
-      const token = localStorage.getItem("token");
-      const userRole = localStorage.getItem("role");
+      const token = sessionStorage.getItem("token") || localStorage.getItem("token");
+      const userRole = sessionStorage.getItem("role") || localStorage.getItem("role");
       if (token && userRole) {
         navigate(
           `/${userRole === "student" ? "student" : "instructor"}-dashboard`
@@ -65,7 +65,7 @@ export default function VerifyRoom() {
         localStorage.setItem('verifiedRoomCode', roomCode.trim());
 
         setSuccess('✅ Mã phòng thi hợp lệ! Đang chuyển hướng...');
-        const token = localStorage.getItem('token');
+        const token = sessionStorage.getItem("token") || localStorage.getItem("token");
         setTimeout(() => {
           if (token) {
             navigate(`/exam/${exam_id}/prepare`);
@@ -83,7 +83,7 @@ export default function VerifyRoom() {
         setSuccess("✅ Mã phòng thi hợp lệ! Đang chuyển hướng...");
         localStorage.setItem('verifiedRoomId', res.data.examCode);
         localStorage.setItem('verifiedRoomCode', res.data.examCode);
-        const token = localStorage.getItem('token');
+        const token = sessionStorage.getItem("token") || localStorage.getItem("token");
         setTimeout(() => {
           if (token) {
             navigate('/login', { state: { role, fromVerifyRoom: true } });
@@ -110,7 +110,7 @@ export default function VerifyRoom() {
           localStorage.setItem("verifiedRoomId", res.data.examCode);
           localStorage.setItem("verifiedRoomCode", res.data.examCode);
           setSuccess("✅ Mã phòng thi hợp lệ! Đang chuyển hướng...");
-          const token = localStorage.getItem('token');
+          const token = sessionStorage.getItem("token") || localStorage.getItem("token");
           setTimeout(() => {
             if (token) {
               navigate('/login', { state: { role, fromVerifyRoom: true } });

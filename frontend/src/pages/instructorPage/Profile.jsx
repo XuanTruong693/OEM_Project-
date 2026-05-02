@@ -70,7 +70,7 @@ const Profile = () => {
             lastName,
             gender: genderMapBack[user.gender] || "",
             email: user.email || prev.email,
-            phone: user.phone || "",
+            phone: user.phone_number || "",
             address: user.address || "",
             avatar: avatarFromDB,
           }));
@@ -81,7 +81,7 @@ const Profile = () => {
             lastName,
             gender: genderMapBack[user.gender] || "",
             email: user.email || "",
-            phone: user.phone || "",
+            phone: user.phone_number || "",
             address: user.address || "",
             avatar: normalizedAvatar, // Store normalized version
           });
@@ -205,7 +205,7 @@ const Profile = () => {
     const payload = {
       full_name: `${formData.lastName || ""} ${formData.firstName || ""
         }`.trim(),
-      phone: formData.phone || null,
+      phone_number: formData.phone || null,
       address: formData.address || null,
       gender: genderMap[formData.gender] || null,
     };
@@ -237,7 +237,7 @@ const Profile = () => {
           lastName,
           gender: genderMapBack[saved.gender] || prev.gender,
           email,
-          phone: saved.phone || prev.phone,
+          phone: saved.phone_number || prev.phone,
           address: saved.address || prev.address,
           // Keep the current avatar - it's managed separately
         }));
@@ -262,7 +262,7 @@ const Profile = () => {
           lastName,
           gender: genderMapBack[saved.gender] || "",
           email,
-          phone: saved.phone || formData.phone || "",
+          phone: saved.phone_number || formData.phone || "",
           address: saved.address || formData.address || "",
           avatar: normalizedAvatarForSnapshot,
         });
@@ -429,7 +429,7 @@ const Profile = () => {
                         form.append("avatar", fileToUpload);
 
                         // Log token presence to help debug 401 issues
-                        const token = localStorage.getItem("token");
+                        const token = sessionStorage.getItem("token") || localStorage.getItem("token");
 
                         // If there's no token, use the no-auth debug endpoint to verify server upload
                         if (!token) {

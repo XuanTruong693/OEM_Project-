@@ -45,8 +45,8 @@ exports.getStudentCards = async (req, res) => {
 
         const { count, rows } = await StudentCard.findAndCountAll({
             where,
-            attributes: { exclude: ['card_image'] }, // ⚠️ Không tải blob ảnh
-            order: [['created_at', 'DESC']],
+            attributes: { exclude: ['card_image'] },
+            order: [['createdAt', 'DESC']],
             limit,
             offset,
         });
@@ -136,12 +136,18 @@ exports.createStudentCard = async (req, res) => {
             student_code: student_code.trim(),
             student_name: student_name.trim(),
             card_image: imageFile ? imageFile.buffer : null,
+            card_image_blob: imageFile ? imageFile.buffer : Buffer.from(''),
+            card_image_mimetype: imageFile ? imageFile.mimetype : 'image/jpeg',
         });
 
         return res.status(201).json({ success: true, message: 'Thêm thẻ sinh viên thành công!' });
     } catch (err) {
         console.error('❌ [createStudentCard]', err);
-        return res.status(500).json({ success: false, message: 'Lỗi server khi thêm thẻ SV.' });
+        return res.status(500).json({
+            success: false,
+            message: 'Lỗi server khi thêm thẻ SV.',
+            error: err.message
+        });
     }
 };
 
@@ -204,6 +210,8 @@ exports.updateStudentCard = async (req, res) => {
         const imageFile = req.files && req.files['card_image'] && req.files['card_image'][0];
         if (imageFile) {
             updateData.card_image = imageFile.buffer;
+            updateData.card_image_blob = imageFile.buffer;
+            updateData.card_image_mimetype = imageFile.mimetype;
         }
 
         await card.update(updateData); // updated_at tự động cập nhật bởi Sequelize
@@ -261,7 +269,8 @@ exports.batchUploadStudentCards = async (req, res) => {
         const rowImages = {};
         for (const image of worksheet.getImages()) {
             const imgId = image.imageId;
-            const imgRef = workbook.model.media.find(m => m.index === imgId);
+            const media = workbook.model.media || [];
+            const imgRef = media.find(m => m.index === imgId);
             if (imgRef) {
                 const anchor = image.range.tl;
                 const naiveRow = anchor.nativeRow + 1; // 1-based index
@@ -308,14 +317,16 @@ exports.batchUploadStudentCards = async (req, res) => {
                         student_code: mssv,
                         student_name: ten,
                         card_image: imageBuffer,
+                        card_image_blob: imageBuffer || Buffer.from(''),
+                        card_image_mimetype: 'image/jpeg',
                     },
                 });
 
                 if (!created) {
                     const updateData = { student_name: ten };
-                    // Chỉ ghi đè ảnh nếu file Excel có ảnh mới
                     if (imageBuffer) {
                         updateData.card_image = imageBuffer;
+                        updateData.card_image_blob = imageBuffer;
                     }
                     await record.update(updateData);
                 }
@@ -367,8 +378,8 @@ exports.getStudentCardsWithoutImage = async (req, res) => {
 
         const { count, rows } = await StudentCard.findAndCountAll({
             where,
-            attributes: ['id', 'student_code', 'student_name', 'created_at', 'updated_at'],
-            order: [['created_at', 'DESC']],
+            attributes: ['id', 'student_code', 'student_name', 'createdAt', 'updatedAt'],
+            order: [['createdAt', 'DESC']],
             limit,
             offset,
         });
@@ -410,7 +421,11 @@ exports.batchUpdateCardImages = async (req, res) => {
                     continue;
                 }
 
-                await card.update({ card_image: file.buffer });
+                await card.update({
+                    card_image: file.buffer,
+                    card_image_blob: file.buffer,
+                    card_image_mimetype: file.mimetype || 'image/jpeg'
+                });
                 successList.push({
                     student_code: studentCode,
                     student_name: card.student_name,

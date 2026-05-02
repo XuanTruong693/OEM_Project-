@@ -22,6 +22,13 @@ try:
 except ImportError:
     _learning_available = False
 
+# Load environment variables
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "backend", ".env"))
+except ImportError:
+    pass
+
 app = FastAPI(title="AI Grading Service", version="1.2.0")
 
 # Add security middleware FIRST
@@ -50,11 +57,29 @@ app.add_middleware(
 )
 
 # ===== AUTO-RETRAIN SYSTEM =====
-RETRAIN_THRESHOLD = int(os.getenv("RETRAIN_THRESHOLD", "1"))  # Số corrections cần đạt để auto-retrain
+RETRAIN_THRESHOLD = int(os.getenv("RETRAIN_THRESHOLD", "20"))  # Increased to 20 for stability
 RETRAIN_LOG_PATH = os.path.join(os.path.dirname(__file__), "retrain_history.json")
 _retrain_lock = threading.Lock()
 
-# In-memory retrain state
+# ===== DB CONNECTION POOLING =====
+db_config = {
+    "host": os.getenv("DB_HOST", "127.0.0.1"),
+    "user": os.getenv("DB_USER", "root"),
+    "password": os.getenv("DB_PASSWORD", "Truongdo123."),
+    "database": os.getenv("DB_NAME", "oem_mini"),
+    "charset": "utf8mb4",
+    "pool_name": "ai_service_pool",
+    "pool_size": 32
+}
+
+try:
+    from mysql.connector import pooling
+    db_pool = pooling.MySQLConnectionPool(**db_config)
+    print(f"✅ [DB] AI Connection Pool initialized with size {db_config['pool_size']}")
+except Exception as e:
+    print(f"❌ [DB] Error creating pool: {e}")
+    db_pool = None
+
 _retrain_state = {
     "corrections_since_last_retrain": 0,
     "total_corrections": 0,
@@ -116,22 +141,18 @@ def _do_auto_retrain():
         if _learning_available:
             engine = get_learning_engine()
             
-            # Reload from DB
+            # Reload from DB using Pool
             db_count = 0
-            try:
-                import mysql.connector
-                db_config = {
-                    "host": os.getenv("DB_HOST", "localhost"),
-                    "user": os.getenv("DB_USER", "root"),
-                    "password": os.getenv("DB_PASSWORD", "Truongdo123."),
-                    "database": os.getenv("DB_NAME", "oem_mini"),
-                    "charset": "utf8mb4"
-                }
-                conn = mysql.connector.connect(**db_config)
-                db_count = engine.load_patterns_from_db(conn)
-                conn.close()
-            except Exception as e:
-                print(f"[AutoRetrain] ⚠️ DB reload failed: {e}")
+            if db_pool:
+                try:
+                    conn = db_pool.get_connection()
+                    db_count = engine.load_patterns_from_db(conn)
+                    conn.close()
+                except Exception as e:
+                    print(f"[AutoRetrain] ⚠️ DB reload via pool failed: {e}")
+            
+            # Reload from file
+            engine._load_patterns_from_file()
             
             # Reload from file
             engine._load_patterns_from_file()
@@ -224,27 +245,19 @@ def startup_event():
         if engine:
             print(f"[Learning] Loaded {len(engine.synonyms)} synonym groups from file")
             
-            # Auto-load patterns from database
-            try:
-                db_config = {
-                    "host": os.getenv("DB_HOST", "localhost"),
-                    "user": os.getenv("DB_USER", "root"),
-                    "password": os.getenv("DB_PASSWORD", "Truongdo123."),
-                    "database": os.getenv("DB_NAME", "oem_mini"),
-                    "charset": "utf8mb4"
-                }
-                print(f"[Learning] Connecting to database {db_config['database']}@{db_config['host']}...")
-                conn = mysql.connector.connect(**db_config)
+            # Auto-load patterns from pool
+            if db_pool:
                 try:
-                    count = engine.load_patterns_from_db(conn)
-                    print(f"[Learning] ✅ Loaded {count} instructor-confirmed patterns from database")
-                finally:
-                    conn.close()
-            except ImportError:
-                print("[Learning] ⚠️ mysql-connector not installed, skipping DB patterns")
-            except Exception as e:
-                print(f"[Learning] ⚠️ Could not load patterns from DB: {e}")
-                print("[Learning] ℹ️ Using file-based synonyms only")
+                    conn = db_pool.get_connection()
+                    try:
+                        count = engine.load_patterns_from_db(conn)
+                        print(f"[Learning] ✅ Loaded {count} instructor-confirmed patterns from database")
+                    finally:
+                        conn.close()
+                except Exception as e:
+                    print(f"[Learning] ⚠️ Could not load patterns from pool: {e}")
+            else:
+                print("[Learning] ℹ️ Using file-based synonyms only (No DB Pool)")
     
     print("[Ready] AI Service Ready!")
 
@@ -283,21 +296,25 @@ def reload_learning_patterns(db_host: str = "localhost", db_user: str = "root",
         return {"status": "error", "message": "Learning module not available"}
     
     try:
-        db_config = {
-            "host": os.getenv("DB_HOST", db_host),
-            "user": os.getenv("DB_USER", db_user),
-            "password": os.getenv("DB_PASSWORD", db_password),
-            "database": os.getenv("DB_NAME", db_name),
-            "charset": "utf8mb4"
-        }
-        
-        conn = mysql.connector.connect(**db_config)
+        if db_pool:
+            conn = db_pool.get_connection()
+        else:
+            # Fallback if pool not initialized
+            import mysql.connector
+            conn = mysql.connector.connect(
+                host=os.getenv("DB_HOST", db_host),
+                user=os.getenv("DB_USER", db_user),
+                password=os.getenv("DB_PASSWORD", db_password),
+                database=os.getenv("DB_NAME", db_name),
+                charset="utf8mb4"
+            )
+            
         try:
             engine = get_learning_engine()
             count = engine.load_patterns_from_db(conn)
             return {
                 "status": "ok",
-                "message": f"Reloaded {count} patterns",
+                "message": f"Reloaded {count} patterns (via {'pool' if db_pool else 'direct connect'})",
                 "stats": engine.get_stats()
             }
         finally:

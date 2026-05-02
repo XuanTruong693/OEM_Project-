@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
+import axiosClient from "../api/axiosClient";
 
 export default function RolePage() {
   const navigate = useNavigate();
@@ -10,11 +11,14 @@ export default function RolePage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      localStorage.removeItem("selectedRole");
+    const { fromRoleSelection, fromStudentDashboard } = location.state || {};
+    if (!fromRoleSelection && !fromStudentDashboard) {
+      const token = sessionStorage.getItem("token") || localStorage.getItem("token");
+      if (token) {
+        localStorage.removeItem("selectedRole");
+      }
     }
-  }, []);
+  }, [location.state]);
 
   const handleSelectRole = async (role) => {
     setLoading(true);

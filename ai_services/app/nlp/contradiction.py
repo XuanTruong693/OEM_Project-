@@ -105,6 +105,102 @@ class LogicAnalyzer:
             
         return cleaned_text
 
+    def has_explicit_negation(self, text: str) -> bool:
+        """Kiểm tra xem câu có chứa các từ phủ định tường minh không."""
+        if not text: return False
+        text_lower = text.lower()
+        from .config import GradingConfig
+        negation_words = GradingConfig().negation_words
+        
+        # Sử dụng Regex để tránh match nhầm (ví dụ "không" vs "không khí")
+        for word in negation_words:
+            pattern = rf"\b{re.escape(word)}\b"
+            if re.search(pattern, text_lower):
+                return True
+        return False
+
+    def detect_logic_error_type(self, student_text: str, model_text: str) -> str:
+        """
+        Nhận diện loại lỗi logic: 'temporal', 'causal', 'negation', 'hard'.
+        Dùng để áp dụng mức phạt (penalty) tương ứng thay vì cho 0 điểm.
+        """
+        s_lower, m_lower = student_text.lower(), model_text.lower()
+        from .tokenizer import TEMPORAL_MARKERS, CAUSAL_MARKERS
+        
+        # 1. Kiểm tra mâu thuẫn thời gian (Temporal)
+        for marker in TEMPORAL_MARKERS:
+            if marker in s_lower and marker in m_lower:
+                # Nếu cả hai cùng có marker, kiểm tra xem thứ tự ý trước/sau marker có bị đảo ngược không
+                if self._is_temporal_reversed(s_lower, m_lower, marker):
+                    return 'temporal'
+        
+        # 2. Kiểm tra mâu thuẫn nhân quả (Causal)
+        for marker in CAUSAL_MARKERS:
+            if marker in s_lower and marker in m_lower:
+                if self._is_causal_mismatch(s_lower, m_lower, marker):
+                    return 'causal'
+        
+        # 3. Kiểm tra bẫy phủ định kép (Double Negation)
+        if self._is_negation_trap(s_lower, m_lower):
+            return 'negation'
+            
+        return 'hard'
+
+    def _is_temporal_reversed(self, s: str, m: str, marker: str) -> bool:
+        from sentence_transformers import util
+        s_parts = s.split(marker, 1)
+        m_parts = m.split(marker, 1)
+        if len(s_parts) < 2 or len(m_parts) < 2: return False
+        
+        # Ý tưởng: Nếu vế SAU của Model giống vế TRƯỚC của Student -> Đảo ngược
+        m_after = m_parts[1].strip()
+        s_before = s_parts[0].strip()
+        
+        if not m_after or not s_before: return False
+        
+        emb_m = self.ai.bi_encoder.encode(m_after, convert_to_tensor=True)
+        emb_s = self.ai.bi_encoder.encode(s_before, convert_to_tensor=True)
+        sim = util.cos_sim(emb_m, emb_s).item()
+        
+        return sim > 0.75
+
+    def _is_causal_mismatch(self, s: str, m: str, marker: str) -> bool:
+        from sentence_transformers import util
+        s_parts = s.split(marker, 1)
+        m_parts = m.split(marker, 1)
+        if len(s_parts) < 2 or len(m_parts) < 2: return False
+        
+        # Mệnh đề nguyên nhân (Reason clause)
+        s_reason, m_reason = s_parts[0].strip(), m_parts[0].strip()
+        if marker in ["vì", "do", "bởi vì"]:
+            s_reason, m_reason = s_parts[1].strip(), m_parts[1].strip()
+            
+        if not s_reason or not m_reason: return False
+            
+        # Kiểm tra xem mệnh đề nguyên nhân của SV có mâu thuẫn với mệnh đề nguyên nhân của Mẫu không
+        label, conf = self.analyze(s_reason, m_reason)
+        return label == 'contradiction' and conf > 0.65
+
+    def _is_negation_trap(self, s: str, m: str) -> bool:
+        # Đếm số lượng từ phủ định bằng Regex để đảm bảo chính xác
+        from .config import GradingConfig
+        neg_words = GradingConfig().negation_words
+        
+        def count_neg(text):
+            count = 0
+            for w in neg_words:
+                if re.search(rf"\b{re.escape(w)}\b", text.lower()):
+                    count += 1
+            return count
+            
+        s_count = count_neg(s)
+        m_count = count_neg(m)
+        
+        # Bẫy phủ định kép: Model phủ định 1 lần, SV phủ định 2 lần (thành khẳng định)
+        if m_count == 1 and s_count >= 2:
+            return True
+        return False
+
     def analyze(self, student_text: str, model_text: str) -> Tuple[str, float]:
         """
         Determine if student_text contradicts, entails, or is neutral to model_text.

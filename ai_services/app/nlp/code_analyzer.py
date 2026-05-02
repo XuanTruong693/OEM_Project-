@@ -223,18 +223,45 @@ class CodeAnalyzer:
         if not text:
             return "text"
         
-        # Check SQL first (Strong indicator: 1 keyword is enough for SQL queries)
-        sql_score = sum(1 for p in self.sql_indicators if re.search(p, text, re.IGNORECASE))
-        if sql_score >= 1:
+        # Check SQL (Strong patterns vs Generic keywords)
+        sql_strong = [
+            r"\bSELECT\b.*\bFROM\b", r"\bINSERT\s+INTO\b", r"\bUPDATE\b.*\bSET\b", 
+            r"\bDELETE\s+FROM\b", r"\bCREATE\s+TABLE\b", r"\bALTER\s+TABLE\b",
+            r"\bDROP\s+TABLE\b", r"\bCREATE\s+VIEW\b", r"\bCREATE\s+TRIGGER\b"
+        ]
+        has_strong_sql = any(re.search(p, text, re.IGNORECASE | re.DOTALL) for p in sql_strong)
+        
+        sql_generic = [
+            r"\bSELECT\b", r"\bWHERE\b", r"\bORDER\s+BY\b", r"\bGROUP\s+BY\b", 
+            r"\bJOIN\b", r"\bHAVING\b", r"\bUNION\b", r"\bVALUES\b"
+        ]
+        generic_sql_count = sum(1 for p in sql_generic if re.search(p, text, re.IGNORECASE))
+        
+        if has_strong_sql or generic_sql_count >= 2:
             return "sql"
         
-        # Check code patterns
-        code_score = sum(1 for p in self.code_indicators if re.search(p, text))
+        # Check Code (Strong indicators vs generic syntax)
+        strong_code_indicators = [
+            r"\bdef\s+\w+\s*\(", r"\bclass\s+\w+", r"\bpublic\s+(static\s+)?void\b",
+            r"\bpublic\s+class\b", r"#include\s*<", r"def\s+__init__", r"super\(\)\.",
+            r"\bconsole\.log\s*\(", r"System\.out\.print"
+        ]
+        has_strong_code = any(re.search(p, text) for p in strong_code_indicators)
         
-        strong_code_indicators = r"(def\s+__init__|\bclass\s+\w+|public\s+class|\bvoid\s+\w+|#include|<iostream>|std::)"
-        generic_code_syntax = r"([{}();]|\breturn\b|=>|->|//|/\*.*\*/)"
+        generic_code_indicators = [
+            r"\breturn\b", r"\bfor\s+\w+\s+in\b", r"\bif\s+.+:", r"\bwhile\s+.+:",
+            r"([{}();])", r"=>\s*{", r"\bconst\s+\w+\s*=", r"\blet\s+\w+\s*="
+        ]
+        # Count generic indicators (at least 2 distinct types or multiple symbols)
+        generic_code_count = 0
+        for p in generic_code_indicators:
+            if re.search(p, text):
+                generic_code_count += 1
         
-        if code_score >= 1 or re.search(strong_code_indicators, text) or len(re.findall(generic_code_syntax, text)) >= 2:
+        # Symbol density check
+        symbols = len(re.findall(r"([{}();])", text))
+        
+        if has_strong_code or generic_code_count >= 3 or symbols >= 4:
             return "code"
         
         # Check math patterns

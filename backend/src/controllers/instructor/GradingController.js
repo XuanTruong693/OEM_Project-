@@ -150,14 +150,28 @@ async function gradeAnswer(req, res) {
             { replacements: [score, feedback || null, answerId] }
         );
 
-        // Recalculate submission total
+        // Recalculate submission scores correctly (MCQ vs Essay separation)
         await sequelize.query(
-            `UPDATE submissions 
-       SET total_score = (
-         SELECT COALESCE(SUM(score), 0) FROM student_answers WHERE submission_id = ?
-       )
-       WHERE id = ?`,
-            { replacements: [answer.submission_id, answer.submission_id] }
+            `UPDATE submissions s
+             SET s.total_score = (
+                 SELECT COALESCE(SUM(sa.score), 0) 
+                 FROM student_answers sa 
+                 JOIN exam_questions q ON q.id = sa.question_id 
+                 WHERE sa.submission_id = s.id AND q.type = 'MCQ'
+             ),
+             s.ai_score = (
+                 SELECT COALESCE(SUM(sa.score), 0) 
+                 FROM student_answers sa 
+                 JOIN exam_questions q ON q.id = sa.question_id 
+                 WHERE sa.submission_id = s.id AND q.type = 'Essay'
+             ),
+             s.suggested_total_score = (
+                 SELECT COALESCE(SUM(sa.score), 0) 
+                 FROM student_answers sa 
+                 WHERE sa.submission_id = s.id
+             )
+             WHERE s.id = ?`,
+            { replacements: [answer.submission_id] }
         );
 
         return res.json({
@@ -253,13 +267,29 @@ async function finalizeSubmission(req, res) {
             { replacements: [submissionId] }
         );
 
-        // Update submission status
+        // Update submission status and recalculate all score parts
         await sequelize.query(
-            `UPDATE submissions 
-       SET status = 'graded', 
-           total_score = (SELECT COALESCE(SUM(score), 0) FROM student_answers WHERE submission_id = ?)
-       WHERE id = ?`,
-            { replacements: [submissionId, submissionId] }
+            `UPDATE submissions s
+             SET s.status = 'graded',
+                 s.total_score = (
+                     SELECT COALESCE(SUM(sa.score), 0) 
+                     FROM student_answers sa 
+                     JOIN exam_questions q ON q.id = sa.question_id 
+                     WHERE sa.submission_id = s.id AND q.type = 'MCQ'
+                 ),
+                 s.ai_score = (
+                     SELECT COALESCE(SUM(sa.score), 0) 
+                     FROM student_answers sa 
+                     JOIN exam_questions q ON q.id = sa.question_id 
+                     WHERE sa.submission_id = s.id AND q.type = 'Essay'
+                 ),
+                 s.suggested_total_score = (
+                     SELECT COALESCE(SUM(sa.score), 0) 
+                     FROM student_answers sa 
+                     WHERE sa.submission_id = s.id
+                 )
+             WHERE s.id = ?`,
+            { replacements: [submissionId] }
         );
 
         return res.json({
@@ -328,6 +358,23 @@ async function approveAllExamScores(req, res) {
         );
 
         const approvedCount = result.affectedRows || 0;
+
+        // Đồng bộ bảng results: Trigger trg_confirmed_results_update chỉ fire khi 
+        // status = 'graded', nhưng ở đây ta set thẳng 'confirmed', nên phải sync thủ công.
+        if (approvedCount > 0) {
+            await sequelize.query(
+                `INSERT INTO results (exam_id, student_id, total_score, status)
+                 SELECT s.exam_id, s.user_id, COALESCE(s.suggested_total_score, s.total_score), 'confirmed'
+                 FROM submissions s
+                 WHERE s.exam_id = ? AND s.instructor_confirmed = 1
+                 ON DUPLICATE KEY UPDATE 
+                    total_score = VALUES(total_score),
+                    status = 'confirmed'`,
+                { replacements: [examId] }
+            );
+            console.log(`✅ [ApproveAll] Synced results table for exam ${examId}`);
+        }
+
         console.log(
             `✅ [ApproveAll] Approved ${approvedCount} submissions for exam ${examId}`
         );

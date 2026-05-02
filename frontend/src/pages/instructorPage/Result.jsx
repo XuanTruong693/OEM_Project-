@@ -233,6 +233,29 @@ export default function Result() {
   const [savingEssayId, setSavingEssayId] = React.useState(null); // Track which answer is saving
   const [correctedQuestions, setCorrectedQuestions] = React.useState({}); // { answerId: { oldScore, newScore, aiLearned } }
   const [adminModifiedIds, setAdminModifiedIds] = React.useState([]); // Track submissions modified by admin
+
+  // Auto-save essay edits to localStorage
+  React.useEffect(() => {
+    if (drawer.open && drawer.row?.submission_id) {
+      const key = `draft_scores_${drawer.row.submission_id}`;
+      if (Object.keys(essayScores).length > 0 || Object.keys(essayFeedback).length > 0) {
+        localStorage.setItem(key, JSON.stringify({ essayScores, essayFeedback }));
+      }
+    }
+  }, [essayScores, essayFeedback, drawer.open, drawer.row]);
+
+  // Restore draft on drawer open
+  React.useEffect(() => {
+    if (drawer.open && drawer.row?.submission_id) {
+      const key = `draft_scores_${drawer.row.submission_id}`;
+      const draft = JSON.parse(localStorage.getItem(key) || "null");
+      if (draft) {
+        console.log("📝 [Persistence] Restored grading draft from localStorage.");
+        setEssayScores(prev => ({ ...prev, ...draft.essayScores }));
+        setEssayFeedback(prev => ({ ...prev, ...draft.essayFeedback }));
+      }
+    }
+  }, [drawer.open, drawer.row]);
   const [zoomImage, setZoomImage] = React.useState(null); // { src: string, alt: string } for zoom modal
 
   // Toast notifications
@@ -1025,21 +1048,44 @@ export default function Result() {
           }))
       };
 
-      // ✅ Use backend response to get accurate values from DB
-      const response = await axiosClient.put(
-        `/instructor/exams/${examId}/students/${r.student_id}/score`,
-        payload
-      );
+      // AUTO-RETRY LOGIC
+      let retryCount = 0;
+      const maxRetries = Infinity;
 
-      showToast("success", "Lưu điểm thành công!");
+      const doSave = async () => {
+        try {
+          const response = await axiosClient.put(
+            `/instructor/exams/${examId}/students/${r.student_id}/score`,
+            payload
+          );
 
-      // ✅ Use values from DB response if available, otherwise use submitted values
+          showToast("success", "Lưu điểm thành công!");
+
+          // Clear draft on success
+          localStorage.removeItem(`draft_scores_${r.submission_id}`);
+
+          return response;
+        } catch (err) {
+          if (retryCount < maxRetries) {
+            retryCount++;
+            console.warn(`🔄 [Retry] Grading attempt ${retryCount} failed. Retrying in 5s...`);
+            showToast("warning", `Đang thử lưu lại lần ${retryCount}...`);
+            await new Promise(res => setTimeout(res, 5000));
+            return doSave();
+          }
+          throw err;
+        }
+      };
+
+      const response = await doSave();
+
+      // Use values from DB response if available, otherwise use submitted values
       const dbRow = response.data;
       const updatedMcq = dbRow?.total_score ?? newTotalScore;
       const updatedAi = dbRow?.ai_score ?? newAiScore;
       const updatedSuggested = dbRow?.suggested_total_score ?? ((updatedMcq || 0) + (updatedAi || 0));
 
-      // ✅ 1. Update correctedQuestions so the "AI Learned" badges appear immediately
+      // 1. Update correctedQuestions so the "AI Learned" badges appear immediately
       const newCorrections = { ...correctedQuestions };
       payload.per_question_scores.forEach(p => {
         const matchingQ = (submissionQuestions || []).find(sq => sq.answer?.id === p.answer_id);
@@ -1054,7 +1100,7 @@ export default function Result() {
       });
       setCorrectedQuestions(newCorrections);
 
-      // ✅ 2. Update submissionQuestions to reflect new scores precisely
+      // 2. Update submissionQuestions to reflect new scores precisely
       const updatedQuestions = (submissionQuestions || []).map(q => {
         const modified = payload.per_question_scores.find(p => p.answer_id === q.answer?.id);
         if (modified) {
@@ -1072,7 +1118,7 @@ export default function Result() {
       });
       setSubmissionQuestions(updatedQuestions);
 
-      // ✅ 3. Update main summary/list states
+      // 3. Update main summary/list states
       setRows((prevRows) =>
         prevRows.map((row) => {
           if (row.student_id === r.student_id) {
@@ -1101,7 +1147,7 @@ export default function Result() {
         },
       }));
 
-      // ✅ 4. LAST: Clear temporary state
+      // 4. LAST: Clear temporary state
       setEssayScores({});
       setEssayFeedback({});
 
@@ -1127,12 +1173,12 @@ export default function Result() {
         );
 
         console.log(
-          `✅ [Result] Approved ${res.data?.approved || 0} submissions`
+          `[Result] Approved ${res.data?.approved || 0} submissions`
         );
 
         showToast(
           "success",
-          `✅ Đã duyệt thành công ${res.data?.approved || 0} bài thi!`
+          `Đã duyệt thành công ${res.data?.approved || 0} bài thi!`
         );
 
         // Update local state instead of full reload

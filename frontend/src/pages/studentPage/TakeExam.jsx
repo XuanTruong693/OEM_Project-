@@ -200,6 +200,8 @@ export default function TakeExam() {
       sessionStorage.removeItem(`exam_${examId}_started`);
       localStorage.removeItem("examTheme");
       localStorage.removeItem(`violations_${submissionId}`);
+      localStorage.removeItem(`answers_backup_${submissionId}`);
+      localStorage.removeItem(`pending_answers_${submissionId}`);
 
       console.log(
         "✅ [TakeExam] Exam submitted, session cleared, monitoring stopped"
@@ -218,8 +220,36 @@ export default function TakeExam() {
         }
       } catch { }
     } catch (err) {
-      console.error("❌ [TakeExam] Submit error:", err);
-      setShowModal(true);
+      console.error("❌ [TakeExam] Submit error, starting retry logic:", err);
+
+      // AUTO-RETRY LOGIC
+      let retryCount = 0;
+      const maxRetries = Infinity;
+
+      const retrySubmit = async () => {
+        if (retryCount >= maxRetries) {
+          setSubmitting(false);
+          flash("Lỗi kết nối nghiêm trọng. Vui lòng nhấn Nộp lại hoặc F5.", "danger", 10000);
+          return;
+        }
+
+        retryCount++;
+        console.log(`🔄 [Retry] Attempt ${retryCount}/${maxRetries} to submit...`);
+        flash(`Đang thử nộp lại lần ${retryCount}...`, "warning", 3000);
+
+        try {
+          await new Promise(r => setTimeout(r, 5000)); // Thử lại cố định mỗi 5 giây
+          const res = await axiosClient.post(`/submissions/${submissionId}/submit`);
+
+          // Success! Handle as normal
+          setShowModal(true);
+          console.log("✅ [Retry] Submission successful on retry!");
+        } catch (e) {
+          retrySubmit();
+        }
+      };
+
+      retrySubmit();
     } finally {
       setSubmitting(false);
       if (reason !== 'manual') {
@@ -330,11 +360,26 @@ export default function TakeExam() {
       snapshotsRef.current = [];
       const violationId = currentSnapshotIdRef.current || `V_${Date.now()}`;
 
-      // Safe non-blocking upload
-      axiosClient.post(`/submissions/${submissionId}/snapshots`, {
-        violation_id: violationId,
-        frames: framesToUpload,
-        fps: 3
+      // Safe non-blocking upload using FormData for efficiency
+      const formData = new FormData();
+      formData.append("violation_id", violationId);
+
+      // Convert base64 to blobs
+      framesToUpload.forEach((dataUrl, index) => {
+        const arr = dataUrl.split(',');
+        const mime = arr[0].match(/:(.*?);/)[1];
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        formData.append("frames", blob, `frame_${index}.webp`);
+      });
+
+      axiosClient.post(`/submissions/${submissionId}/snapshots`, formData, {
+        headers: { "Content-Type": "multipart/form-data" }
       }).then(() => {
         setTimeout(() => {
           axiosClient.post(`/submissions/${submissionId}/videos/merge`, {
@@ -568,22 +613,36 @@ export default function TakeExam() {
         const qs = res.data?.questions || [];
         const opts = res.data?.options || [];
         const ans = res.data?.answers || [];
+
+        // ── [NEW] LOAD BACKUP FROM LOCALSTORAGE ──
+        let localBackup = {};
+        try {
+          const saved = localStorage.getItem(`answers_backup_${submissionId}`);
+          if (saved) localBackup = JSON.parse(saved);
+        } catch (e) { console.warn("Failed to load local backup", e); }
+
         const byAns = new Map(ans.map((a) => [a.question_id, a]));
         const optsByQ = (opts || []).reduce((acc, o) => {
           (acc[o.question_id] ||= []).push(o);
           return acc;
         }, {});
+
         const merged = qs.map((q) => {
           const base = { ...q };
           base.points = base.points ?? 1;
           base.options =
             q.type === "MCQ" ? q.options || optsByQ[q.question_id] || [] : [];
+
           const a = byAns.get(q.question_id);
-          base.__selected = a?.selected_option_id || null;
-          base.__answer_text = a?.answer_text || "";
+          const lb = localBackup[q.question_id];
+
+          // Prioritize local backup if it exists, otherwise use BE data
+          base.__selected = lb?.selected_option_id !== undefined ? lb.selected_option_id : (a?.selected_option_id || null);
+          base.__answer_text = lb?.answer_text !== undefined ? lb.answer_text : (a?.answer_text || "");
+
           base.__answered = !!(
-            a?.selected_option_id ||
-            (a?.answer_text && a.answer_text.trim())
+            base.__selected ||
+            (base.__answer_text && base.__answer_text.trim())
           );
           return base;
         });
@@ -958,9 +1017,8 @@ export default function TakeExam() {
       }
     };
 
-    // Mobile specific: Split screen / PIP detection
-    const checkMobileIntegrity = () => {
-      if (!isMobileDevice) return;
+    // Interval check: Split screen / PIP / Multi-monitor detection
+    const checkIntegrityPolling = () => {
 
       // Skip check if user is typing (virtual keyboard shrinks viewport)
       const ae = document.activeElement;
@@ -981,11 +1039,27 @@ export default function TakeExam() {
           if (window.screen && window.screen.isExtended) {
             penalize("multi_monitor_attempt", getDynamicViolationReason("multiple_screens_connected", null, "Phát hiện kết nối nhiều màn hình (Dual monitor) để xem tài liệu trên màn hình phụ."), "extended_display");
           }
+          // Phát hiện cửa sổ bị kéo sang màn hình khác (Secondary Monitor)
+          if (window.screenX < -10 || window.screenY < -10 || window.screenX >= window.screen.width || window.screenY >= window.screen.height) {
+            penalize("multi_monitor_attempt", "Phát hiện cửa sổ bài thi được kéo sang màn hình phụ (Đa màn hình).", "extended_display");
+          }
         } catch (e) { }
       }
     };
 
-    const mobileCheckInterval = setInterval(checkMobileIntegrity, 2000); // Polling every 2s instead of 3s for higher sensitivity
+    // Event-driven: Window Resize Handler for Desktop Split-screen
+    const onWindowResize = () => {
+      if (isMobileDevice || !monitoringActiveRef.current || submittedRef.current) return;
+      if (document.fullscreenElement === null) {
+        if (window.outerWidth < window.screen.availWidth * 0.8) {
+          penalize("split_screen", "Nghi ngờ sử dụng chia đôi màn hình (Split screen) trên Desktop để xem tài liệu.", "split_screen");
+          setShowFullscreenOverlay(true);
+        }
+      }
+    };
+    window.addEventListener("resize", onWindowResize);
+
+    const mobileCheckInterval = setInterval(checkIntegrityPolling, 5000);
 
 
     // Fullscreenchange handler (separate from penalize)
@@ -1652,16 +1726,30 @@ export default function TakeExam() {
           // Only update if it's a realistic update, avoid sudden close due to tiny sync diffs
           setRemaining(prev => {
             const newRemaining = Math.max(0, secondsUntilClose);
-            // Nếu thời gian mới quá sát hoặc đã hết, chỉ set về 0 nếu thực sự cần thiết
-            return Math.min(prev, newRemaining);
+            if (newRemaining <= 0 && prev > 10) {
+              console.warn("⚠️ [Sync] Ignoring near-zero sync jitter (preventing instant kick)");
+              return prev;
+            }
+            return newRemaining;
           });
         }
       }
 
       if (updates.monitor_screen !== undefined) {
-        monitorScreenConfigRef.current = !!updates.monitor_screen;
-        setMonitoringActive(!!updates.monitor_screen);
-        monitoringActiveRef.current = !!updates.monitor_screen;
+        const isNowActive = !!updates.monitor_screen;
+        monitorScreenConfigRef.current = isNowActive;
+        setMonitoringActive(isNowActive);
+        monitoringActiveRef.current = isNowActive;
+        try {
+          if (isNowActive) {
+            sessionStorage.setItem("exam_monitoring_active", "1");
+            if (!document.fullscreenElement) {
+              flash("📹 Giảng viên vừa bật giám sát. Vui lòng nhấn vào màn hình để vào chế độ toàn màn hình!", "danger", 5000);
+            }
+          } else {
+            sessionStorage.removeItem("exam_monitoring_active");
+          }
+        } catch (e) { }
       }
     });
 
@@ -1794,6 +1882,7 @@ export default function TakeExam() {
       document.removeEventListener("mouseenter", onMouseEnter);
       window.removeEventListener("keyup", onKeyUp, true);
       window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("resize", onWindowResize);
       if (window.screen && window.screen.removeEventListener) {
         window.screen.removeEventListener("change", onScreenChange);
       }
@@ -1837,19 +1926,80 @@ export default function TakeExam() {
 
   // ===== Helpers =====
   const saveAnswer = async (q, value) => {
+    const payload =
+      q.type === "MCQ"
+        ? { question_id: q.question_id, type: q.type, selected_option_id: value }
+        : { question_id: q.question_id, type: q.type, answer_text: value };
+
+    // 1. Save to Local Persistence Queue (for background sync)
     try {
-      const payload =
-        q.type === "MCQ"
-          ? {
-            question_id: q.question_id,
-            type: q.type,
-            selected_option_id: value,
-          }
-          : { question_id: q.question_id, type: q.type, answer_text: value };
+      const queueKey = `pending_answers_${submissionId}`;
+      const existingQueue = JSON.parse(localStorage.getItem(queueKey) || "[]");
+
+      // Update existing if same question_id
+      const filtered = existingQueue.filter(item => item.question_id !== q.question_id);
+      filtered.push({ ...payload, timestamp: Date.now() });
+
+      localStorage.setItem(queueKey, JSON.stringify(filtered));
+
+      // ── [NEW] UPDATE FULL ANSWERS BACKUP (for reload persistence) ──
+      const backupKey = `answers_backup_${submissionId}`;
+      const fullBackup = JSON.parse(localStorage.getItem(backupKey) || "{}");
+      fullBackup[q.question_id] = {
+        selected_option_id: q.type === "MCQ" ? value : undefined,
+        answer_text: q.type !== "MCQ" ? value : undefined,
+        timestamp: Date.now()
+      };
+      localStorage.setItem(backupKey, JSON.stringify(fullBackup));
+
+      console.log(`💾 [Storage] Answer for Q-${q.question_id} persisted to localStorage backup.`);
+    } catch (e) {
+      console.error("❌ [Storage] Failed to save to localStorage:", e);
+    }
+
+    // 2. Attempt immediate sync
+    try {
       await axiosClient.post(`/submissions/${submissionId}/answer`, payload);
+
+      // Remove from queue on success
+      const queueKey = `pending_answers_${submissionId}`;
+      const currentQueue = JSON.parse(localStorage.getItem(queueKey) || "[]");
+      const updatedQueue = currentQueue.filter(item => item.question_id !== q.question_id);
+      localStorage.setItem(queueKey, JSON.stringify(updatedQueue));
+
       flash("Đã lưu câu trả lời", "warn", 900);
-    } catch { }
+    } catch (err) {
+      console.warn("⚠️ [Sync] Server busy, answer will be retried in background.");
+      flash("Đang đợi mạng... (Đã lưu nháp)", "warning", 2000);
+    }
   };
+
+  // Background Sync Worker for Answers
+  useEffect(() => {
+    const syncInterval = setInterval(async () => {
+      const queueKey = `pending_answers_${submissionId}`;
+      const queue = JSON.parse(localStorage.getItem(queueKey) || "[]");
+
+      if (queue.length === 0 || submittedRef.current) return;
+
+      console.log(`🔄 [Sync] Attempting to sync ${queue.length} pending answers...`);
+
+      for (const item of [...queue]) {
+        try {
+          await axiosClient.post(`/submissions/${submissionId}/answer`, item);
+          // Success: remove this specific item from queue
+          const current = JSON.parse(localStorage.getItem(queueKey) || "[]");
+          const remaining = current.filter(q => q.question_id !== item.question_id);
+          localStorage.setItem(queueKey, JSON.stringify(remaining));
+        } catch (e) {
+          console.warn(`⏸️ [Sync] Failed for Q-${item.question_id}, will retry later.`);
+          break; // Stop processing this batch on first error
+        }
+      }
+    }, 5000);
+
+    return () => clearInterval(syncInterval);
+  }, [submissionId]);
 
 
   const checkUnanswered = () => {
@@ -1936,15 +2086,15 @@ export default function TakeExam() {
         <div className="relative max-w-none mx-auto px-2 md:px-4 py-3 flex items-center justify-between gap-3">
           <button
             onClick={() => navigate("/")}
-            className="flex items-center gap-2 md:gap-3 min-w-0"
+            className="flex items-center gap-1.5 md:gap-3 min-w-0"
           >
             <img
               src="/Logo.png"
               alt="logo"
-              className="h-7 md:h-9 w-auto rounded-lg shadow-lg ring-1 ring-white/20 bg-white flex-shrink-0"
+              className="h-6 md:h-9 w-auto rounded-lg shadow-lg ring-1 ring-white/20 bg-white flex-shrink-0"
             />
             <h1
-              className={`text-xs md:text-sm font-semibold tracking-tight truncate ${theme === "dark" ? "text-slate-100" : "text-slate-800"
+              className={`text-[10px] md:text-sm font-semibold tracking-tight truncate max-w-[55px] xs:max-w-[80px] md:max-w-none ${theme === "dark" ? "text-slate-100" : "text-slate-800"
                 }`}
             >
               {examTitle}
@@ -1953,7 +2103,7 @@ export default function TakeExam() {
 
           {/* CENTERED TIMER */}
           <div
-            className={`absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 font-mono font-black text-xl md:text-3xl whitespace-nowrap z-50 transition-colors ${theme === "dark" ? "text-blue-400" : "text-blue-600"
+            className={`absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 font-mono font-black text-[17px] sm:text-lg md:text-3xl whitespace-nowrap z-50 transition-colors ${theme === "dark" ? "text-blue-400" : "text-blue-600"
               }`}
           >
             {fmt}
@@ -1964,7 +2114,7 @@ export default function TakeExam() {
             {/* Mobile Nav Toggle */}
             <button
               onClick={() => setShowMobileNav(!showMobileNav)}
-              className={`lg:hidden px-3 py-1.5 rounded-lg border text-sm
+              className={`lg:hidden px-1.5 md:px-3 py-1 md:py-1.5 rounded-lg border text-[13px] md:text-sm
                 ${theme === 'dark' ? 'bg-white/10 border-white/20 text-slate-100' : 'bg-white border-slate-200 text-slate-800'}
               `}
             >
@@ -1972,7 +2122,7 @@ export default function TakeExam() {
             </button>
             <button
               onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-              className={`px-2 md:px-3 py-1.5 md:py-2 rounded-lg border text-sm md:text-base ${theme === "dark"
+              className={`px-1.5 md:px-3 py-1 md:py-1.5 rounded-lg border text-[13px] md:text-base ${theme === "dark"
                 ? "bg-white/10 border-white/20 text-slate-100"
                 : "bg-white border-slate-200 text-slate-800"
                 }`}
@@ -1984,7 +2134,7 @@ export default function TakeExam() {
             <button
               onClick={handleSubmitClick}
               disabled={submitting}
-              className="px-3 md:px-4 py-1.5 md:py-2 rounded-lg md:rounded-xl text-white text-xs md:text-base font-bold shadow-lg disabled:opacity-60 whitespace-nowrap"
+              className="px-1.5 md:px-4 py-1 md:py-2 rounded-lg md:rounded-xl text-white text-[13px] md:text-base font-bold shadow-lg disabled:opacity-60 whitespace-nowrap"
               style={{ background: "#10b981" }}
             >
               {submitting ? "Đang nộp..." : "Nộp bài"}

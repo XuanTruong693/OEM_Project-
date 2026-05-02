@@ -164,7 +164,7 @@ FAKER_PHRASES = [
 _FAKER_PATTERNS = [re.compile(p, re.IGNORECASE) for p in FAKER_PHRASES]
 
 
-def is_meaningless_answer(student_text: str, model_text: str = "") -> tuple:
+def is_meaningless_answer(student_text: str, model_text: str = "", question_text: str = None) -> tuple:
     if not student_text:
         return True, "Câu trả lời trống"
     
@@ -176,6 +176,13 @@ def is_meaningless_answer(student_text: str, model_text: str = "") -> tuple:
         logger.info(f"[Faker] Placeholder detected: '{text}'")
         return True, "Sinh viên chưa trả lời câu này"
     
+    # === 0b. Kiểm tra Copy Đề Bài (Ưu tiên cao) ===
+    if question_text:
+        is_copy, copy_reason = is_copy_of_question(text, question_text)
+        if is_copy:
+            logger.info(f"[Faker] Question copy detected: '{text[:50]}...' Reason: {copy_reason}")
+            return True, copy_reason
+
     # === 1. Kiểm tra độ dài tối thiểu ===
     is_valid_short = bool(re.match(r'^[\d\s.+\-×÷*/=,]+$', text))  # Toán / Số lẻ
     is_valid_short = is_valid_short or text.lower() in ('true', 'false', 'yes', 'no', 'đúng', 'sai', 'có', 'không')
@@ -208,7 +215,6 @@ def is_meaningless_answer(student_text: str, model_text: str = "") -> tuple:
             return True, f"Câu trả lời mang tính đối phó/xin xỏ"
     
     # === 3. Kiểm tra toàn bộ nội dung chỉ là emoji/ký tự đặc biệt ===
-    # Loại bỏ khoảng trắng, dấu câu CƠ BẢN. Nếu vẫn còn ký tự (\w bao gồm chữ và số) thì chấp nhận.
     cleaned = re.sub(r'[\s\W_]+', '', text)
     if len(cleaned) == 0 and len(text) > 0:
         logger.info(f"[Faker] Chỉ chứa ký tự đặc biệt: '{text}'")
@@ -224,68 +230,70 @@ def is_meaningless_answer(student_text: str, model_text: str = "") -> tuple:
     words = text_lower.split()
     if len(words) >= 3:
         unique_words = set(words)
-        # Chặn nếu số từ lặp lại quá nhiều (ví dụ: "abc abc abc")
         if len(unique_words) <= 2 and len(words) >= 4:
             logger.info(f"[Faker] Spam từ lặp lại: '{text}'")
             return True, "Câu trả lời spam từ lặp lại"
         
-        # Chặn nếu lặp lại cả cụm từ/câu dài (ví dụ: "Em không biết làm bài này. Em không biết làm bài này.")
         if len(text) > 30:
             half = len(text) // 2
-            # Kiểm tra xem nửa đầu có giống nửa sau không (lặp đôi)
             if text[:half].strip().lower() == text[half:].strip().lower():
                 logger.info(f"[Faker] Lặp lại cả đoạn văn: '{text[:50]}...'")
                 return True, "Câu trả lời lặp lại nội dung"
             
-            # Kiểm tra lặp lại cụm từ cố định nhiều lần
             parts = [w for w in re.split(r'[,.\s]+', text_lower) if w]
             if len(parts) >= 10:
-                # Lấy 3 từ đầu làm key, xem nó xuất hiện bao nhiêu lần
                 prefix = " ".join(parts[:3])
                 if text_lower.count(prefix) >= 3:
                     logger.info(f"[Faker] Lặp lại cụm từ '{prefix}' nhiều lần")
                     return True, "Câu trả lời lặp lại cụm từ nhiều lần"
     
     # === 6. Kiểm tra chuỗi ký tự ngẫu nhiên (keyboard mashing) ===
-    # Loại bỏ khoảng trắng để kiểm tra chuỗi liền mạch
     text_no_space = re.sub(r'\s+', '', text_lower)
-    if len(text_no_space) >= 8:
-        # 6a. Tỷ lệ phụ âm/nguyên âm bất thường (Tiếng Việt/Anh đều cần nguyên âm)
+    if len(text_no_space) >= 5: # Hạ ngưỡng từ 8 xuống 5
         vowels = len(re.findall(r'[aeiouyàáảãạèéẻẽẹìíỉĩịòóỏõọùúủũụỳýỷỹỵăâđêôơư]', text_no_space))
         consonants = len(re.findall(r'[bcdfghjklmnpqrstvwxz]', text_no_space))
         
-        if vowels == 0 and len(text_no_space) >= 6:
+        # Nếu không có nguyên âm mà dài >= 5 ký tự (ví dụ: fgdgf) -> Vô nghĩa
+        if vowels == 0 and len(text_no_space) >= 5:
             logger.info(f"[Faker] Gibberish (no vowels): '{text}'")
             return True, "Câu trả lời không có nguyên âm (vô nghĩa)"
             
-        # Tỷ lệ phụ âm > 3.5 lần nguyên âm thường là chuỗi ký tự ngẫu nhiên (asdfghjkl...)
-        if vowels > 0 and (consonants / vowels) > 3.5 and len(text_no_space) >= 10:
-            logger.info(f"[Faker] Gibberish (too many consonants): '{text}'")
-            return True, "Câu trả lời có cấu trúc từ bất thường (vô nghĩa)"
+        # Tỷ lệ phụ âm / nguyên âm quá cao
+        if vowels > 0:
+            ratio = consonants / vowels
+            # Chuỗi ngắn (5-10): Ratio > 4
+            # Chuỗi trung bình (10-20): Ratio > 3.5
+            # Chuỗi dài (>20): Ratio > 3
+            if (len(text_no_space) <= 10 and ratio > 4) or \
+               (len(text_no_space) <= 20 and ratio > 3.5) or \
+               (len(text_no_space) > 20 and ratio > 3):
+                logger.info(f"[Faker] Gibberish (consonant ratio {ratio:.1f}): '{text}'")
+                return True, "Câu trả lời có cấu trúc từ bất thường (vô nghĩa)"
 
-        # 6b. Sự đa dạng ký tự quá thấp trong chuỗi dài (không phải spam 1 ký tự)
-        char_variety = len(set(text_no_space))
-        if char_variety <= 3 and len(text_no_space) >= 15:
-            logger.info(f"[Faker] Low character variety in long string: '{text}'")
-            return True, "Câu trả lời quá ít loại ký tự"
-        
-        # 6c. Chuỗi quá dài không có khoảng trắng (trừ khi là URL/Code - nhưng đây là detector cho essay)
-        if len(text) > 25 and ' ' not in text and not text.startswith('http'):
-            logger.info(f"[Faker] Long string without spaces: '{text}'")
-            return True, "Câu trả lời là chuỗi ký tự quá dài không có khoảng trắng"
+    # 6b. Sự đa dạng ký tự quá thấp trong chuỗi dài
+    char_variety = len(set(text_no_space))
+    if len(text_no_space) >= 12:
+        variety_ratio = char_variety / len(text_no_space)
+        if variety_ratio < 0.25: # Ví dụ 12 ký tự mà chỉ có 2-3 loại chữ
+            logger.info(f"[Faker] Low character variety ({variety_ratio:.2f}): '{text}'")
+            return True, "Câu trả lời quá ít loại ký tự (nghi ngờ điền bừa)"
+    
+    # 6c. Chuỗi quá dài không có khoảng trắng
+    if len(text) > 20 and ' ' not in text and not text.startswith(('http', 'www', '/')):
+        logger.info(f"[Faker] Long string without spaces: '{text}'")
+        return True, "Câu trả lời là chuỗi ký tự quá dài không có khoảng trắng"
 
     # === 8. Kiểm tra nhồi nhét từ khóa (Keyword Spam) ===
-    # Nếu câu trả lời quá ngắn nhưng lại chứa quá nhiều động từ/từ khóa kỹ thuật khác chức năng
     sql_keywords = {"select", "insert", "update", "delete", "where", "from", "join", "group", "order", "having", "distinct", "top", "limit", "offset"}
     s_words = set(text_lower.split())
     if len(s_words) >= 4:
         kw_count = sum(1 for w in s_words if w in sql_keywords)
-        # Nếu có >= 4 từ khóa SQL khác nhau trong một câu trả lời cực ngắn (< 15 từ) -> Nghi ngờ nhồi chữ
         if kw_count >= 4 and len(words) <= 12:
             logger.info(f"[Faker] Keyword Spam detected: {kw_count} keywords in {len(words)} words")
             return True, "Câu trả lời nhồi nhét quá nhiều từ khóa (Keyword Spam)"
 
     return False, ""
+
 
 
 
@@ -340,50 +348,60 @@ def contains_faker_in_code(student_text: str) -> tuple:
 def is_copy_of_question(student_text: str, question_text: str) -> tuple:
     """
     Phát hiện sinh viên copy lại đề bài để lấy điểm "vớt".
-    
-    Args:
-        student_text: Bài làm của sinh viên
-        question_text: Đề bài (từ table exam_questions)
-        
-    Returns:
-        (is_copy: bool, reason: str)
     """
     if not student_text or not question_text:
         return False, ""
         
-    # Chuẩn hóa
+    # Chuẩn hóa (Loại bỏ các tiền tố như "Câu 1:", "Câu 2:", "Question 1:", v.v.)
     def normalize_for_copy(t):
         t = t.lower()
+        # Loại bỏ tiền tố "Câu X:"
+        t = re.sub(r'^(?:câu|question|q|c)\s*\d+\s*[:.-]?\s*', '', t, flags=re.IGNORECASE)
+        # Loại bỏ điểm số "(2đ)", "[2 pts]" ở cuối hoặc đầu
+        t = re.sub(r'\(?\d+\s*(?:đ|pts|điểm|diem)\)?', '', t, flags=re.IGNORECASE)
         t = re.sub(r'[^\w\s]', '', t)
         return " ".join(t.split())
         
     s_norm = normalize_for_copy(student_text)
     q_norm = normalize_for_copy(question_text)
     
-    if len(q_norm) < 10: # Đề bài quá ngắn, bỏ qua
+    if len(q_norm) < 10: 
         return False, ""
         
-    # 1. Kiểm tra chứa đề bài (Containment)
-    # Nếu bài làm quá ngắn mà lại chứa đề bài -> Chắc chắn là copy
+    # 1. Kiểm tra chứa đề bài (Containment) - Xử lý trường hợp "sdfsdf + Đề bài"
     if q_norm in s_norm:
-        # Nếu độ lệch độ dài không quá lớn (ví dụ chỉ thêm vài ký tự rác ở đầu/cuối)
-        # s_norm có thể dài hơn q_norm tối đa 30% hoặc 50 ký tự
-        if len(s_norm) <= len(q_norm) * 1.3 or (len(s_norm) - len(q_norm)) < 50:
-             return True, "Nội dung chủ yếu là lặp lại đề bài"
+        # Nếu phần dư ra không quá nhiều (dưới 50% độ dài đề hoặc < 100 ký tự)
+        extra_len = len(s_norm) - len(q_norm)
+        if extra_len < len(q_norm) * 0.5 or extra_len < 100:
+             return True, "Nội dung chủ yếu là lặp lại đề bài (Copy-paste)"
 
-    # 2. Kiểm tra tỷ lệ trùng lặp từ (Jaccard-like overlap)
-    s_set = set(s_norm.split())
-    q_set = set(q_norm.split())
+    # 2. Ngược lại: Đề bài chứa bài làm (Trường hợp SV copy 1 đoạn đề)
+    if len(s_norm) > 15 and s_norm in q_norm:
+        return True, "Nội dung là một phần của đề bài"
+
+    # 3. Kiểm tra tỷ lệ trùng lặp từ (Overlap)
+    s_words = s_norm.split()
+    q_words = q_norm.split()
     
-    if not q_set: return False, ""
+    if not q_words or not s_words: return False, ""
+    
+    s_set = set(s_words)
+    q_set = set(q_words)
     
     intersection = s_set.intersection(q_set)
     overlap_ratio = len(intersection) / len(q_set)
     
-    # Nếu trùng > 85% số từ của đề bài
-    if overlap_ratio > 0.85:
-        # Và bài làm không dài hơn đề bài bao nhiêu (chứng tỏ không viết thêm ý mới)
-        if len(s_set) <= len(q_set) * 1.2:
+    # Nếu trùng > 80% số từ của đề bài
+    if overlap_ratio > 0.80:
+        # Và bài làm không quá dài so với đề (chứng tỏ không có ý mới)
+        if len(s_set) <= len(q_set) * 1.3:
             return True, f"Nội dung trùng lặp {int(overlap_ratio*100)}% với đề bài"
             
+    # 4. Kiểm tra Longest Common Substring (Xử lý chèn rác ở giữa)
+    if len(s_norm) > 20 and len(q_norm) > 20:
+        from difflib import SequenceMatcher
+        match = SequenceMatcher(None, s_norm, q_norm).find_longest_match(0, len(s_norm), 0, len(q_norm))
+        if match.size > len(q_norm) * 0.8:
+            return True, "Phát hiện đoạn copy từ đề bài quá lớn"
+
     return False, ""

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { FiTrash2, FiPlus, FiX } from "react-icons/fi";
 import axios from "axios";
+import axiosClient from "../../api/axiosClient";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import ExcelJS from "exceljs";
 import "./EditExam.css";
@@ -11,7 +12,7 @@ import ConfirmModal from "../../components/common/ConfirmModal";
 const EditExam = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const token = localStorage.getItem("token");
+  // const token = localStorage.getItem("token"); // Deprecated direct localStorage access
 
   const [editingExam, setEditingExam] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -34,9 +35,8 @@ const EditExam = () => {
   useEffect(() => {
     const fetchExam = async () => {
       try {
-        const res = await axios.get(
-          `${API_BASE_URL}/edit-exam/exams/${id}/edit`,
-          { headers: { Authorization: `Bearer ${token}` } }
+        const res = await axiosClient.get(
+          `/edit-exam/exams/${id}/edit`
         );
         const processedQuestions = res.data.questions.map((q) => {
           if (q.type?.toLowerCase() === "essay") {
@@ -68,7 +68,7 @@ const EditExam = () => {
       }
     };
     fetchExam();
-  }, [id, token, navigate]);
+  }, [id, navigate]);
 
   // ---------- Helpers ----------
   const normalizeType = (t) =>
@@ -145,9 +145,8 @@ const EditExam = () => {
   // ---------- Save + reload helpers ----------
   const reloadExam = async () => {
     try {
-      const res = await axios.get(
-        `${API_BASE_URL}/edit-exam/exams/${id}/edit`,
-        { headers: { Authorization: `Bearer ${token}` } }
+      const res = await axiosClient.get(
+        `/edit-exam/exams/${id}/edit`
       );
       const processedQuestions = res.data.questions.map((q) => ({
         ...q,
@@ -199,10 +198,9 @@ const EditExam = () => {
         type: normalizeType(q.type),
       }));
 
-      const res = await axios.put(
-        `${API_BASE_URL}/edit-exam/exams/${id}`,
-        { ...examData, questions: updatedQuestions },
-        { headers: { Authorization: `Bearer ${token}` } }
+      const res = await axiosClient.put(
+        `/edit-exam/exams/${id}`,
+        { ...examData, questions: updatedQuestions }
       );
       const added =
         options.toast === "added" ||

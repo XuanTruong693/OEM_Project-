@@ -36,7 +36,7 @@ SUSPICIOUS_PATTERNS = [
 ]
 
 request_counts = defaultdict(list)
-RATE_LIMIT = 3000  # Max requests per minute
+RATE_LIMIT = 100000  # Max requests per minute (Increased for Stress Test)
 RATE_WINDOW = 60  # seconds
 
 class SecurityMiddleware(BaseHTTPMiddleware):

@@ -518,6 +518,8 @@ const openExam = async (req, res) => {
             exam_id: examId,
             exam_room_code: room,
             status: "published",
+            time_open: startDate,
+            time_close: endDate
         });
     } catch (err) {
         console.error("instructor/exams/:id/open error:", err);

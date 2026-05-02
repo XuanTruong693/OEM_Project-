@@ -10,6 +10,12 @@ const AdminSidebar = ({ activeTab, onTabChange }) => {
     const navigate = useNavigate();
     const { t, language } = useLanguage();
     const [mobileOpen, setMobileOpen] = useState(false);
+    const [currentTime, setCurrentTime] = useState(new Date());
+
+    React.useEffect(() => {
+        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+        return () => clearInterval(timer);
+    }, []);
 
     const navItems = [
         { icon: Home, labelKey: 'dashboard', path: '/admin-dashboard', tab: 'dashboard' },
@@ -32,17 +38,37 @@ const AdminSidebar = ({ activeTab, onTabChange }) => {
 
     const SidebarContent = () => (
         <div className="flex flex-col h-full">
-            {/* Logo */}
-            <div className="p-6 pb-4">
-                <img
-                    src="/Logo2.png"
-                    alt="OEM Logo"
-                    className="h-14 md:h-16 w-auto cursor-pointer"
-                    onClick={() => navigate("/")}
-                />
-                <div className="flex items-center gap-2 mt-3 text-blue-400">
-                    <Shield size={16} />
-                    <span className="text-sm font-medium">{t('adminPanel')}</span>
+            {/* Logo & Clock */}
+            <div className="p-4 pb-4 flex items-center justify-between w-full">
+                <div onClick={() => navigate("/")} className="cursor-pointer flex-shrink-0">
+                    <img
+                        src="/Logo2.png"
+                        alt="OEM Logo"
+                        className="h-14 md:h-16 w-auto"
+                    />
+                    <div className="flex items-center gap-1 mt-1 text-blue-400">
+                        <Shield size={12} />
+                        <span className="text-[10px] font-bold uppercase tracking-tighter">{t('adminPanel')}</span>
+                    </div>
+                </div>
+
+                {/* ⏰ Digital Clock (Instructor Style - Smaller) */}
+                <div className="flex flex-col items-end opacity-90">
+                    <div className="text-base font-bold font-mono text-blue-400 tracking-wider leading-none">
+                        {currentTime.toLocaleTimeString("vi-VN", {
+                            hour12: false,
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                        })}
+                    </div>
+                    <div className="text-[8px] uppercase font-bold text-gray-500 mt-1 tracking-widest opacity-70">
+                        {currentTime.toLocaleDateString("vi-VN", {
+                            weekday: "short",
+                            day: "2-digit",
+                            month: "2-digit",
+                        })}
+                    </div>
                 </div>
             </div>
 
@@ -86,7 +112,7 @@ const AdminSidebar = ({ activeTab, onTabChange }) => {
     return (
         <>
             {/* Desktop Sidebar */}
-            <aside className="hidden md:flex w-64 flex-shrink-0 bg-gray-800 border-r border-gray-700 min-h-screen flex-col">
+            <aside className="hidden md:flex w-64 flex-shrink-0 bg-gray-800 border-r border-gray-700 h-screen sticky top-0 flex-col overflow-hidden">
                 <SidebarContent />
             </aside>
 

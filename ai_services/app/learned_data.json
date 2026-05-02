@@ -412,10 +412,10 @@
   {
     "student_answer": "Đại học Duy Tân thuộc trường  tư thục và thuộc Top 300 trên thế giới",
     "model_answer": "Trường đại học Duy Tân thuộc trường tư thục và thuộc top 500 thế giới",
-    "confirmed_score": 1.5,
+    "confirmed_score": 1.4,
     "max_points": 2.0,
     "ai_score": 0.0,
-    "feedback": "Instructor corrected: 1 → 1.5",
+    "feedback": "Sai vi tri top",
     "learned_at": "2026-03-01T10:54:43.987Z",
     "score_ratio": 1.0
   },
@@ -2038,5 +2038,25 @@
     "score_ratio": 1.0,
     "feedback": "Đúng ý chính diễn đạt giỏi theo cách hiểu",
     "learned_at": "2026-04-23T10:15:25.639410"
+  },
+  {
+    "student_answer": "Hello",
+    "model_answer": "Mạch gốc của ADN đóng vai trò làm khuôn mẫu để tổng hợp nên phân tử mARN thông qua nguyên tắc bổ sung.",
+    "confirmed_score": 0,
+    "ai_score": 0.3,
+    "max_points": 2.0,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-05-01T16:07:25.276899"
+  },
+  {
+    "student_answer": "Là sao là như lào m muốn gì",
+    "model_answer": "Mạch gốc của ADN đóng vai trò làm khuôn mẫu để tổng hợp nên phân tử mARN thông qua nguyên tắc bổ sung.",
+    "confirmed_score": 0.3,
+    "ai_score": 0,
+    "max_points": 2.0,
+    "score_ratio": 0.15,
+    "feedback": "",
+    "learned_at": "2026-05-01T16:07:25.277887"
   }
 ]

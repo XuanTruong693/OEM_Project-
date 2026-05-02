@@ -150,6 +150,14 @@ const RoomDetailManagement = () => {
       ));
     });
 
+    // Listen for global room config updates (from another instructor)
+    socketRef.current.on("exam:config-updated", (updates) => {
+      if (updates.duration_minutes) setDuration(updates.duration_minutes);
+      if (updates.monitor_screen !== undefined) {
+        setMonitorScreen(updates.monitor_screen === 1 || updates.monitor_screen === true);
+      }
+    });
+
     return () => {
       if (socketRef.current) socketRef.current.disconnect();
     };

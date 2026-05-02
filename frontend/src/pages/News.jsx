@@ -7,14 +7,14 @@ const newsList = [
     description: " Trong kỷ nguyên số hóa, giáo dục đang trải qua những thay đổi mạnh mẽ. Công nghệ thông tin đã trở thành một công cụ đắc lực hỗ trợ việc dạy và học, giúp nâng cao hiệu quả giáo dục và mang lại nhiều tiện ích cho người học và người dạy. Hệ thống OEM ra đời nhằm đáp ứng nhu cầu đó, mang đến cho người dùng những trải nghiệm học tập và thi cử tốt nhất.",
   },
   {
-    title: "",
-    date: "",
-    description: "",
+    title: "Ứng dụng Trí tuệ nhân tạo (AI) trong tạo đề thi trắc nghiệm và đánh giá tự luận",
+    date: "04/03/2026",
+    description: "Trong kỷ nguyên số hóa, giáo dục đang trải qua những thay đổi mạnh mẽ. Công nghệ thông tin đã trở thành một công cụ đắc lực hỗ trợ việc dạy và học, giúp nâng cao hiệu quả giáo dục và mang lại nhiều tiện ích cho người học và người dạy. Hệ thống OEM ra đời nhằm đáp ứng nhu cầu đó, mang đến cho người dùng những trải nghiệm học tập và thi cử tốt nhất.",
   },
   {
-    title: "",
-    date: "",
-    description: "",
+    title: "Đổi mới phương pháp kiểm tra đánh giá: Hướng tới tương lai của giáo dục Việt Nam",
+    date: "04/03/2026",
+    description: "Để đáp ứng yêu cầu đổi mới giáo dục và hội nhập quốc tế, hoạt động kiểm tra, đánh giá (KTĐG) đang có những thay đổi quan trọng. Các phương pháp KTĐG truyền thống đang dần được thay thế bởi các phương pháp hiện đại, chú trọng đánh giá năng lực thực chất của người học, khuyến khích sự phát triển toàn diện và chuẩn bị cho người học tham gia thị trường lao động toàn cầu.",
   },
 ];
 

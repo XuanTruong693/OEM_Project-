@@ -4,7 +4,7 @@ import '../../domain/entities/exam_info_entity.dart';
 class ExamHeaderWidget extends StatelessWidget {
   final ExamInfoEntity? examInfo;
 
-  const ExamHeaderWidget({Key? key, required this.examInfo}) : super(key: key);
+  const ExamHeaderWidget({super.key, required this.examInfo});
 
   @override
   Widget build(BuildContext context) {
@@ -55,11 +55,19 @@ class ExamHeaderWidget extends StatelessWidget {
               const SizedBox(width: 6),
               Text(
                 'Giảng viên: ',
-                style: TextStyle(fontSize: 14, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
               Text(
                 examInfo!.instructorName,
-                style: TextStyle(fontSize: 14, color: Colors.grey.shade800, fontWeight: FontWeight.w700),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey.shade800,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ],
           ),
@@ -68,7 +76,11 @@ class ExamHeaderWidget extends StatelessWidget {
           const SizedBox(height: 14),
           Text(
             'Các yêu cầu xác minh:',
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey.shade600,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           const SizedBox(height: 8),
           Wrap(
@@ -79,7 +91,7 @@ class ExamHeaderWidget extends StatelessWidget {
                 _buildTag('Khuôn mặt', Icons.face, Colors.purple),
               if (examInfo!.requireStudentCard)
                 _buildTag('Thẻ SV', Icons.badge, Colors.orange),
-              if (examInfo!.monitorScreen) 
+              if (examInfo!.monitorScreen)
                 _buildTag('Giám sát', Icons.screen_lock_landscape, Colors.blue),
             ],
           ),

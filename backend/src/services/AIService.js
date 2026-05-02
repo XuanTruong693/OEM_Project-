@@ -6,9 +6,9 @@ const { pool } = require("../config/db");
 // ═══════════════════════════════════════════════════════
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:8000";
 const MAX_CONCURRENT_JOBS = 20;       // Reduced to avoid overwhelming AI service
-const GRADING_TIMEOUT = 90000;       // 90 seconds per AI request (CPU inference can be slow)
-const MAX_RETRIES = 15;               // Max retries per essay
-const RETRY_DELAY_BASE = 2000;       // 2 second base delay (exponential backoff)
+const GRADING_TIMEOUT = 600000;       // 90 seconds per AI request (CPU inference can be slow)
+const MAX_RETRIES = 100;               // Max retries per essay
+const RETRY_DELAY_BASE = 3000;       // 2 second base delay (exponential backoff)
 const RECOVERY_INTERVAL = 10000;     // Check for pending/failed every 10s (was 30s)
 const STALE_TIMEOUT = 180000;        // 3 minutes - mark as stale if in_progress too long
 const IMMEDIATE_RETRY_DELAY = 3000;  // Retry failed submission after 3s
@@ -105,11 +105,11 @@ const gradeSubmission = async (submissionId) => {
             SET ai_grading_status = 'pending', 
                 ai_grading_retry_count = 0,
                 ai_grading_error = NULL
-            WHERE id = ? AND ai_grading_status NOT IN ('in_progress', 'completed')
+            WHERE id = ? AND (ai_grading_status IS NULL OR ai_grading_status NOT IN ('in_progress', 'completed'))
         `, [submissionId]);
 
         if (claimResult.affectedRows === 0) {
-            console.log(`[AIService] ⚡ Submission ${submissionId} already claimed by another process, skipping`);
+            // console.debug(`[AIService] ⚡ Submission ${submissionId} already claimed by another process`);
             return;
         }
 
@@ -227,9 +227,11 @@ const performGrading = async (submissionId, conn) => {
     // Fetch Essay Answers
     const [answers] = await conn.query(`
         SELECT sa.id, sa.answer_text, sa.question_id, sa.student_id,
-               q.model_answer, q.points AS max_points
+               q.model_answer, q.points AS max_points, q.question_text,
+               e.grading_mode
         FROM student_answers sa
         JOIN exam_questions q ON sa.question_id = q.id
+        JOIN exams e ON e.id = q.exam_id
         WHERE sa.submission_id = ? AND q.type = 'Essay'
     `, [submissionId]);
 
@@ -258,7 +260,13 @@ const performGrading = async (submissionId, conn) => {
         }
 
         try {
-            const aiResult = await callAIService(ans.answer_text, ans.model_answer, ans.max_points);
+            const aiResult = await callAIService(
+                ans.answer_text, 
+                ans.model_answer, 
+                ans.max_points, 
+                ans.grading_mode || 'general',
+                ans.question_text
+            );
 
             if (aiResult && aiResult.score !== undefined) {
                 let { score, confidence, explanation, type } = aiResult;
@@ -281,16 +289,17 @@ const performGrading = async (submissionId, conn) => {
                 // ── SAVE SCORE immediately (per-answer, not batch) ──
                 await conn.query(`
                     UPDATE student_answers 
-                    SET score = ?, ai_explanation = ?, status = 'graded', graded_at = NOW()
+                    SET score = ?, status = 'graded', graded_at = NOW()
                     WHERE id = ?
-                `, [score, JSON.stringify(aiResult), ans.id]);
+                `, [score, ans.id]);
 
                 // Log to ai_logs
                 try {
                     await conn.query(`
-                        INSERT INTO ai_logs (question_id, student_id, student_answer, model_answer, similarity_score, ai_suggested_score, request_payload, response_payload)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO ai_logs (submission_id, question_id, student_id, student_answer, model_answer, similarity_score, ai_suggested_score, request_payload, response_payload)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     `, [
+                        submissionId,
                         ans.question_id,
                         ans.student_id,
                         ans.answer_text,
@@ -346,6 +355,32 @@ const performGrading = async (submissionId, conn) => {
     if (failedCount > 0 && gradedCount > 0) {
         console.warn(`[AIService] ⚠️ Submission ${submissionId}: ${failedCount} essays failed but ${gradedCount} succeeded. Partial grading saved.`);
     }
+
+    // LOGIC SO SÁNH ĐIỂM SAU KHI AI CHẤM XONG
+    try {
+        const [subInfo] = await conn.query(`SELECT exam_id, user_id, suggested_total_score FROM submissions WHERE id = ?`, [submissionId]);
+        if (subInfo && subInfo[0]) {
+            const { exam_id, user_id, suggested_total_score } = subInfo[0];
+            const [allScores] = await conn.query(
+                `SELECT id, suggested_total_score, attempt_no 
+                 FROM submissions 
+                 WHERE exam_id = ? AND user_id = ? AND status = 'graded'
+                 ORDER BY suggested_total_score DESC, submitted_at DESC`,
+                [exam_id, user_id]
+            );
+
+            if (allScores && allScores.length > 0) {
+                const bestSubmission = allScores[0];
+                if (bestSubmission.id === submissionId) {
+                    console.log(`🏆 [AIService] NEW BEST SCORE! User ${user_id} achieved ${suggested_total_score} pts (Submission ${submissionId})`);
+                } else {
+                    // console.log(`[AIService] Score: ${suggested_total_score}. Best: ${bestSubmission.suggested_total_score}`);
+                }
+            }
+        }
+    } catch (e) {
+        console.warn("⚠️ [AIService] Could not analyze best score:", e.message);
+    }
 };
 
 // ═══════════════════════════════════════════════════════
@@ -356,12 +391,14 @@ const performGrading = async (submissionId, conn) => {
  * Call AI Service with retry and timeout.
  * On retryable errors, backs off exponentially.
  */
-const callAIService = async (studentAnswer, modelAnswer, maxPoints, retryCount = 0) => {
+const callAIService = async (studentAnswer, modelAnswer, maxPoints, gradingMode = "general", questionText = null, retryCount = 0) => {
     try {
         const response = await axios.post(`${AI_SERVICE_URL}/grade`, {
             student_answer: studentAnswer,
             model_answer: modelAnswer,
-            max_points: maxPoints
+            max_points: maxPoints,
+            grading_mode: gradingMode,
+            question_text: questionText
         }, {
             timeout: GRADING_TIMEOUT,
             headers: { 'Content-Type': 'application/json' }
@@ -377,7 +414,7 @@ const callAIService = async (studentAnswer, modelAnswer, maxPoints, retryCount =
             const delay = RETRY_DELAY_BASE * Math.pow(2, retryCount);
             console.log(`[AIService] 🔄 Retry ${retryCount + 1}/${MAX_RETRIES} for AI call after ${delay}ms (${err.code || err.response?.status || 'unknown'})`);
             await new Promise(r => setTimeout(r, delay));
-            return callAIService(studentAnswer, modelAnswer, maxPoints, retryCount + 1);
+            return callAIService(studentAnswer, modelAnswer, maxPoints, gradingMode, questionText, retryCount + 1);
         }
 
         if (err.code === 'ECONNREFUSED') {

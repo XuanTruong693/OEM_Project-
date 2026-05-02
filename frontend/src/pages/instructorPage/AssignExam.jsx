@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   FiUpload,
   FiFile,
@@ -7,11 +7,12 @@ import {
   FiType,
   FiAlignLeft,
 } from "react-icons/fi";
-import axios from "axios";
+import axiosClient from "../../api/axiosClient";
 import ExcelJS from "exceljs";
 import mammoth from "mammoth";
 import * as pdfjsLib from "pdfjs-dist";
 import LoadingSpinner from "../../components/LoadingSpinner";
+import { RiFileExcel2Fill, RiFileWord2Fill } from "react-icons/ri";
 import { API_BASE_URL } from "../../api/config";
 
 // Configure PDF.js worker
@@ -300,6 +301,19 @@ const AssignExam = () => {
   const [showSheetSelector, setShowSheetSelector] = useState(false);
   const [availableSheets, setAvailableSheets] = useState([]);
   const [selectedSheetName, setSelectedSheetName] = useState(null);
+  const [showDownloadOptions, setShowDownloadOptions] = useState(false);
+  const downloadDropdownRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (downloadDropdownRef.current && !downloadDropdownRef.current.contains(event.target)) {
+        setShowDownloadOptions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Handle file selection - supports Excel, Word, PDF
   const handleFileChange = (e) => {
@@ -714,13 +728,11 @@ const AssignExam = () => {
         const formData = new FormData();
         formData.append("file", uploadedFile);
 
-        const token = localStorage.getItem("token");
-        const response = await axios.post(
-          `${API_BASE_URL}/exam-bank/check-sheets`,
+        const response = await axiosClient.post(
+          `/exam-bank/check-sheets`,
           formData,
           {
             headers: {
-              Authorization: `Bearer ${token}`,
               "Content-Type": "multipart/form-data"
             },
           }
@@ -812,17 +824,13 @@ const AssignExam = () => {
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem("token");
-      const response = await axios.post(
-        `${API_BASE_URL}/exam-bank/import-commit`,
+      const response = await axiosClient.post(
+        `/exam-bank/import-commit`,
         {
           preview: previewData.preview,
           summary: previewData.summary,
           exam_title: examTitle,
           duration: parseInt(duration, 10) || 60,
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` },
         }
       );
       if (response.data.status === "success") {
@@ -1004,15 +1012,39 @@ const AssignExam = () => {
             </button>
           )}
 
-          {/* Download Template Button */}
-          <a
-            href="/Mau_De_Import.xlsx"
-            download="Mau_De_Import.xlsx"
-            className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition flex items-center gap-2 no-underline"
-          >
-            <FiFile className="w-5 h-5" />
-            Tải đề mẫu
-          </a>
+          {/* Download Template Dropdown */}
+          <div className="relative" ref={downloadDropdownRef}>
+            <button
+              onClick={() => setShowDownloadOptions(!showDownloadOptions)}
+              className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition flex items-center gap-2"
+            >
+              <FiFile className="w-5 h-5" />
+              Tải đề mẫu
+            </button>
+            {showDownloadOptions && (
+              <div className="absolute top-full left-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-20 overflow-hidden">
+                <a
+                  href="/Mau_De_Import.xlsx"
+                  download="Mau_De_Import.xlsx"
+                  className="block px-4 py-3 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 transition flex items-center gap-2 no-underline"
+                  onClick={() => setShowDownloadOptions(false)}
+                >
+                  <RiFileExcel2Fill className="w-5 h-5 text-emerald-600" />
+                  File mẫu Excel
+                </a>
+                <div className="border-t border-gray-100"></div>
+                <a
+                  href="/WordDemo.docx"
+                  download="WordDemo.docx"
+                  className="block px-4 py-3 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition flex items-center gap-2 no-underline"
+                  onClick={() => setShowDownloadOptions(false)}
+                >
+                  <RiFileWord2Fill className="w-5 h-5 text-blue-600" />
+                  File mẫu Word
+                </a>
+              </div>
+            )}
+          </div>
           {/* Thông báo thành công */}
           {message && (
             <span className="text-green-400 font-semibold ml-2">{message}</span>

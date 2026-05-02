@@ -11,7 +11,6 @@ const multer = require('multer');
 // Admin controllers
 const studentCardController = require('../controllers/admin/studentCardController');
 const aiLogsController = require('../controllers/admin/aiLogsController');
-const submissionController = require('../controllers/submissionController');
 
 // Admin models
 const {
@@ -28,27 +27,50 @@ const { getQueueStatus, retryAllFailed } = require('../services/AIService');
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Apply activity logger middleware to all admin routes
+// Apply authentication and role verification to ALL admin routes first
+router.use(verifyToken);
+router.use(verifyRole('admin'));
+
+// Apply activity logger middleware
 router.use(activityLoggerMiddleware);
+
+// Global Request Logger for Traffic Anomaly Chart (Now has access to req.user)
+router.use(async (req, res, next) => {
+    try {
+        let ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+        if (ip === '::1' || ip === '::ffff:127.0.0.1') ip = '127.0.0.1 (Localhost)';
+        
+        const userId = req.user?.id || null;
+        const path = req.path;
+        
+        await pool.query(
+            'INSERT INTO request_logs (ip_address, user_id, path) VALUES (?, ?, ?)',
+            [ip, userId, path]
+        );
+    } catch (e) {
+        console.error('Error logging request:', e.message);
+    }
+    next();
+});
 
 // ============================================================================
 // STUDENT CARD MANAGEMENT APIs
 // ============================================================================
 
-router.get('/student-cards', verifyToken, verifyRole('admin'), studentCardController.getStudentCards);
-router.get('/student-cards/no-image', verifyToken, verifyRole('admin'), studentCardController.getStudentCardsWithoutImage);
-router.get('/student-cards/:id', verifyToken, verifyRole('admin'), studentCardController.getStudentCardById);
-router.post('/student-cards', verifyToken, verifyRole('admin'), upload.fields([{ name: 'card_image', maxCount: 1 }]), studentCardController.createStudentCard);
-router.put('/student-cards/:id', verifyToken, verifyRole('admin'), upload.fields([{ name: 'card_image', maxCount: 1 }]), studentCardController.updateStudentCard);
-router.delete('/student-cards/:id', verifyToken, verifyRole('admin'), studentCardController.deleteStudentCard);
-router.post('/student-cards/batch', verifyToken, verifyRole('admin'), upload.any(), studentCardController.batchUploadStudentCards);
-router.post('/student-cards/batch-update-images', verifyToken, verifyRole('admin'), upload.any(), studentCardController.batchUpdateCardImages);
+router.get('/student-cards', studentCardController.getStudentCards);
+router.get('/student-cards/no-image', studentCardController.getStudentCardsWithoutImage);
+router.get('/student-cards/:id', studentCardController.getStudentCardById);
+router.post('/student-cards', upload.fields([{ name: 'card_image', maxCount: 1 }]), studentCardController.createStudentCard);
+router.put('/student-cards/:id', upload.fields([{ name: 'card_image', maxCount: 1 }]), studentCardController.updateStudentCard);
+router.delete('/student-cards/:id', studentCardController.deleteStudentCard);
+router.post('/student-cards/batch', upload.any(), studentCardController.batchUploadStudentCards);
+router.post('/student-cards/batch-update-images', upload.any(), studentCardController.batchUpdateCardImages);
 
 // ============================================================================
 // DASHBOARD APIs
 // ============================================================================
 
-router.get('/dashboard', verifyToken, verifyRole('admin'), async (req, res) => {
+router.get('/dashboard', async (req, res) => {
   try {
     console.log('🔍 [Admin Dashboard] Fetching statistics...');
 
@@ -163,6 +185,38 @@ router.get('/dashboard', verifyToken, verifyRole('admin'), async (req, res) => {
       message: 'Lỗi server khi truy cập dashboard',
       status: 'error'
     });
+  }
+});
+
+/**
+ * GET /api/admin/traffic-anomalies
+ * Lấy dữ liệu truy cập bất thường thực tế
+ */
+router.get('/traffic-anomalies', async (req, res) => {
+  try {
+    // 1. Lấy traffic thực tế từ bảng request_logs (trong 1 giờ qua)
+    const [realTraffic] = await pool.query(`
+      SELECT 
+        COALESCE(u.full_name, r.ip_address) as name,
+        COUNT(*) as requests,
+        CASE WHEN u.full_name IS NOT NULL THEN u.email ELSE 'Guest/IP' END as type
+      FROM request_logs r
+      LEFT JOIN users u ON r.user_id = u.id
+      WHERE r.created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)
+      GROUP BY r.ip_address, r.user_id
+      ORDER BY requests DESC
+      LIMIT 5
+    `);
+
+    res.json({
+      success: true,
+      traffic: realTraffic.length > 0 ? realTraffic : [
+        { name: 'System Normal', requests: 1, type: 'No activity' }
+      ]
+    });
+  } catch (error) {
+    console.error('❌ Error fetching traffic anomalies:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
@@ -590,18 +644,12 @@ router.delete('/exams/:id', verifyToken, verifyRole('admin'), async (req, res) =
 // ============================================================================
 
 /**
- * GET /api/admin/submissions/:submissionId/questions
- * Lấy danh sách câu hỏi của một submission
- */
-router.get('/submissions/:submissionId/questions', verifyToken, verifyRole('admin'), submissionController.getSubmissionQuestions);
-
-/**
  * GET /api/admin/results
  * Lấy tổng hợp kết quả thi
  */
 router.get('/results', verifyToken, verifyRole('admin'), async (req, res) => {
   try {
-    const { exam_id, search, page = 1, limit = 20 } = req.query;
+    const { exam_id, page = 1, limit = 20 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     let whereClause = '1=1';
@@ -610,11 +658,6 @@ router.get('/results', verifyToken, verifyRole('admin'), async (req, res) => {
     if (exam_id) {
       whereClause += ' AND s.exam_id = ?';
       params.push(exam_id);
-    }
-    
-    if (search) {
-      whereClause += ' AND (u.full_name LIKE ? OR u.email LIKE ?)';
-      params.push(`%${search}%`, `%${search}%`);
     }
 
     const [results] = await pool.query(`

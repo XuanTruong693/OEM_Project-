@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { FiSearch, FiEdit, FiTrash2, FiHash, FiFileText } from "react-icons/fi";
 import axios from "axios";
+import axiosClient from "../../api/axiosClient";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import { useNavigate } from "react-router-dom";
 import { timeAgo } from "../../../../backend/src/utils/timeAgo";
@@ -17,7 +18,7 @@ const ExamBank = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const navigate = useNavigate();
-  const token = localStorage.getItem("token");
+  // const token = localStorage.getItem("token"); // Deprecated direct localStorage access
 
   // Toast state
   const [toast, setToast] = useState(null);
@@ -28,10 +29,9 @@ const ExamBank = () => {
     try {
       setLoading(true);
       setError("");
-      const response = await axios.get(
-        `${API_BASE_URL}/assign-bank/exams`,
+      const response = await axiosClient.get(
+        `/assign-bank/exams`,
         {
-          headers: { Authorization: `Bearer ${token}` },
           params: {
             page: currentPage,
             limit: 10,
@@ -96,9 +96,7 @@ const ExamBank = () => {
 
   const confirmDelete = async (id) => {
     try {
-      await axios.delete(`${API_BASE_URL}/assign-bank/exams/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await axiosClient.delete(`/assign-bank/exams/${id}`);
       setToast({ message: "Xóa đề thi thành công!", type: "success" });
       fetchExams();
     } catch (err) {
@@ -114,10 +112,9 @@ const ExamBank = () => {
 
   const confirmPublish = async (id) => {
     try {
-      await axios.post(
-        `${API_BASE_URL}/assign-bank/exams/${id}/publish`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
+      await axiosClient.post(
+        `/assign-bank/exams/${id}/publish`,
+        {}
       );
       setToast({ message: "Mở phòng thi thành công!", type: "success" });
       fetchExams();

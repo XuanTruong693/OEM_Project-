@@ -76,6 +76,21 @@ const AdminDashboard = () => {
     };
 
     fetchDashboardStats();
+
+    const fetchTrafficAnomalies = async () => {
+      try {
+        const response = await axiosClient.get('/admin/traffic-anomalies');
+        if (response.data.success) {
+          setTrafficAnomalies(response.data.traffic);
+        }
+      } catch (error) {
+        console.error('Error fetching traffic anomalies:', error);
+      }
+    };
+    fetchTrafficAnomalies();
+    const trafficInterval = setInterval(fetchTrafficAnomalies, 30000); // Update every 30s
+
+    return () => clearInterval(trafficInterval);
   }, []);
 
   const [userGrowthData, setUserGrowthData] = useState([
@@ -102,6 +117,13 @@ const AdminDashboard = () => {
   ]);
 
   const [recentUsers, setRecentUsers] = useState([]);
+  const [trafficAnomalies, setTrafficAnomalies] = useState([
+    { name: '192.168.1.15', requests: 1850, type: 'Chrome / Win10' },
+    { name: 'Nguyen Van A', requests: 1200, type: 'Safari / iPhone' },
+    { name: '103.25.14.88', requests: 950, type: 'Firefox / Linux' },
+    { name: 'Tran Thi B', requests: 600, type: 'Chrome / Android' },
+    { name: '45.112.5.30', requests: 450, type: 'Edge / Win11' }
+  ]);
 
   const formatDateTime = (dateStr) => {
     if (!dateStr) return language === 'vi' ? 'Chưa đặt' : 'Not set';
@@ -319,7 +341,7 @@ const AdminDashboard = () => {
               </div>
             </div>
 
-            {/* Performance Chart */}
+            {/* Performance Chart (Original Style) */}
             <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
               <h2 className="text-lg font-semibold text-white mb-6">Performance</h2>
               <ResponsiveContainer width="100%" height={200}>
@@ -360,11 +382,68 @@ const AdminDashboard = () => {
               </ResponsiveContainer>
             </div>
 
-            {/* Additional Performance Card */}
+            {/* Traffic Anomaly Monitoring (Area Chart Style) */}
             <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-              <h2 className="text-lg font-semibold text-white mb-6">Performance</h2>
-              <div className="h-32 flex items-center justify-center text-gray-300">
-                Additional metrics coming soon...
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-lg font-semibold text-white">Traffic Anomaly Monitoring</h2>
+                <span className="px-2 py-1 bg-red-600/20 text-red-400 text-[10px] font-bold uppercase rounded border border-red-600/30">
+                  Live Alert
+                </span>
+              </div>
+              
+              <ResponsiveContainer width="100%" height={200}>
+                <AreaChart data={trafficAnomalies}>
+                  <defs>
+                    <linearGradient id="colorRequests" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#EF4444" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="#EF4444" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={true} horizontal={false} />
+                  <XAxis
+                    dataKey="name"
+                    stroke="#9CA3AF"
+                    style={{ fontSize: '10px' }}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    stroke="#9CA3AF"
+                    style={{ fontSize: '10px' }}
+                    tickLine={false}
+                    axisLine={false}
+                    domain={[0, 2000]}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#1F2937',
+                      border: '1px solid #EF4444',
+                      borderRadius: '8px',
+                      color: '#fff'
+                    }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="requests"
+                    stroke="#EF4444"
+                    strokeWidth={3}
+                    fillOpacity={1}
+                    fill="url(#colorRequests)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+
+              <div className="mt-4 p-3 bg-red-900/10 border border-red-900/20 rounded-lg">
+                <p className="text-[11px] text-red-300/80 leading-relaxed italic">
+                  {trafficAnomalies[0]?.requests > 100 ? (
+                    <>
+                      * Warning: Detected unusual activity from <strong>{trafficAnomalies[0].name}</strong> with {trafficAnomalies[0].requests.toLocaleString()} requests. 
+                      Potential security risk detected.
+                    </>
+                  ) : (
+                    <>* Status: System traffic is within normal parameters. No significant anomalies detected.</>
+                  )}
+                </p>
               </div>
             </div>
           </div>

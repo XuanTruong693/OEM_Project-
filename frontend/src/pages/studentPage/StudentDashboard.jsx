@@ -319,32 +319,36 @@ export default function StudentDashboard() {
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/')} className="flex items-center gap-3">
-              <img src="/Logo.png" alt="Logo" className="h-9 w-auto" />
-              <h1 className="text-base font-semibold text-slate-700">Student Dashboard</h1>
+        <div className="max-w-6xl mx-auto px-3 sm:px-4 py-3 flex items-center justify-between gap-1 sm:gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
+            <button onClick={() => navigate('/')} className="flex items-center gap-1 sm:gap-3">
+              <img src="/Logo.png" alt="Logo" className="h-6 sm:h-9 w-auto" />
+              <h1 className="text-xs sm:text-base font-semibold text-slate-700 truncate max-w-[45px] xs:max-w-[70px] sm:max-w-none">
+                Student
+              </h1>
             </button>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3">
             <button
               type="button"
               onClick={() => navigate('/profile')}
-              className="flex items-center gap-2 text-left group focus-visible:outline-none"
+              className="flex items-center gap-1 sm:gap-2 text-left group focus-visible:outline-none flex-shrink-0"
             >
               <img
                 src={getFullImageUrl(user.avatar)}
                 alt="avatar"
-                className="w-8 h-8 rounded-full object-cover border border-slate-200"
+                className="w-6 h-6 sm:w-8 sm:h-8 rounded-full object-cover border border-slate-200"
               />
-              <span className="text-sm text-slate-600">
-                Xin chào,{" "}
+              <span className="text-[11px] sm:text-sm text-slate-600 truncate max-w-[65px] xs:max-w-[100px] sm:max-w-none">
+                <span className="hidden sm:inline">Xin chào, </span>
                 <span className="font-semibold text-slate-800 group-hover:text-blue-700 underline underline-offset-2">
                   {user.fullname || 'Người dùng'}
                 </span>
               </span>
             </button>
-            <button onClick={logout} className="px-3 py-2 rounded-lg border border-slate-300 text-slate-700 hover:border-slate-400">Đăng xuất</button>
+            <button onClick={logout} className="px-1.5 sm:px-3 py-1 sm:py-2 text-[10px] sm:text-sm rounded-lg border border-slate-300 text-slate-700 hover:border-slate-400 flex-shrink-0">
+              Đăng xuất
+            </button>
           </div>
         </div>
       </header>

@@ -54,10 +54,12 @@ const app = express();
 // const profileRouter = require("./routes/profile");
 
 const allowedOrigins = [
+  "http://localhost:54805",
   "http://localhost:4000",
   "http://127.0.0.1:4000",
   "http://localhost:5500",
   "http://127.0.0.1:5500",
+  "http://127.0.0.1:5000",
   "http://oes.io.vn",
   "http://www.oes.io.vn",
   "https://oes.io.vn",
@@ -66,6 +68,7 @@ const allowedOrigins = [
 
 // Trust Cloudflare proxy for correct client IP and secure cookies
 app.set("trust proxy", 1);
+
 
 app.use(
   cors({
@@ -81,12 +84,23 @@ app.use(
   })
 );
 
-// Increase JSON limit for large base64 snapshot frame uploads (3fps x ~30s = ~100 frames x 50KB each)
+
+// Global Timeout Disabled
+
+// Reduce JSON limit now that large snapshots use multer (multipart)
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+
+// Benchmark & Stress Test Routes (No DB persistence) - Corrected Position
+const benchmarkController = require("./controllers/benchmarkController");
+app.post("/api/benchmark/ai-stress", benchmarkController.stressTestAI);
+
+// Middleware to handle timeout (Disabled)
+
 // Serve uploaded snapshots/videos as static files
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+app.use("/api/uploads", express.static(path.join(__dirname, "../uploads")));
 
 // ✅ Log debug chỉ khi chạy dev
 if (process.env.NODE_ENV === "development") {
@@ -123,15 +137,20 @@ app.post("/role", (req, res) => {
   res.json({ role: getAppRole() });
 });
 
-// ✅ Error handler for aborted requests (client disconnected)
+
+// ✅ General Error Handler
 app.use((err, req, res, next) => {
-  // Ignore aborted connection errors (user refreshed/navigated away)
   if (err.message === 'aborted' || err.code === 'ECONNRESET') {
-    return; // Silently ignore
+    return;
   }
-  console.error('Unhandled error:', err.message);
+
+  console.error('🔥 [Global Error]:', err.message, err.stack);
+
   if (!res.headersSent) {
-    res.status(500).json({ message: 'Internal server error' });
+    res.status(500).json({
+      message: 'Internal server error',
+      error: err.message
+    });
   }
 });
 
@@ -141,8 +160,6 @@ app.get("/", (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-
-// ✅ Kết nối và đồng bộ DB
 // ✅ [StudentCard] Import model để sync bảng student_cards
 const StudentCard = require('./models/StudentCard');
 

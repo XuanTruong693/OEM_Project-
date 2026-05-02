@@ -18,49 +18,11 @@ if (!fs.existsSync(VIDEOS_DIR)) {
     fs.mkdirSync(VIDEOS_DIR, { recursive: true });
 }
 
-exports.uploadSnapshots = async (req, res) => {
-    try {
-        const { submissionId } = req.params;
-        const { violation_id, frames, fps } = req.body;
-
-        if (!frames || !frames.length) {
-            return res.status(400).json({ error: 'No frames provided' });
-        }
-
-        const submissionDir = path.join(SNAPSHOTS_DIR, String(submissionId));
-        const violationDir = path.join(submissionDir, violation_id || 'general');
-
-        if (!fs.existsSync(violationDir)) {
-            fs.mkdirSync(violationDir, { recursive: true });
-        }
-
-        // Đếm số lượng frame hiện có để đánh số tăng dần
-        const existingFiles = fs.readdirSync(violationDir).filter(f => f.endsWith('.webp'));
-        let frameCounter = existingFiles.length + 1;
-
-        // Lưu các frame WebP
-        for (const frameData of frames) {
-            // frameData có dạng: "data:image/webp;base64,UklGR..."
-            const base64Data = frameData.replace(/^data:image\/webp;base64,/, "");
-            // Lưu file format: frame_001.webp
-            const fileName = `frame_${String(frameCounter).padStart(4, '0')}.webp`;
-            const filePath = path.join(violationDir, fileName);
-
-            fs.writeFileSync(filePath, base64Data, 'base64');
-            frameCounter++;
-        }
-
-        return res.status(200).json({
-            success: true,
-            message: `Saved ${frames.length} frames for violation ${violation_id}`,
-            violation_id
-        });
-    } catch (error) {
-        console.error('[SnapshotController] upload error:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-};
-
+/**
+ * Ghép các frame ảnh thành video MP4
+ * @param {string} submissionId 
+ * @param {string} violation_id (Tùy chọn) - Nếu có thì chỉ lấy frame của vi phạm đó
+ */
 exports.mergeToVideo = async (req, res) => {
     try {
         const { submissionId } = req.params;
@@ -69,14 +31,12 @@ exports.mergeToVideo = async (req, res) => {
 
         const submissionDir = path.join(SNAPSHOTS_DIR, String(submissionId));
         let framesDir = submissionDir;
-        let outputFileName = `submission_${submissionId}_full.mp4`;
-
-        if (violation_id) {
-            framesDir = path.join(submissionDir, violation_id);
-            outputFileName = `submission_${submissionId}_violation_${violation_id}.mp4`;
-        }
-
+        
+        const outputFileName = violation_id 
+            ? `submission_${submissionId}_violation_${violation_id}.mp4`
+            : `submission_${submissionId}_full.mp4`;
         const outputPath = path.normalize(path.join(VIDEOS_DIR, outputFileName));
+        const tempOutputPath = path.join(VIDEOS_DIR, `temp_${outputFileName}`);
 
         console.log(`[SnapshotController] 🔍 Checking existence of: ${outputPath}`);
 
@@ -86,11 +46,15 @@ exports.mergeToVideo = async (req, res) => {
             return res.status(200).json({
                 success: true,
                 message: 'Video already exists',
-                video_url: `/uploads/videos/${outputFileName}`
+                video_url: `/api/uploads/videos/${outputFileName}`
             });
         }
 
         console.log(`[SnapshotController] ⌛ Video NO found. Checking frames at: ${framesDir}`);
+
+        if (violation_id) {
+            framesDir = path.join(submissionDir, violation_id);
+        }
 
         if (!fs.existsSync(framesDir)) {
             console.error(`[SnapshotController] ❌ Target frames directory NOT found for merge: ${framesDir}`);
@@ -131,7 +95,7 @@ exports.mergeToVideo = async (req, res) => {
         if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
         files.forEach((file, index) => {
-            const srcPath = violation_id ? path.join(framesDir, file) : path.join(framesDir, file);
+            const srcPath = path.join(framesDir, file);
             const destPath = path.join(tempDir, `frm_${String(index + 1).padStart(4, '0')}.webp`);
             fs.copyFileSync(srcPath, destPath);
         });
@@ -139,67 +103,92 @@ exports.mergeToVideo = async (req, res) => {
         const filePattern = path.join(tempDir, 'frm_%04d.webp');
 
         // Construct FFmpeg command
-        ffmpeg()
-            .input(filePattern)
-            .inputFPS(3) // 3 frames per second as requested
-            .outputOptions([
-                '-c:v libx264',
-                '-pix_fmt yuv420p',
-                '-preset fast',
-                '-crf 23'
-            ])
-            .save(outputPath)
-            .on('end', () => {
-                // Cleanup temp folder
-                fs.rmSync(tempDir, { recursive: true, force: true });
-                res.status(200).json({
-                    success: true,
-                    video_url: `/uploads/videos/${outputFileName}` // Cần serve static endpoint cho uploads
-                });
-            })
-            .on('error', (err) => {
-                console.error('[SnapshotController] FFmpeg error:', err);
-                fs.rmSync(tempDir, { recursive: true, force: true });
-                res.status(500).json({ error: 'Video merge failed', details: err.message });
-            });
-
-    } catch (error) {
-        console.error('[SnapshotController] merge error:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-};
-
-exports.deleteEvidence = async (req, res) => {
-    try {
-        const { submissionId, violationId } = req.params;
-
-        if (!submissionId || !violationId) {
-            return res.status(400).json({ error: 'Missing submissionId or violationId' });
-        }
-
-        const submissionDir = path.join(SNAPSHOTS_DIR, String(submissionId));
-        const violationDir = path.join(submissionDir, String(violationId));
-
-        // Xóa thư mục ảnh snapshot
-        if (fs.existsSync(violationDir)) {
-            fs.rmSync(violationDir, { recursive: true, force: true });
-        }
-
-        // Xóa video nếu đã được merge
-        const videoName = `submission_${submissionId}_violation_${violationId}.mp4`;
-        const videoPath = path.join(VIDEOS_DIR, videoName);
-        if (fs.existsSync(videoPath)) {
-            fs.unlinkSync(videoPath);
-        }
-
-        console.log(`[SnapshotController] 🗑️ Deleted evidence for violation: ${violationId}`);
+        await new Promise((resolve, reject) => {
+            ffmpeg()
+                .input(filePattern)
+                .inputFPS(3) // 3 frames per second as requested
+                .outputOptions([
+                    '-c:v libx264',
+                    '-profile:v baseline',
+                    '-level 3.0',
+                    '-vf', 'scale=-2:720', // Force 720p height, proportional width (must be even)
+                    '-pix_fmt yuv420p',
+                    '-movflags +faststart',
+                    '-preset superfast',
+                    '-crf 24' // Slightly better quality for 720p
+                ])
+                .on('end', () => {
+                    // Rename temp file to official file name after completion
+                    if (fs.existsSync(tempOutputPath)) {
+                        fs.renameSync(tempOutputPath, outputPath);
+                    }
+                    // Cleanup temp frames
+                    fs.rmSync(tempDir, { recursive: true, force: true });
+                    console.log(`✅ [SnapshotController] Merge completed: ${outputFileName}`);
+                    resolve();
+                })
+                .on('error', (err) => {
+                    console.error(`❌ [SnapshotController] Merge error:`, err.message);
+                    if (fs.existsSync(tempOutputPath)) fs.unlinkSync(tempOutputPath);
+                    if (fs.existsSync(tempDir)) fs.rmSync(tempDir, { recursive: true, force: true });
+                    reject(err);
+                })
+                .save(tempOutputPath);
+        });
 
         return res.status(200).json({
             success: true,
-            message: 'Evidence deleted successfully'
+            message: 'Merging completed',
+            video_url: `/api/uploads/videos/${outputFileName}`
         });
+
     } catch (error) {
-        console.error('[SnapshotController] delete evidence error:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        console.error('[SnapshotController] merge error:', error);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+};
+
+/**
+ * Xóa bằng chứng (cả frame và video liên quan)
+ */
+exports.deleteEvidence = async (req, res) => {
+    try {
+        const { submissionId, violationId } = req.params;
+        const framesDir = path.join(SNAPSHOTS_DIR, String(submissionId), String(violationId));
+        const videoPath = path.join(VIDEOS_DIR, `submission_${submissionId}_violation_${violationId}.mp4`);
+
+        if (fs.existsSync(framesDir)) fs.rmSync(framesDir, { recursive: true, force: true });
+        if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
+
+        res.json({ message: 'Evidence deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ error: 'Delete failed', details: error.message });
+    }
+};
+
+exports.uploadSnapshots = async (req, res) => {
+    try {
+        const { submissionId } = req.params;
+        const { violation_id } = req.body;
+        
+        if (!req.files || req.files.length === 0) {
+            return res.status(400).json({ error: 'No files uploaded' });
+        }
+
+        const targetDir = violation_id 
+            ? path.join(SNAPSHOTS_DIR, String(submissionId), String(violation_id))
+            : path.join(SNAPSHOTS_DIR, String(submissionId));
+
+        if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+
+        // Multer đã lưu vào temp, giờ move vào targetDir
+        req.files.forEach((file, index) => {
+            const fileName = `frame_${Date.now()}_${index}.webp`;
+            fs.renameSync(file.path, path.join(targetDir, fileName));
+        });
+
+        res.json({ message: 'Snapshots uploaded successfully', count: req.files.length });
+    } catch (error) {
+        res.status(500).json({ error: 'Upload failed', details: error.message });
     }
 };

@@ -122,7 +122,7 @@ const AIGradingMonitor = () => {
   };
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-gray-900 [.light-theme_&]:bg-gray-50 overflow-hidden">
+    <div className="flex flex-col md:flex-row h-screen bg-gray-900 [.light-theme_&]:bg-gray-50 overflow-hidden">
       <AdminSidebar activeTab="ai-grading" />
       <div className="flex-1 flex flex-col p-4 pt-20 md:p-8 overflow-y-auto">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-0 mb-8">
