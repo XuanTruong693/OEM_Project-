@@ -109,6 +109,9 @@ import 'features/instructor/presentation/bloc/instructor_overlay_bloc.dart';
 import 'features/instructor/presentation/bloc/instructor_overlay_event.dart';
 import 'features/instructor/presentation/bloc/instructor_overlay_state.dart';
 
+import 'features/student_exam/presentation/bloc/take_exam_bloc.dart';
+import 'features/student_exam/presentation/pages/mobile_take_exam_page.dart';
+
 // --- IMPORT PROFILE ---
 import 'features/profile/data/datasources/profile_remote_data_source.dart';
 import 'features/profile/data/repositories/profile_repository_impl.dart';
@@ -461,6 +464,17 @@ Future<void> main() async {
               socketClient,
             ),
             child: InstructorRoomDetailPage(id: id),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/exam/:id/take',
+        builder: (context, state) {
+          final examId = state.pathParameters['id']!;
+          final submissionId = state.uri.queryParameters['submission_id'] ?? '';
+          return BlocProvider(
+            create: (context) => TakeExamBloc(dioClient: dioClient),
+            child: MobileTakeExamPage(examId: examId, submissionId: submissionId),
           );
         },
       ),
