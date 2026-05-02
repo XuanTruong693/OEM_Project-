@@ -9,26 +9,29 @@ import UIKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    let controller : FlutterViewController = window?.rootViewController as! FlutterViewController
-    let securityChannel = FlutterMethodChannel(name: "com.example.mobile/security",
-                                              binaryMessenger: controller.binaryMessenger)
-    
-    securityChannel.setMethodCallHandler({ [weak self]
-      (call: FlutterMethodCall, result: @escaping FlutterResult) -> Void in
-      if call.method == "isScreenCaptured" {
-        result(UIScreen.main.isCaptured)
-      } else if call.method == "enableSecureMode" {
-        self?.makeScreenSecure()
-        result(true)
-      } else if call.method == "disableSecureMode" {
-        self?.makeScreenNormal()
-        result(true)
-      } else {
-        result(FlutterMethodNotImplemented)
-      }
-    })
+    let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
 
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    if let controller = window?.rootViewController as? FlutterViewController {
+      let securityChannel = FlutterMethodChannel(name: "com.example.mobile/security",
+                                                binaryMessenger: controller.binaryMessenger)
+      
+      securityChannel.setMethodCallHandler({ [weak self]
+        (call: FlutterMethodCall, result: @escaping FlutterResult) -> Void in
+        if call.method == "isScreenCaptured" {
+          result(UIScreen.main.isCaptured)
+        } else if call.method == "enableSecureMode" {
+          self?.makeScreenSecure()
+          result(true)
+        } else if call.method == "disableSecureMode" {
+          self?.makeScreenNormal()
+          result(true)
+        } else {
+          result(FlutterMethodNotImplemented)
+        }
+      })
+    }
+
+    return result
   }
 
   private func makeScreenSecure() {
