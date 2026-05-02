@@ -1,0 +1,26 @@
+# Uncomment this line to define a global platform for your project
+platform :ios, '15.5'
+
+# CocoaPods analytics sends network stats so the team can see which plugins are popular.
+# It is recommended to include this line.
+plugin 'cocoapods-art', :verbose => true if Dir.exist?(File.join(Dir.home, '.cocoapods/repos/art'))
+
+def flutter_install_all_ios_pods(cocoapods_targets_dir)
+  flutter_install_ios_plugin_pods(cocoapods_targets_dir)
+end
+
+target 'Runner' do
+  use_frameworks!
+  use_modular_headers!
+
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.5'
+    end
+  end
+end

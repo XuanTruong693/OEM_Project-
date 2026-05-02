@@ -39,20 +39,13 @@ jobs:
 
       - name: Build iOS App Bundle
         run: |
-          echo "Attempting to build with Flutter CLI and extra flags"
+          echo "Attempting to build with Flutter CLI"
           flutter build ios --release --no-codesign || true
           
           if [ -d "build/ios/iphoneos/Runner.app" ]; then
             echo "Runner.app generated successfully!"
           else
-            echo "Retrying without no-codesign but passing xcodebuild arguments"
-            flutter build ios --release --no-codesign -- CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" || true
-          fi
-          
-          if [ -d "build/ios/iphoneos/Runner.app" ]; then
-            echo "Runner.app generated successfully on retry!"
-          else
-            echo "Retrying one more time with xcodebuild directly from within the ios folder"
+            echo "Retrying with xcodebuild directly from within the ios folder"
             cd ios
             xcodebuild -workspace Runner.xcworkspace \
                        -scheme Runner \
