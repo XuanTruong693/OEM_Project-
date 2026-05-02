@@ -232,7 +232,12 @@ router.post("/google", async (req, res) => {
         .json({ message: "Học viên cần mã phòng thi", status: "error" });
     const ticket = await client.verifyIdToken({
       idToken,
-      audience: process.env.GOOGLE_CLIENT_ID,
+      audience: [
+        process.env.GOOGLE_CLIENT_ID,        // Cho Web React
+        process.env.GOOGLE_CLIENT_ID_MOBILE,  // Cho Mobile Flutter cũ
+        '429788829057-vt6vshn3mc3gunrr6ktjgqs2cutirmih.apps.googleusercontent.com', // Android Client ID mới
+        '429788829057-lgird6tqa1u83bshg56c67h4e6fn18ji.apps.googleusercontent.com'  // iOS Client ID mới
+      ],
     });
     const payload = ticket.getPayload();
     const email = payload.email?.toLowerCase().trim();
