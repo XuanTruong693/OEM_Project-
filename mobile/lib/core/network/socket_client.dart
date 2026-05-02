@@ -20,7 +20,16 @@ class SocketClient {
       socket!.dispose();
     }
 
-    final socketUrl = dotenv.env['SOCKET_URL'] ?? dotenv.env['API_URL']?.replaceAll('/api', '') ?? 'http://10.0.2.2:5000';
+    String socketUrl = dotenv.env['SOCKET_URL'] ?? 'http://10.0.2.2:5000';
+    final apiEnv = dotenv.env['API_URL'];
+    if (dotenv.env['SOCKET_URL'] == null && apiEnv != null && apiEnv.isNotEmpty) {
+      try {
+        final uri = Uri.parse(apiEnv);
+        socketUrl = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+      } catch (_) {
+        socketUrl = apiEnv.replaceAll(RegExp(r'/api$'), '');
+      }
+    }
 
     socket = io.io(
       socketUrl,
@@ -66,4 +75,3 @@ class SocketClient {
     socket?.disconnect();
   }
 }
-

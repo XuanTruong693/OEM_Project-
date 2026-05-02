@@ -4,7 +4,12 @@ class ImageUtils {
   static String get baseUrl {
     final envUrl = dotenv.env['API_URL'];
     if (envUrl != null && envUrl.isNotEmpty) {
-      return envUrl.replaceAll('/api', '');
+      try {
+        final uri = Uri.parse(envUrl);
+        return '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+      } catch (e) {
+        return envUrl.replaceAll(RegExp(r'/api$'), '');
+      }
     }
     return 'http://10.0.2.2:5000';
   }
