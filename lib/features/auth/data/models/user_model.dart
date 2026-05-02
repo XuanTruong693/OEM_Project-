@@ -2,20 +2,13 @@ import '../../domain/entities/user_entity.dart';
 
 class UserModel extends UserEntity {
   UserModel({
-    required int id,
-    required String fullName,
-    required String email,
-    required String role,
+    required super.id,
+    required super.fullName,
+    required super.email,
+    required super.role,
     String? accessToken,
     String? refreshToken,
-  }) : super(
-         id: id,
-         fullName: fullName,
-         email: email,
-         role: role,
-         accessToken: accessToken ?? '',
-         refreshToken: refreshToken ?? '',
-       );
+  }) : super(accessToken: accessToken ?? '', refreshToken: refreshToken ?? '');
 
   // Ép cục JSON to đùng từ Backend thành UserModel
   factory UserModel.fromJson(Map<String, dynamic> json) {

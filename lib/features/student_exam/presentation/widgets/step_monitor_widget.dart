@@ -13,11 +13,11 @@ class StepMonitorWidget extends StatefulWidget {
   final String submissionId;
 
   const StepMonitorWidget({
-    Key? key,
+    super.key,
     required this.state,
     required this.examId,
     required this.submissionId,
-  }) : super(key: key);
+  });
 
   @override
   State<StepMonitorWidget> createState() => _StepMonitorWidgetState();
@@ -115,7 +115,10 @@ class _StepMonitorWidgetState extends State<StepMonitorWidget>
                               height: 28,
                               decoration: BoxDecoration(
                                 gradient: const LinearGradient(
-                                  colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
+                                  colors: [
+                                    Color(0xFF2563EB),
+                                    Color(0xFF1D4ED8),
+                                  ],
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
                                 ),
@@ -149,7 +152,11 @@ class _StepMonitorWidgetState extends State<StepMonitorWidget>
                     const SizedBox(height: 10),
                     const Text(
                       'Hệ thống sẽ khóa tính năng chụp/quay màn hình và ghi nhận cảnh báo nếu bạn thoát ứng dụng.',
-                      style: TextStyle(fontSize: 13, color: Color(0xFF64748B), height: 1.35),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF64748B),
+                        height: 1.35,
+                      ),
                     ),
                     const SizedBox(height: 16),
 
@@ -164,7 +171,10 @@ class _StepMonitorWidgetState extends State<StepMonitorWidget>
                           state.monitorOk
                               ? '✔️ Chế độ giám sát đang hoạt động'
                               : 'Bật chế độ giám sát',
-                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: state.monitorOk
@@ -196,7 +206,11 @@ class _StepMonitorWidgetState extends State<StepMonitorWidget>
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.lock_outline, color: Colors.grey.shade600, size: 36),
+                            Icon(
+                              Icons.lock_outline,
+                              color: Colors.grey.shade600,
+                              size: 36,
+                            ),
                             const SizedBox(height: 8),
                             Text(
                               'Hoàn tất các bước trên để mở khóa',
@@ -309,14 +323,34 @@ class _StepMonitorWidgetState extends State<StepMonitorWidget>
     if (state.monitorOk) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(8)),
-        child: const Text('✅ Đã bật', style: TextStyle(color: Color(0xFF15803D), fontSize: 11, fontWeight: FontWeight.bold)),
+        decoration: BoxDecoration(
+          color: const Color(0xFFDCFCE7),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Text(
+          '✅ Đã bật',
+          style: TextStyle(
+            color: Color(0xFF15803D),
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       );
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(8)),
-      child: const Text('⏳ Chưa bật', style: TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.bold)),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: const Text(
+        '⏳ Chưa bật',
+        style: TextStyle(
+          color: Color(0xFF64748B),
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
     );
   }
 }

@@ -10,10 +10,10 @@ class StepCardVerifyWidget extends StatefulWidget {
   final String submissionId;
 
   const StepCardVerifyWidget({
-    Key? key,
+    super.key,
     required this.state,
     required this.submissionId,
-  }) : super(key: key);
+  });
 
   @override
   State<StepCardVerifyWidget> createState() => _StepCardVerifyWidgetState();
@@ -80,7 +80,11 @@ class _StepCardVerifyWidgetState extends State<StepCardVerifyWidget> {
                   const SizedBox(width: 10),
                   const Text(
                     'Xác minh thẻ sinh viên',
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF1E293B)),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                      color: Color(0xFF1E293B),
+                    ),
                   ),
                 ],
               ),
@@ -110,9 +114,15 @@ class _StepCardVerifyWidgetState extends State<StepCardVerifyWidget> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
+                  borderSide: const BorderSide(
+                    color: Color(0xFF2563EB),
+                    width: 1.5,
+                  ),
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
               ),
             ),
             const SizedBox(height: 12),
@@ -141,7 +151,10 @@ class _StepCardVerifyWidgetState extends State<StepCardVerifyWidget> {
                     : const Icon(Icons.search, size: 18),
                 label: Text(
                   state.isSearchingCard ? 'Đang tìm...' : 'Tìm Thẻ Sinh Viên',
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF2563EB),
@@ -168,12 +181,20 @@ class _StepCardVerifyWidgetState extends State<StepCardVerifyWidget> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.check_circle, color: Color(0xFF16A34A), size: 20),
+                  const Icon(
+                    Icons.check_circle,
+                    color: Color(0xFF16A34A),
+                    size: 20,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Giảng viên đã phê duyệt quyền vào thi cho bạn.',
-                      style: TextStyle(color: const Color(0xFF15803D), fontSize: 13, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        color: const Color(0xFF15803D),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
@@ -213,9 +234,15 @@ class _StepCardVerifyWidgetState extends State<StepCardVerifyWidget> {
               margin: const EdgeInsets.only(top: 12),
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: state.cardOk ? const Color(0xFFF0FDF4) : const Color(0xFFFEF2F2),
+                color: state.cardOk
+                    ? const Color(0xFFF0FDF4)
+                    : const Color(0xFFFEF2F2),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: state.cardOk ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2)),
+                border: Border.all(
+                  color: state.cardOk
+                      ? const Color(0xFFDCFCE7)
+                      : const Color(0xFFFEE2E2),
+                ),
               ),
               child: Text(
                 state.cardVerifyLog,
@@ -223,13 +250,16 @@ class _StepCardVerifyWidgetState extends State<StepCardVerifyWidget> {
                   fontSize: 13,
                   fontFamily: 'monospace',
                   fontWeight: FontWeight.w500,
-                  color: state.cardOk ? const Color(0xFF15803D) : const Color(0xFFB91C1C),
+                  color: state.cardOk
+                      ? const Color(0xFF15803D)
+                      : const Color(0xFFB91C1C),
                 ),
               ),
             ),
 
           // Nút Reset (Nhập lại)
-          if ((state.cardUploaded || state.cardErr != null) && !state.isBypassed)
+          if ((state.cardUploaded || state.cardErr != null) &&
+              !state.isBypassed)
             Container(
               width: double.infinity,
               margin: const EdgeInsets.only(top: 12),
@@ -264,28 +294,68 @@ class _StepCardVerifyWidgetState extends State<StepCardVerifyWidget> {
     if (state.isBypassed) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(8)),
-        child: const Text('✅ Được bỏ qua', style: TextStyle(color: Color(0xFF15803D), fontSize: 11, fontWeight: FontWeight.bold)),
+        decoration: BoxDecoration(
+          color: const Color(0xFFDCFCE7),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Text(
+          '✅ Được bỏ qua',
+          style: TextStyle(
+            color: Color(0xFF15803D),
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       );
     }
     if (state.cardOk) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(8)),
-        child: const Text('✅ Đã xác minh', style: TextStyle(color: Color(0xFF15803D), fontSize: 11, fontWeight: FontWeight.bold)),
+        decoration: BoxDecoration(
+          color: const Color(0xFFDCFCE7),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Text(
+          '✅ Đã xác minh',
+          style: TextStyle(
+            color: Color(0xFF15803D),
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       );
     }
     if (state.cardErr != null) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(color: const Color(0xFFFEE2E2), borderRadius: BorderRadius.circular(8)),
-        child: const Text('❌ Lỗi', style: TextStyle(color: Color(0xFFB91C1C), fontSize: 11, fontWeight: FontWeight.bold)),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFEE2E2),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Text(
+          '❌ Lỗi',
+          style: TextStyle(
+            color: Color(0xFFB91C1C),
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       );
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(8)),
-      child: const Text('⏳ Chưa xác minh', style: TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.bold)),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: const Text(
+        '⏳ Chưa xác minh',
+        style: TextStyle(
+          color: Color(0xFF64748B),
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
     );
   }
 }
