@@ -22,17 +22,15 @@ jobs:
 
       - name: Create Dummy .env and Asset Placeholders
         run: |
-          echo "Creating dummy .env and placeholders everywhere to be absolutely safe"
+          echo "Creating dummy .env and placeholders if not already present"
           mkdir -p assets/images assets/files
-          echo "API_URL=https://dummy.com" > .env
-          echo "API_URL=https://dummy.com" > assets/.env
-          mkdir -p ios && echo "API_URL=https://dummy.com" > ios/.env
-          mkdir -p ios/Runner && echo "API_URL=https://dummy.com" > ios/Runner/.env
+          [ -f .env ] || echo "API_URL=https://dummy.com" > .env
+          [ -f assets/.env ] || echo "API_URL=https://dummy.com" > assets/.env
+          mkdir -p ios && ([ -f ios/.env ] || echo "API_URL=https://dummy.com" > ios/.env)
+          mkdir -p ios/Runner && ([ -f ios/Runner/.env ] || echo "API_URL=https://dummy.com" > ios/Runner/.env)
           touch assets/images/.gitkeep assets/files/.gitkeep
           echo "Listing root directory files:"
           ls -la
-          echo "Listing assets files:"
-          ls -la assets
 
       - name: Install dependencies
         run: flutter pub get
