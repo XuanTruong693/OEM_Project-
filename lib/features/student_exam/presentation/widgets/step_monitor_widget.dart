@@ -34,7 +34,6 @@ class _StepMonitorWidgetState extends State<StepMonitorWidget>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    ScreenProtector.preventScreenshotOff();
     super.dispose();
   }
 
