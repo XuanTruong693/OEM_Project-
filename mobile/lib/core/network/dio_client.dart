@@ -1,9 +1,14 @@
-import 'package:dio/dio.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../storage/secure_storage_helper.dart';
 
 class DioClient {
-  // IP của máy ảo Android gọi về localhost của máy tính là 10.0.2.2
-  static const String baseUrl = 'http://10.0.2.2:5000/api';
+  static String get baseUrl {
+    final envUrl = dotenv.env['API_URL'];
+    if (envUrl != null && envUrl.isNotEmpty) {
+      return envUrl;
+    }
+    return 'http://10.0.2.2:5000/api';
+  }
 
   final Dio dio;
   final Function()? onLogout;
