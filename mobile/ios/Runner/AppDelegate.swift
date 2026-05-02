@@ -39,8 +39,8 @@ import UIKit
       let field = UITextField()
       field.isSecureTextEntry = true
       field.translatesAutoresizingMaskIntoConstraints = false
-      if let view = window?.rootViewController?.view {
-        view.addSubview(field)
+      if let w = window {
+        w.addSubview(field)
         secureField = field
       }
     }
