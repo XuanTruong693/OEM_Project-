@@ -38,31 +38,7 @@ jobs:
       - name: Build iOS App Bundle
         run: |
           echo "Attempting to build with Flutter CLI"
-          flutter build ios --release --no-codesign || true
-          
-          if [ -d "build/ios/iphoneos/Runner.app" ]; then
-            echo "Runner.app generated successfully!"
-          else
-            echo "Retrying with xcodebuild directly from within the ios folder"
-            cd ios
-            xcodebuild -workspace Runner.xcworkspace \
-                       -scheme Runner \
-                       -configuration Release \
-                       -sdk iphoneos \
-                       CODE_SIGNING_ALLOWED=NO \
-                       CODE_SIGNING_REQUIRED=NO \
-                       CODE_SIGN_IDENTITY="" \
-                       clean build || true
-            cd ..
-          fi
-          
-          echo "Checking final artifact presence"
-          if [ -d "build/ios/iphoneos/Runner.app" ] || [ -d "ios/build/Release-iphoneos/Runner.app" ]; then
-            echo "Success! Runner.app found!"
-          else
-            echo "Error: Runner.app not found in any output paths!"
-            exit 1
-          fi
+          flutter build ios --release --no-codesign --verbose
 
       - name: Create Unsigned IPA
         run: |
