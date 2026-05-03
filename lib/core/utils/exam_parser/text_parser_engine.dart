@@ -234,7 +234,7 @@ class TextParserEngine {
     final essayQuestions = questions.where((q) => q.type == "Essay").toList();
     final sortedQuestions = [...mcqQuestions, ...essayQuestions];
 
-    // Cập nhật lại số row sau khi sort (đánh số tự động)
+    // Cập nhật lại số row sau khi sort
     for (int j = 0; j < sortedQuestions.length; j++) {
       sortedQuestions[j].row = j + 1;
     }
