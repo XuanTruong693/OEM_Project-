@@ -2,14 +2,14 @@ import Flutter
 import UIKit
 
 @main
-@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+@objc class AppDelegate: FlutterAppDelegate {
   private var secureField: UITextField?
 
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    GeneratedPluginRegistrant.register(with: self)
 
     if let controller = window?.rootViewController as? FlutterViewController {
       let securityChannel = FlutterMethodChannel(name: "com.example.mobile/security",
@@ -38,7 +38,7 @@ import UIKit
       })
     }
 
-    return result
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
   private func makeScreenSecure() {
@@ -56,9 +56,5 @@ import UIKit
   private func makeScreenNormal() {
     secureField?.removeFromSuperview()
     secureField = nil
-  }
-
-  func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
-    GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
   }
 }
