@@ -13,6 +13,7 @@ import {
 } from "react-icons/fi";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useUi } from "../../context/UiContext.jsx";
+import { useLanguage } from "../../context/LanguageContext.jsx";
 
 const InstructorSidebar = () => {
   const navigate = useNavigate();
@@ -20,7 +21,8 @@ const InstructorSidebar = () => {
   const [openDropdown, setOpenDropdown] = useState(null);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const { t } = useUi();
+  const { t, lang } = useUi();
+  const { language } = useLanguage();
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -30,38 +32,40 @@ const InstructorSidebar = () => {
     return () => clearInterval(timer);
   }, []);
 
+  const isEnglish = lang === "en" || language === "en" || language === "en_US";
+
   const menu = [
     {
       icon: FiHome,
-      label: t("dashboard", "Bảng điều khiển", "Dashboard"),
+      label: isEnglish ? "Dashboard" : t("dashboard", "Bảng điều khiển", "Dashboard"),
       path: "/instructor-dashboard",
     },
     {
       icon: FiFolder,
-      label: t("resources", "Tài nguyên", "Resources"),
+      label: isEnglish ? "Resources" : t("resources", "Tài nguyên", "Resources"),
       path: "/resources",
       hasDropdown: true,
     },
     {
       icon: FiFileText,
-      label: t("exam_bank", "Ngân hàng đề", "Exam Bank"),
+      label: isEnglish ? "Exam Bank" : t("exam_bank", "Ngân hàng đề", "Exam Bank"),
       path: "/exam-bank",
     },
     {
       icon: FiEdit3,
-      label: t("assign_exam", "Assign Exam", "Assign Exam"),
+      label: isEnglish ? "Assign Exam" : t("assign_exam", "Bài kiểm tra", "Assign Exam"),
       path: "/assign-exam",
     },
     {
       icon: FiClipboard,
-      label: t("result", "Kết quả", "Result"),
+      label: isEnglish ? "Result" : t("result", "Kết quả", "Result"),
       path: "/result",
     },
   ];
 
   const setting = {
     icon: FiSettings,
-    label: t("setting", "Cài đặt", "Setting"),
+    label: isEnglish ? "Setting" : t("setting", "Cài đặt", "Setting"),
     path: "/setting",
   };
 
@@ -159,15 +163,15 @@ const InstructorSidebar = () => {
                     }
                   }}
                   className={`group flex items-center justify-between text-lg font-medium px-4 py-3 rounded-xl transition-all duration-200 w-full ${isActive
-                      ? "bg-[#0080FF]/10 border-l-4 border-[#0080FF] text-[#0080FF] shadow-sm"
-                      : "text-gray-700 hover:bg-[#A0D4FF]/60 hover:text-[#0080FF]"
+                    ? "bg-[#0080FF]/10 border-l-4 border-[#0080FF] text-[#0080FF] shadow-sm"
+                    : "text-gray-700 hover:bg-[#A0D4FF]/60 hover:text-[#0080FF]"
                     }`}
                 >
                   <div className="flex items-center gap-4">
                     <Icon
                       className={`w-6 h-6 transition-colors duration-200 ${isActive
-                          ? "text-[#0080FF]"
-                          : "text-gray-600 group-hover:text-[#0080FF]"
+                        ? "text-[#0080FF]"
+                        : "text-gray-600 group-hover:text-[#0080FF]"
                         }`}
                     />
                     <span>{item.label}</span>
@@ -208,9 +212,9 @@ const InstructorSidebar = () => {
                       className="flex items-center gap-3 px-4 py-2 hover:bg-[#E8F5FF] text-gray-700 hover:text-[#0080FF] w-full text-left whitespace-nowrap"
                     >
                       <FiClipboard className="w-5 h-5" />
-                      {t("room_management", "Quản lý phòng thi", "Room Management")}
+                      {isEnglish ? "Room Management" : t("room_management", "Quản lý phòng thi", "Room Management")}
                     </button>
- 
+
                     <button
                       onClick={() => {
                         navigate("/open-exam");
@@ -220,7 +224,7 @@ const InstructorSidebar = () => {
                       className="flex items-center gap-3 px-4 py-2 hover:bg-[#E8F5FF] text-gray-700 hover:text-[#0080FF] w-full text-left whitespace-nowrap"
                     >
                       <FiEdit3 className="w-5 h-5" />
-                      {t("open_room", "Mở phòng thi", "Open Room")}
+                      {isEnglish ? "Open Room" : t("open_room", "Mở phòng thi", "Open Room")}
                     </button>
                   </div>
                 )}
@@ -268,7 +272,7 @@ const InstructorSidebar = () => {
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex w-64 h-screen bg-gradient-to-b from-[#E8F5FF] to-[#CAEAFF] shadow-md rounded-tr-3xl rounded-br-3xl">
+      <aside className="hidden md:flex w-64 h-screen bg-gradient-to-b from-[#E8F5FF] to-[#CAEAFF] shadow-md rounded-tr-3xl rounded-br-3xl notranslate" translate="no">
         <SidebarContent />
       </aside>
 
@@ -290,8 +294,8 @@ const InstructorSidebar = () => {
 
       {/* Mobile drawer */}
       <div
-        className={`fixed top-0 left-0 h-full w-64 bg-gradient-to-b from-[#E8F5FF] to-[#CAEAFF] shadow-xl z-50 transform transition-transform duration-300 md:hidden
-          ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
+        className={`fixed top-0 left-0 h-full w-64 bg-gradient-to-b from-[#E8F5FF] to-[#CAEAFF] shadow-xl z-50 transform transition-transform duration-300 md:hidden notranslate ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
+        translate="no"
       >
         <div className="flex justify-end p-4">
           <button onClick={() => setMobileOpen(false)}>

@@ -11,7 +11,7 @@ const contacts = [
   },
   {
     icon: "/icons/UI Image/mail1.png",
-    text: "OEMini@edu.vn",
+    text: "truongkt693@gmail.com",
   },
 ];
 export default function Contact() {

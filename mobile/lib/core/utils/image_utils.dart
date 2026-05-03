@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ImageUtils {
@@ -10,6 +11,9 @@ class ImageUtils {
       } catch (e) {
         return envUrl.replaceAll(RegExp(r'/api$'), '');
       }
+    }
+    if (Platform.isIOS) {
+      return 'http://localhost:5000';
     }
     return 'http://10.0.2.2:5000';
   }

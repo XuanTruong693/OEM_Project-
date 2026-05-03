@@ -45,8 +45,8 @@ export default function Setting() {
             <button
               onClick={() => setLang("vi")}
               className={`px-3 py-2 text-sm flex items-center gap-2 ${lang === "vi"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white hover:bg-slate-50"
+                ? "bg-blue-600 text-white"
+                : "bg-white hover:bg-slate-50"
                 }`}
             >
               <svg className="w-5 h-4" viewBox="0 0 900 600" fill="currentColor">
@@ -61,8 +61,8 @@ export default function Setting() {
             <button
               onClick={() => setLang("en")}
               className={`px-3 py-2 text-sm flex items-center gap-2 ${lang === "en"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white hover:bg-slate-50"
+                ? "bg-blue-600 text-white"
+                : "bg-white hover:bg-slate-50"
                 }`}
             >
               <svg className="w-5 h-4" viewBox="0 0 60 30">

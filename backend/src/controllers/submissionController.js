@@ -26,6 +26,9 @@ const CHEATING_TYPES = {
   typing_speed_violation: "medium",
   screen_share_stopped: "high",
   prolonged_away: "high",
+  minimize_app: "high",
+  hide_app: "high",
+  app_switching: "high",
 
   // === Legacy Events (Kept for backwards compatibility) ===
   copy: "high",
@@ -134,7 +137,7 @@ const recentEvents = new Map();
 
 exports.postProctorEvent = async (req, res) => {
   const submissionId = req.params.submissionId || req.params.id;
-  const { event_type, details } = req.body;
+  const { event_type, details, cheating_count: reqCheatingCount } = req.body;
 
   // Validate required fields
   if (!event_type) {
@@ -147,25 +150,17 @@ exports.postProctorEvent = async (req, res) => {
     return res.status(400).json({ error: "Invalid submissionId" });
   }
 
+  const now = Date.now();
   const eventKey = `${submissionId}-${event_type}`;
   const lastEventTime = recentEvents.get(eventKey);
-  const now = Date.now();
 
-  // Check individual event throttling (DEDUP_WINDOW)
-  if (lastEventTime && now - lastEventTime < DEDUP_WINDOW) {
-    console.log(
-      `⏸️ [Proctor] DUPLICATE EVENT THROTTLED: ${eventKey} (${now - lastEventTime}ms since last)`
-    );
-    return res.status(429).json({
-      error: "Event throttled - duplicate within window",
-      throttledMs: DEDUP_WINDOW,
+  // Debounce duplicate events within 1 second
+  if (lastEventTime && (now - lastEventTime < 1000)) {
+    console.warn(`[Proctor] Same event debounced within 1s: ${eventKey}`);
+    return res.status(200).json({
+      success: true,
+      message: "Same event debounced within 1s"
     });
-  }
-
-  // SHARED FOCUS GROUP DEDUPLICATION
-  if (SHARED_FOCUS_EVENTS.includes(event_type)) {
-    const sharedKey = `${submissionId}-_shared_focus`;
-    recentEvents.set(sharedKey, now);
   }
 
   recentEvents.set(eventKey, now);
@@ -179,13 +174,19 @@ exports.postProctorEvent = async (req, res) => {
 
   try {
     // 1. IMMEDIATE BROADCAST: Inform instructor instantly via Socket.io
-    let severity = CHEATING_TYPES[event_type];
+    let severity = CHEATING_TYPES[event_type] || "high";
     if (!severity && event_type.startsWith("ai_")) severity = "high";
-    const isCheating = !!severity;
+    const isCheating = true;
 
     let studentId = null;
     let examId = null;
 
+    if (isCheating && reqCheatingCount !== undefined) {
+      await pool.query(
+        "UPDATE submissions SET cheating_count = ? WHERE id = ?",
+        [parseInt(reqCheatingCount), submissionId]
+      );
+    }
 
     const [subRows] = await pool.query(
       `SELECT s.user_id, s.exam_id, s.cheating_count, u.full_name as student_name 
@@ -199,8 +200,7 @@ exports.postProctorEvent = async (req, res) => {
       studentId = subRows[0].user_id;
       examId = subRows[0].exam_id;
       const studentName = subRows[0].student_name || `Student ${studentId}`;
-      const currentCount = subRows[0].cheating_count || 0;
-      const predictedCount = isCheating ? currentCount + 1 : currentCount;
+      const currentCount = reqCheatingCount !== undefined ? parseInt(reqCheatingCount) : (subRows[0].cheating_count || 0);
 
       // Broadcast immediately
       broadcastCheatingEvent(examId, {
@@ -211,26 +211,83 @@ exports.postProctorEvent = async (req, res) => {
         severity: severity || "low",
         detectedAt: new Date(),
         eventDetails: details || {},
-        cheatingCount: predictedCount,
+        cheatingCount: currentCount,
       });
 
-      // 2. BUFFERED PERSISTENCE: Add to buffer for bulk insert
+      // 2. IMMEDIATE PERSISTENCE: Insert directly into DB for instant teacher access
       if (isCheating) {
-        proctorBuffer.add({
-          submissionId,
-          studentId,
-          examId,
-          event_type,
-          details,
-          severity: severity || "low",
-          detected_at: new Date()
-        });
+        await pool.query(
+          `INSERT INTO cheating_logs 
+           (submission_id, student_id, exam_id, event_type, event_details, severity, detected_at) 
+           VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+          [
+            submissionId,
+            studentId,
+            examId,
+            event_type,
+            JSON.stringify(details || {}),
+            severity || "low"
+          ]
+        );
+      }
+
+      // ── AUTO SUBMIT EXAM ON BACKEND IF >= 10 VIOLATIONS ──
+      if (currentCount >= 10) {
+        console.log(`⚠️ [Proctor] Auto submitting exam because count is ${currentCount}/10`);
+        
+        const [mcqRows] = await pool.query(
+          `SELECT q.id AS question_id, q.points,
+                  o.id AS option_id, o.is_correct,
+                  a.selected_option_id
+           FROM exam_questions q
+           LEFT JOIN exam_options o ON o.question_id = q.id AND o.is_correct = TRUE
+           LEFT JOIN student_answers a ON a.question_id = q.id AND a.submission_id = ?
+           WHERE q.exam_id = ? AND q.type = 'MCQ'`,
+          [submissionId, examId]
+        );
+
+        let totalScore = 0;
+        if (Array.isArray(mcqRows)) {
+          mcqRows.forEach((r) => {
+            if (
+              r.selected_option_id &&
+              r.option_id &&
+              r.selected_option_id === r.option_id
+            ) {
+              totalScore += Number(r.points || 0);
+            }
+          });
+        }
+
+        await pool.query(
+          `UPDATE submissions 
+           SET total_score = ?, suggested_total_score = total_score + COALESCE(ai_score,0), status='graded', submitted_at = NOW() 
+           WHERE id = ? AND submitted_at IS NULL`,
+          [totalScore, submissionId]
+        );
+
+        try {
+          const { gradeSubmission } = require("../../services/AIService");
+          if (typeof gradeSubmission === "function") {
+            gradeSubmission(submissionId).catch(e => console.warn("Failed to queue AI grading:", e.message));
+          }
+        } catch (e) {
+          /* ignore */
+        }
+
+        try {
+          const { broadcastSubmissionFinished } = require("../services/socketService");
+          broadcastSubmissionFinished(examId, submissionId, studentId);
+        } catch (e) {
+          /* ignore */
+        }
       }
     }
 
     res.status(200).json({
       success: true,
       is_cheating: isCheating,
+      cheating_count: reqCheatingCount !== undefined ? parseInt(reqCheatingCount) : (subRows[0]?.cheating_count || 0),
       message: `Event processed (Buffered Persistence)`
     });
   } catch (err) {
@@ -435,7 +492,7 @@ exports.getStudentCheatingDetails = async (req, res) => {
       [submissionId]
     );
 
-    if (subCheck.length > 0 && subCheck[0].cheating_count !== totalFromLogs) {
+    if (subCheck.length > 0 && totalFromLogs > subCheck[0].cheating_count) {
       console.log(`🔄 [Sync] Correcting cheating_count for submission ${submissionId}: ${subCheck[0].cheating_count} -> ${totalFromLogs}`);
       await conn.query(
         "UPDATE submissions SET cheating_count = ? WHERE id = ?",

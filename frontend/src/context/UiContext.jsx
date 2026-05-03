@@ -41,7 +41,7 @@ export function UiProvider({ children, dict = defaultDict }) {
   const [lang, setLang] = React.useState(() => localStorage.getItem('uiLang') || 'vi');
 
   React.useEffect(() => {
-    try { localStorage.setItem('uiLang', lang); } catch {}
+    try { localStorage.setItem('uiLang', lang); } catch { }
   }, [lang]);
 
   const t = React.useCallback((key, fallbackVi, fallbackEn) => {

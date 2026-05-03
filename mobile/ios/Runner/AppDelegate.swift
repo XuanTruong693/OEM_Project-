@@ -17,7 +17,14 @@ import UIKit
       
       securityChannel.setMethodCallHandler({ [weak self]
         (call: FlutterMethodCall, result: @escaping FlutterResult) -> Void in
-        if call.method == "isScreenCaptured" {
+        if call.method == "checkScreenStatus" {
+          let isCaptured = UIScreen.main.isCaptured
+          let isMirrored = UIScreen.screens.count > 1 || UIScreen.main.mirroredScreen != nil
+          result([
+            "isRecording": isCaptured && !isMirrored,
+            "isSharing": isMirrored
+          ])
+        } else if call.method == "isScreenCaptured" {
           result(UIScreen.main.isCaptured)
         } else if call.method == "enableSecureMode" {
           self?.makeScreenSecure()

@@ -201,6 +201,12 @@ async function startExam(req, res) {
             /* ignore */
         }
 
+        const [subDetails] = await sequelize.query(
+            `SELECT cheating_count FROM submissions WHERE id = ? LIMIT 1`,
+            { replacements: [submissionId] }
+        );
+        const cheatingCount = (Array.isArray(subDetails) && subDetails[0] ? subDetails[0].cheating_count : subDetails?.cheating_count) || 0;
+
         return res.json({
             questions: enriched,
             duration_minutes: ex.duration_minutes || sub.duration || 60,
@@ -210,6 +216,7 @@ async function startExam(req, res) {
             instructor_name: ex.instructor_name || "",
             intent_shuffle: !!ex.intent_shuffle,
             monitor_screen: !!sub.monitor_screen,
+            cheating_count: cheatingCount,
         });
     } catch (err) {
         console.error("startExam error:", err);

@@ -645,11 +645,11 @@ export const LanguageProvider = ({ children }) => {
     const applyGoogleTranslate = (langCode) => {
         const hostname = window.location.hostname;
         const pathname = window.location.pathname;
-        
+
         // Disable Google Translate for Admin pages to ensure UI stability
         // Internal translations (t function) will still work based on language state
         const isAdminPage = pathname.startsWith('/admin') || pathname.startsWith('/admin-dashboard') || pathname.startsWith('/exam-settings');
-        
+
         // AGGRESSIVE DOM PROTECTION: Prevent Google Translate from touching Admin nodes
         if (isAdminPage) {
             document.body.classList.add('notranslate');
@@ -658,14 +658,18 @@ export const LanguageProvider = ({ children }) => {
             document.body.classList.remove('notranslate');
             document.documentElement.removeAttribute('translate');
         }
-        
-        const cookieValue = isAdminPage ? '' : `/vi/${langCode}`;
+
+        let code = langCode;
+        if (code === 'en') {
+            code = 'en-US';
+        }
+        const cookieValue = isAdminPage ? '' : `/vi/${code}`;
         const expires = isAdminPage ? '; expires=Thu, 01 Jan 1970 00:00:00 GMT' : '';
-        
+
         // Robust domain logic
         const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
         let primaryDomain = hostname;
-        
+
         if (!isLocalhost) {
             const domainParts = hostname.split('.');
             if (domainParts.length >= 3) {
@@ -676,7 +680,7 @@ export const LanguageProvider = ({ children }) => {
 
         try {
             const options = `; path=/; SameSite=Lax${expires}`;
-            
+
             if (isLocalhost) {
                 // Localhost: Simplified cookie without domain attribute
                 document.cookie = `googtrans=${cookieValue}${options}`;
@@ -688,7 +692,7 @@ export const LanguageProvider = ({ children }) => {
                 });
                 document.cookie = `googtrans=${cookieValue}${options}`;
             }
-            
+
             // AGGRESSIVE PURGE: If on Admin page, also try to remove the cookie without domain again just in case
             if (isAdminPage) {
                 document.cookie = `googtrans=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
@@ -696,11 +700,11 @@ export const LanguageProvider = ({ children }) => {
                 document.documentElement.classList.add('notranslate');
                 document.documentElement.setAttribute('translate', 'no');
             }
-            
+
             // Sync persistence keys
             localStorage.setItem('oem_preferred_lang', langCode);
             localStorage.setItem('admin_language', langCode);
-            
+
             if (!isAdminPage) {
                 console.log(`🌐 [Translation] Syncing ${langCode} for ${hostname}`);
             } else {
