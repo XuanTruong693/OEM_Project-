@@ -64,15 +64,29 @@ class _InstructorRoomsPageState extends State<InstructorRoomsPage> {
                 _buildSummaryStats(state),
                 _buildSearchBox(),
                 Expanded(
-                  child: state.filteredRooms.isEmpty
-                      ? _buildEmptyState()
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: state.filteredRooms.length,
-                          itemBuilder: (context, index) {
-                            return _buildRoomCard(state.filteredRooms[index]);
-                          },
-                        ),
+                  child: RefreshIndicator(
+                    onRefresh: () async {
+                      context.read<InstructorRoomsBloc>().add(LoadActiveRoomsEvent());
+                    },
+                    child: state.filteredRooms.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: [
+                              SizedBox(
+                                height: MediaQuery.of(context).size.height * 0.5,
+                                child: _buildEmptyState(),
+                              ),
+                            ],
+                          )
+                        : ListView.builder(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.all(16),
+                            itemCount: state.filteredRooms.length,
+                            itemBuilder: (context, index) {
+                              return _buildRoomCard(state.filteredRooms[index]);
+                            },
+                          ),
+                  ),
                 ),
               ],
             );

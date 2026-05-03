@@ -356,16 +356,32 @@ class _InstructorExamResultsPageState extends State<InstructorExamResultsPage> {
 
                 // List
                 Expanded(
-                  child: state.filteredResults.isEmpty
-                      ? const Center(child: Text("Không có dữ liệu"))
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: state.filteredResults.length,
-                          itemBuilder: (context, index) {
-                            final result = state.filteredResults[index];
-                            return _buildResultCard(context, result);
-                          },
-                        ),
+                  child: RefreshIndicator(
+                    onRefresh: () async {
+                      if (state.selectedExamId != null) {
+                        context.read<ExamResultsBloc>().add(SelectExamEvent(state.selectedExamId!));
+                      }
+                    },
+                    child: state.filteredResults.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: [
+                              SizedBox(
+                                height: MediaQuery.of(context).size.height * 0.5,
+                                child: const Center(child: Text("Không có dữ liệu")),
+                              ),
+                            ],
+                          )
+                        : ListView.builder(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.all(16),
+                            itemCount: state.filteredResults.length,
+                            itemBuilder: (context, index) {
+                              final result = state.filteredResults[index];
+                              return _buildResultCard(context, result);
+                            },
+                          ),
+                  ),
                 ),
               ],
             );
