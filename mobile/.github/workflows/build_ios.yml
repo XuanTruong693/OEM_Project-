@@ -4,41 +4,35 @@ on:
   push:
     branches:
       - mobile-only
-      - main
   workflow_dispatch:
 
 jobs:
   build-ios:
     runs-on: macos-latest
 
-    defaults:
-      run:
-        working-directory: mobile
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Flutter
-        # cSpell:disable-next-line
-        uses: "subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2"
-        with:
-          channel: 'stable'
-          cache: true
+        run: |
+          git clone https://github.com/flutter/flutter.git -b stable --depth 1
+          echo "$GITHUB_WORKSPACE/flutter/bin" >> $GITHUB_PATH
+          echo "$GITHUB_WORKSPACE/flutter/bin/cache/dart-sdk/bin" >> $GITHUB_PATH
 
       - name: Create Dummy .env and Asset Placeholders
         run: |
           echo "Creating dummy .env and placeholders if not already present"
           mkdir -p assets/images assets/files
-          test -f .env || echo "API_URL=https://dummy.com" > .env
-          test -f assets/.env || echo "API_URL=https://dummy.com" > assets/.env
-          mkdir -p ios && (test -f ios/.env || echo "API_URL=https://dummy.com" > ios/.env)
-          mkdir -p ios/Runner && (test -f ios/Runner/.env || echo "API_URL=https://dummy.com" > ios/Runner/.env)
+          [ -f .env ] || echo "API_URL=https://dummy.com" > .env
+          [ -f assets/.env ] || echo "API_URL=https://dummy.com" > assets/.env
+          mkdir -p ios && ([ -f ios/.env ] || echo "API_URL=https://dummy.com" > ios/.env)
+          mkdir -p ios/Runner && ([ -f ios/Runner/.env ] || echo "API_URL=https://dummy.com" > ios/Runner/.env)
           touch assets/images/.gitkeep assets/files/.gitkeep
+          echo "Listing root directory files:"
+          ls -la
 
       - name: Install dependencies
-        env:
-          PUB_SUMMARY_ONLY: "true"
         run: flutter pub get
 
       - name: Build iOS App Bundle
@@ -81,4 +75,4 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ios-ipa-build
-          path: mobile/Runner.ipa
+          path: Runner.ipa
