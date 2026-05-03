@@ -211,41 +211,48 @@ class _StepFaceVerifyWidgetState extends State<StepFaceVerifyWidget> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(14),
                           ),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: const Center(
-                          child: Text(
-                            '2',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
+                          child: const Center(
+                            child: Text(
+                              '2',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      const Text(
-                        'Xác minh khuôn mặt',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16,
-                          color: Color(0xFF1E293B),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Text(
+                            'Xác minh khuôn mặt',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                              color: Color(0xFF1E293B),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
+                  const SizedBox(width: 8),
                   _buildStatusText(state),
                 ],
               ),
@@ -608,7 +615,16 @@ class _StepFaceVerifyWidgetState extends State<StepFaceVerifyWidget> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            CameraPreview(_cameraHelper.controller!),
+            FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: 100,
+                height: 100 * (_cameraHelper.controller!.value.aspectRatio > 1 
+                  ? _cameraHelper.controller!.value.aspectRatio 
+                  : 1 / _cameraHelper.controller!.value.aspectRatio),
+                child: CameraPreview(_cameraHelper.controller!),
+              ),
+            ),
 
             // Khung viền Tròn hướng dẫn
             Center(

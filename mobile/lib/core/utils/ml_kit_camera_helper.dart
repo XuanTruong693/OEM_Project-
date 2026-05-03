@@ -23,7 +23,7 @@ class MLKitCameraHelper {
           .medium, // Medium (thường là 480p hoặc 720p) là đủ nét cho AI và cực nhẹ
       enableAudio: false,
       imageFormatGroup: Platform.isAndroid
-          ? ImageFormatGroup.yuv420
+          ? ImageFormatGroup.nv21
           : ImageFormatGroup.bgra8888,
     );
 
@@ -93,22 +93,21 @@ class MLKitCameraHelper {
 
     final format = InputImageFormatValue.fromRawValue(image.format.raw);
     if (format == null ||
-        (Platform.isAndroid && format != InputImageFormat.yuv420) ||
+        (Platform.isAndroid && format != InputImageFormat.nv21) ||
         (Platform.isIOS && format != InputImageFormat.bgra8888)) {
       return null;
     }
 
     if (image.planes.isEmpty) return null;
 
+    // 👉 FIX LỖI: Gộp toàn bộ byte của cả 3 planes (Y, U, V) lại thành 1 cục data duy nhất
     return InputImage.fromBytes(
-      bytes: image
-          .planes[0]
-          .bytes, // Trong yuv420, plane 0 chứa dữ liệu quan trọng nhất
+      bytes: image.planes.first.bytes,
       metadata: InputImageMetadata(
         size: Size(image.width.toDouble(), image.height.toDouble()),
         rotation: rotation,
         format: format,
-        bytesPerRow: image.planes[0].bytesPerRow,
+        bytesPerRow: image.planes.first.bytesPerRow,
       ),
     );
   }
