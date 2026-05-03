@@ -178,16 +178,6 @@ exports.postProctorEvent = async (req, res) => {
     if (!severity && event_type.startsWith("ai_")) severity = "high";
     const isCheating = true;
 
-    let studentId = null;
-    let examId = null;
-
-    if (isCheating && reqCheatingCount !== undefined) {
-      await pool.query(
-        "UPDATE submissions SET cheating_count = ? WHERE id = ?",
-        [parseInt(reqCheatingCount), submissionId]
-      );
-    }
-
     const [subRows] = await pool.query(
       `SELECT s.user_id, s.exam_id, s.cheating_count, u.full_name as student_name 
        FROM submissions s
@@ -200,7 +190,13 @@ exports.postProctorEvent = async (req, res) => {
       studentId = subRows[0].user_id;
       examId = subRows[0].exam_id;
       const studentName = subRows[0].student_name || `Student ${studentId}`;
-      const currentCount = reqCheatingCount !== undefined ? parseInt(reqCheatingCount) : (subRows[0].cheating_count || 0);
+      const currentCount = reqCheatingCount !== undefined ? parseInt(reqCheatingCount) : (subRows[0].cheating_count || 0) + 1;
+
+      // Cập nhật lại số lần vi phạm vào bảng submissions
+      await pool.query(
+        "UPDATE submissions SET cheating_count = ? WHERE id = ?",
+        [currentCount, submissionId]
+      );
 
       // Broadcast immediately
       broadcastCheatingEvent(examId, {

@@ -800,6 +800,13 @@ export default function TakeExam() {
         return;
       }
 
+      // Check activeElement typing to ignore window blur or resize/split screen when on mobile
+      const ae = document.activeElement;
+      if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA")) {
+        console.log("⏳ [TakeExam] Violation ignored - user is actively typing:", evt);
+        return;
+      }
+
       // Mobile Logic: Certain events are instant strike by default
       const MOBILE_STRICT_EVENTS = ["visibility_hidden", "window_blur", "fullscreen_lost", "screenshot_attempt"];
       if (isMobileDevice && MOBILE_STRICT_EVENTS.includes(evt) && !isWarningOnly) {
