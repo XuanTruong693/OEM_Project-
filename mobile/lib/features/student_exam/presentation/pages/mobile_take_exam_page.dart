@@ -28,9 +28,15 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
     with WidgetsBindingObserver {
   static const _securityChannel = MethodChannel('com.example.mobile/security');
   Timer? _countdownTimer;
+  Timer? _inactivityTimer;
   int _secondsLeft = 3600; // default to 1 hour
+  int _inactiveSeconds = 0;
   bool _isDarkMode = false;
   late final DateTime _pageInitTime;
+  String? _lastShownError;
+
+  // List of GlobalKeys for scrolling directly to specific question
+  final List<GlobalKey> _keys = [];
 
   @override
   void initState() {
@@ -54,6 +60,39 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
 
     // Start local timer
     _startLocalCountdown();
+
+    // Start idle/inactivity monitoring
+    _startInactivityMonitoring();
+  }
+
+  void _startInactivityMonitoring() {
+    _inactivityTimer?.cancel();
+    _inactiveSeconds = 0;
+    _inactivityTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      _inactiveSeconds++;
+
+      if (_inactiveSeconds == 30) {
+        // Warning notification and sound alert
+        SystemSound.play(SystemSoundType.alert);
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('CẢNH BÁO: Bạn đã treo màn hình 30 giây không tương tác! Vui lòng tập trung làm bài.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      } else if (_inactiveSeconds >= 60) {
+        // Increment cheating violation due to idle timeout
+        _handleCheatingEvent('idle_timeout', 'Học viên đã treo màn hình quá 1 phút không tương tác');
+        _inactiveSeconds = 0; // Reset after penalty to allow next interval check
+      }
+    });
+  }
+
+  void _resetInactivityTimer() {
+    _inactiveSeconds = 0;
   }
 
   void _enableScreenSecurity() async {
@@ -124,6 +163,7 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _countdownTimer?.cancel();
+    _inactivityTimer?.cancel();
     _disableScreenSecurity();
 
     // Re-allow all orientations when leaving
@@ -216,7 +256,8 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
       return; // Ignore initial transition glitches
     }
 
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    // Ignore inactive state completely (triggered when pulling notification/status bars)
+    if (state == AppLifecycleState.paused) {
       if (!_isExited || _lastLifecycleMinimize == null || now.difference(_lastLifecycleMinimize!).inSeconds >= 10) {
         _lastLifecycleMinimize = now;
         _isExited = true;
@@ -428,6 +469,13 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                         return GestureDetector(
                           onTap: () {
                             Navigator.pop(context);
+                            if (index < _keys.length && _keys[index].currentContext != null) {
+                              Scrollable.ensureVisible(
+                                _keys[index].currentContext!,
+                                duration: const Duration(milliseconds: 500),
+                                curve: Curves.easeInOut,
+                              );
+                            }
                           },
                           child: Container(
                             decoration: BoxDecoration(
@@ -484,14 +532,23 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
 
     return BlocConsumer<TakeExamBloc, TakeExamState>(
       listener: (context, state) {
-        if (state.errorMessage != null) {
+        if (state.errorMessage != null && state.errorMessage != _lastShownError) {
+          _lastShownError = state.errorMessage;
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(state.errorMessage!),
               backgroundColor: Colors.red.shade700,
+              duration: const Duration(seconds: 4),
             ),
           );
+        } else if (state.errorMessage == null) {
+          if (_lastShownError != null) {
+            _lastShownError = null;
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          }
         }
+
         if (state.showResultModal) {
           _showResultOverlayModal(context, state);
         }
@@ -568,6 +625,13 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
         final totalQuestions = state.questions.length;
         final answeredQuestions = state.localAnswers.length;
 
+        if (_keys.length != totalQuestions) {
+          _keys.clear();
+          for (int i = 0; i < totalQuestions; i++) {
+            _keys.add(GlobalKey());
+          }
+        }
+
         Color pingDotColor = const Color(0xFF16A34A);
         if (state.connectionStatus == 'yellow') {
           pingDotColor = const Color(0xFFD97706);
@@ -577,374 +641,387 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
 
         return Stack(
           children: [
-            Scaffold(
-          backgroundColor: bgColor,
-          appBar: AppBar(
-            automaticallyImplyLeading: false,
-            backgroundColor: cardColor,
-            elevation: 0.5,
-            titleSpacing: 0,
-            leadingWidth: 140,
-            leading: Row(
-              children: [
-                const SizedBox(width: 12),
-                Image.asset('assets/images/Logo.png', width: 22, height: 22, fit: BoxFit.contain),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    examTitle,
-                    style: TextStyle(color: textColor, fontSize: 13, fontWeight: FontWeight.bold),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            centerTitle: true,
-            title: Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: pingDotColor,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  "${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}",
-                  style: TextStyle(
-                    color: pingDotColor,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              CupertinoButton(
-                padding: EdgeInsets.zero,
-                onPressed: () => _showQuestionMenu(state),
-                child: Icon(CupertinoIcons.list_bullet, size: 16, color: _isDarkMode ? Colors.white : Colors.black87),
-              ),
-              CupertinoButton(
-                padding: EdgeInsets.zero,
-                onPressed: () => setState(() => _isDarkMode = !_isDarkMode),
-                child: Icon(
-                  _isDarkMode ? CupertinoIcons.sun_max_fill : CupertinoIcons.moon_fill,
-                  size: 16,
-                  color: _isDarkMode ? Colors.amber : Colors.black87,
-                ),
-              ),
-              const SizedBox(width: 4),
-              GestureDetector(
-                onTap: state.isSubmitting
-                    ? null
-                    : () {
-                        context.read<TakeExamBloc>().add(
-                              SubmitExamEvent(submissionId: widget.submissionId),
-                            );
-                      },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF10B981),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Text(
-                    "Nộp bài",
-                    style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-            ],
-          ),
-          body: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-
-                // Progress Bar
-                Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Row(
+            Listener(
+              onPointerDown: (_) => _resetInactivityTimer(),
+              child: Scaffold(
+                backgroundColor: bgColor,
+                appBar: AppBar(
+                  automaticallyImplyLeading: false,
+                  backgroundColor: cardColor,
+                  elevation: 0.5,
+                  titleSpacing: 0,
+                  leadingWidth: 140,
+                  leading: Row(
                     children: [
-                      Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            value: totalQuestions > 0 ? answeredQuestions / totalQuestions : 0,
-                            backgroundColor: _isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
-                            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF2563EB)),
-                            minHeight: 4,
-                          ),
-                        ),
-                      ),
                       const SizedBox(width: 12),
-                      Text(
-                        "$answeredQuestions/$totalQuestions đã làm",
-                        style: TextStyle(color: _isDarkMode ? Colors.grey : const Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.bold),
+                      Image.asset('assets/images/Logo.png', width: 22, height: 22, fit: BoxFit.contain),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          examTitle,
+                          style: TextStyle(color: textColor, fontSize: 13, fontWeight: FontWeight.bold),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 12),
-
-                // High visibility cheating violation alert
-                if (state.violations > 0) ...[
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF2F2),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFFECACA)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626), size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Bạn đã vi phạm quy chế ${state.violations}/10 lần. Quá 10 lần bài thi sẽ tự động nộp.',
-                            style: const TextStyle(color: Color(0xFF991B1B), fontSize: 13, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-
-                // All questions displayed vertically for direct scrolling
-                if (totalQuestions > 0)
-                  ...state.questions.asMap().entries.map((entry) {
-                    int index = entry.key;
-                    final q = entry.value;
-                    final qId = q['question_id']?.toString() ?? '';
-                    final qText = q['question_text'] ?? '';
-                    final qType = q['type'] ?? 'MCQ';
-                    final points = q['points'] ?? 1.0;
-                    final options = q['options'] ?? [];
-                    final isAnswered = state.localAnswers.containsKey(qId);
-                    final currentAnswer = state.localAnswers[qId];
-
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 16),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: cardColor,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10),
-                        ],
-                        border: Border.all(
-                          color: isAnswered ? const Color(0xFFDBEAFE) : (_isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
-                          width: 1.5,
+                  centerTitle: true,
+                  title: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: pingDotColor,
+                          shape: BoxShape.circle,
                         ),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
+                      const SizedBox(width: 6),
+                      Text(
+                        "${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}",
+                        style: TextStyle(
+                          color: pingDotColor,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: () => _showQuestionMenu(state),
+                      child: Icon(CupertinoIcons.list_bullet, size: 16, color: _isDarkMode ? Colors.white : Colors.black87),
+                    ),
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: () => setState(() => _isDarkMode = !_isDarkMode),
+                      child: Icon(
+                        _isDarkMode ? CupertinoIcons.sun_max_fill : CupertinoIcons.moon_fill,
+                        size: 16,
+                        color: _isDarkMode ? Colors.amber : Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    GestureDetector(
+                      onTap: state.isSubmitting
+                          ? null
+                          : () {
+                              if (state.errorMessage != null) {
+                                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(state.errorMessage!),
+                                    backgroundColor: Colors.red.shade700,
+                                  ),
+                                );
+                              } else {
+                                context.read<TakeExamBloc>().add(
+                                      SubmitExamEvent(submissionId: widget.submissionId),
+                                    );
+                              }
+                            },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text(
+                          "Nộp bài",
+                          style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
+                ),
+                body: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Progress Bar
+                      Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: totalQuestions > 0 ? answeredQuestions / totalQuestions : 0,
+                                  backgroundColor: _isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF2563EB)),
+                                  minHeight: 4,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              "$answeredQuestions/$totalQuestions đã làm",
+                              style: TextStyle(color: _isDarkMode ? Colors.grey : const Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // High visibility cheating violation alert
+                      if (state.violations > 0) ...[
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEF2F2),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFFECACA)),
+                          ),
+                          child: Row(
                             children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF2563EB),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  "${index + 1}",
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                                ),
-                              ),
+                              const Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626), size: 18),
                               const SizedBox(width: 8),
-                              Text(
-                                "CÂU HỎI ${index + 1}",
-                                style: const TextStyle(color: Color(0xFF2563EB), fontSize: 11, fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: _isDarkMode ? const Color(0xFF334155) : const Color(0xFFF1F5F9),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
+                              Expanded(
                                 child: Text(
-                                  qType == 'MCQ' ? 'TRẮC NGHIỆM' : 'TỰ LUẬN',
-                                  style: TextStyle(color: _isDarkMode ? Colors.grey.shade300 : const Color(0xFF64748B), fontSize: 9, fontWeight: FontWeight.bold),
+                                  'Bạn đã vi phạm quy chế ${state.violations}/10 lần. Quá 10 lần bài thi sẽ tự động nộp.',
+                                  style: const TextStyle(color: Color(0xFF991B1B), fontSize: 13, fontWeight: FontWeight.bold),
                                 ),
-                              ),
-                              const Spacer(),
-                              Text(
-                                "$points Điểm",
-                                style: TextStyle(color: _isDarkMode ? Colors.grey.shade400 : const Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.bold),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 12),
-                          Text(
-                            qText,
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor, height: 1.4),
-                          ),
-                          const SizedBox(height: 16),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
 
-                          if (qType == 'MCQ') ...[
-                            ...options.asMap().entries.map((optEntry) {
-                              int optIdx = optEntry.key;
-                              final opt = optEntry.value;
-                              final optId = opt['option_id'];
-                              final optText = opt['option_text'] ?? '';
-                              String letter = String.fromCharCode(65 + optIdx); // A, B, C, D
-                              bool isSelected = currentAnswer == optId;
+                      // All questions displayed vertically for direct scrolling
+                      if (totalQuestions > 0)
+                        ...state.questions.asMap().entries.map((entry) {
+                          int index = entry.key;
+                          final q = entry.value;
+                          final qId = q['question_id']?.toString() ?? '';
+                          final qText = q['question_text'] ?? '';
+                          final qType = q['type'] ?? 'MCQ';
+                          final points = q['points'] ?? 1.0;
+                          final options = q['options'] ?? [];
+                          final isAnswered = state.localAnswers.containsKey(qId);
+                          final currentAnswer = state.localAnswers[qId];
 
-                              return Container(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                child: CupertinoButton(
-                                  padding: EdgeInsets.zero,
-                                  onPressed: () {
-                                    context.read<TakeExamBloc>().add(
-                                          SaveAnswerEvent(
-                                            submissionId: widget.submissionId,
-                                            questionId: qId,
-                                            answer: optId,
-                                          ),
-                                        );
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: isSelected ? const Color(0xFF2563EB).withOpacity(0.05) : cardColor,
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(
-                                        color: isSelected ? const Color(0xFF2563EB) : (_isDarkMode ? const Color(0xFF475569) : const Color(0xFFE2E8F0)),
-                                        width: isSelected ? 1.5 : 1,
+                          return Container(
+                            key: _keys[index],
+                            margin: const EdgeInsets.only(bottom: 16),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: cardColor,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10),
+                              ],
+                              border: Border.all(
+                                color: isAnswered ? const Color(0xFFDBEAFE) : (_isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+                                width: 1.5,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF2563EB),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        "${index + 1}",
+                                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                                       ),
                                     ),
-                                    child: Row(
-                                      children: [
-                                        Container(
-                                          width: 24,
-                                          height: 24,
-                                          decoration: BoxDecoration(
-                                            color: isSelected ? const Color(0xFF2563EB) : (_isDarkMode ? const Color(0xFF334155) : const Color(0xFFF1F5F9)),
-                                            borderRadius: BorderRadius.circular(6),
-                                          ),
-                                          child: Center(
-                                            child: Text(
-                                              letter,
-                                              style: TextStyle(
-                                                color: isSelected ? Colors.white : (_isDarkMode ? Colors.grey.shade300 : Colors.black54),
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Text(
-                                            optText,
-                                            style: TextStyle(
-                                              color: isSelected ? const Color(0xFF2563EB) : textColor,
-                                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                                              fontSize: 14,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      "CÂU HỎI ${index + 1}",
+                                      style: const TextStyle(color: Color(0xFF2563EB), fontSize: 11, fontWeight: FontWeight.bold),
                                     ),
-                                  ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: _isDarkMode ? const Color(0xFF334155) : const Color(0xFFF1F5F9),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        qType == 'MCQ' ? 'TRẮC NGHIỆM' : 'TỰ LUẬN',
+                                        style: TextStyle(color: _isDarkMode ? Colors.grey.shade300 : const Color(0xFF64748B), fontSize: 9, fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Text(
+                                      "$points Điểm",
+                                      style: TextStyle(color: _isDarkMode ? Colors.grey.shade400 : const Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.bold),
+                                    ),
+                                  ],
                                 ),
-                              );
-                            }),
-                          ] else ...[
-                            TextFormField(
-                              initialValue: currentAnswer ?? '',
-                              maxLines: 4,
-                              decoration: InputDecoration(
-                                hintText: 'Nhập câu trả lời tự luận của bạn...',
-                                hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
-                                filled: true,
-                                fillColor: _isDarkMode ? const Color(0xFF334155) : const Color(0xFFF8FAFC),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(color: _isDarkMode ? Colors.transparent : const Color(0xFFE2E8F0)),
+                                const SizedBox(height: 12),
+                                Text(
+                                  qText,
+                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor, height: 1.4),
                                 ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(color: _isDarkMode ? Colors.transparent : const Color(0xFFE2E8F0)),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: const BorderSide(color: Color(0xFF2563EB)),
-                                ),
-                              ),
-                              style: TextStyle(fontSize: 13, color: textColor),
-                              onChanged: (val) {
-                                context.read<TakeExamBloc>().add(
-                                      SaveAnswerEvent(
-                                        submissionId: widget.submissionId,
-                                        questionId: qId,
-                                        answer: val,
+                                const SizedBox(height: 16),
+
+                                if (qType == 'MCQ') ...[
+                                  ...options.asMap().entries.map((optEntry) {
+                                    int optIdx = optEntry.key;
+                                    final opt = optEntry.value;
+                                    final optId = opt['option_id'];
+                                    final optText = opt['option_text'] ?? '';
+                                    String letter = String.fromCharCode(65 + optIdx); // A, B, C, D
+                                    bool isSelected = currentAnswer == optId;
+
+                                    return Container(
+                                      margin: const EdgeInsets.only(bottom: 8),
+                                      child: CupertinoButton(
+                                        padding: EdgeInsets.zero,
+                                        onPressed: () {
+                                          context.read<TakeExamBloc>().add(
+                                                SaveAnswerEvent(
+                                                  submissionId: widget.submissionId,
+                                                  questionId: qId,
+                                                  answer: optId,
+                                                ),
+                                              );
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: isSelected ? const Color(0xFF2563EB).withOpacity(0.05) : cardColor,
+                                            borderRadius: BorderRadius.circular(10),
+                                            border: Border.all(
+                                              color: isSelected ? const Color(0xFF2563EB) : (_isDarkMode ? const Color(0xFF475569) : const Color(0xFFE2E8F0)),
+                                              width: isSelected ? 1.5 : 1,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Container(
+                                                width: 24,
+                                                height: 24,
+                                                decoration: BoxDecoration(
+                                                  color: isSelected ? const Color(0xFF2563EB) : (_isDarkMode ? const Color(0xFF334155) : const Color(0xFFF1F5F9)),
+                                                  borderRadius: BorderRadius.circular(6),
+                                                ),
+                                                child: Center(
+                                                  child: Text(
+                                                    letter,
+                                                    style: TextStyle(
+                                                      color: isSelected ? Colors.white : (_isDarkMode ? Colors.grey.shade300 : Colors.black54),
+                                                      fontSize: 11,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: Text(
+                                                  optText,
+                                                  style: TextStyle(
+                                                    color: isSelected ? const Color(0xFF2563EB) : textColor,
+                                                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                                                    fontSize: 14,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                       ),
                                     );
-                              },
+                                  }),
+                                ] else ...[
+                                  TextFormField(
+                                    initialValue: currentAnswer ?? '',
+                                    maxLines: 4,
+                                    decoration: InputDecoration(
+                                      hintText: 'Nhập câu trả lời tự luận của bạn...',
+                                      hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                                      filled: true,
+                                      fillColor: _isDarkMode ? const Color(0xFF334155) : const Color(0xFFF8FAFC),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        borderSide: BorderSide(color: _isDarkMode ? Colors.transparent : const Color(0xFFE2E8F0)),
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        borderSide: BorderSide(color: _isDarkMode ? Colors.transparent : const Color(0xFFE2E8F0)),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        borderSide: const BorderSide(color: Color(0xFF2563EB)),
+                                      ),
+                                    ),
+                                    style: TextStyle(fontSize: 13, color: textColor),
+                                    onChanged: (val) {
+                                      context.read<TakeExamBloc>().add(
+                                            SaveAnswerEvent(
+                                              submissionId: widget.submissionId,
+                                              questionId: qId,
+                                              answer: val,
+                                            ),
+                                          );
+                                    },
+                                  ),
+                                ],
+                              ],
                             ),
-                          ],
-                        ],
-                      ),
-                    );
-                  })
-                else
-                  const Center(
-                    child: Text("Không tìm thấy câu hỏi trong đề thi."),
-                  ),
-              ],
-            ),
-          ),
-          ),
-          if (_showBlurOverlay)
-            Positioned.fill(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                child: Container(
-                  color: Colors.black.withOpacity(0.5),
-                  child: const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.lock, size: 64, color: Colors.white),
-                        SizedBox(height: 16),
-                        Text(
-                          'Ứng dụng đang tạm thời bị khóa',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            decoration: TextDecoration.none,
-                          ),
+                          );
+                        })
+                      else
+                        const Center(
+                          child: Text("Không tìm thấy câu hỏi trong đề thi."),
                         ),
-                        SizedBox(height: 8),
-                        Text(
-                          'Vui lòng quay lại màn hình thi để tiếp tục',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                            decoration: TextDecoration.none,
-                          ),
-                        ),
-                      ],
-                    ),
+                    ],
                   ),
                 ),
               ),
             ),
+            if (_showBlurOverlay)
+              Positioned.fill(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  child: Container(
+                    color: Colors.black.withOpacity(0.5),
+                    child: const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.lock, size: 64, color: Colors.white),
+                          SizedBox(height: 16),
+                          Text(
+                            'Ứng dụng đang tạm thời bị khóa',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              decoration: TextDecoration.none,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Vui lòng quay lại màn hình thi để tiếp tục',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                              decoration: TextDecoration.none,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
           ],
         );
       },
