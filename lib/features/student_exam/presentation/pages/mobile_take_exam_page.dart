@@ -30,10 +30,12 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
   Timer? _countdownTimer;
   int _secondsLeft = 3600; // default to 1 hour
   bool _isDarkMode = false;
+  late final DateTime _pageInitTime;
 
   @override
   void initState() {
     super.initState();
+    _pageInitTime = DateTime.now();
     WidgetsBinding.instance.addObserver(this);
 
     // Lock to portrait mode to disable rotation entirely
@@ -74,6 +76,29 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
       }, (screenshotPath) {
         if (mounted) {
           _handleCheatingEvent('screenshot_attempt', 'Thí sinh đã chụp màn hình (Screenshot Attempt)');
+        }
+      });
+
+      // Periodically check for screen capture (recording or sharing)
+      Timer.periodic(const Duration(seconds: 3), (timer) async {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        try {
+          final Map? status = await _securityChannel.invokeMethod<Map>('checkScreenStatus');
+          if (status != null) {
+            final bool isRecording = status['isRecording'] == true;
+            final bool isSharing = status['isSharing'] == true;
+            if (isRecording) {
+              _handleCheatingEvent('screen_record_attempt', 'Học viên đang quay màn hình bài thi');
+            }
+            if (isSharing) {
+              _handleCheatingEvent('screen_share_attempt', 'Học viên đang chia sẻ màn hình bài thi');
+            }
+          }
+        } catch (e) {
+          // ignore
         }
       });
     } catch (e) {
@@ -135,6 +160,10 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
     if (!mounted) return;
 
     final now = DateTime.now();
+    if (now.difference(_pageInitTime).inSeconds < 10) {
+      return; // Ignore any initial glitches within first 10s
+    }
+
     if (_lastEventTimes.containsKey(key)) {
       final diff = now.difference(_lastEventTimes[key]!);
       if (diff.inSeconds < 3) {
@@ -182,8 +211,12 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
 
+    final now = DateTime.now();
+    if (now.difference(_pageInitTime).inSeconds < 10) {
+      return; // Ignore initial transition glitches
+    }
+
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-      final now = DateTime.now();
       if (!_isExited || _lastLifecycleMinimize == null || now.difference(_lastLifecycleMinimize!).inSeconds >= 10) {
         _lastLifecycleMinimize = now;
         _isExited = true;

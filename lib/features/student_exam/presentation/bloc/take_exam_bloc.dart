@@ -171,12 +171,22 @@ class TakeExamBloc extends Bloc<TakeExamEvent, TakeExamState> {
       isBlurred: event.key == 'screenshot_attempt' ? true : state.isBlurred,
     ));
 
+    String eventTypeInVi = event.key;
+    if (event.key == 'screenshot_attempt') eventTypeInVi = 'Chụp màn hình';
+    if (event.key == 'screen_record_attempt') eventTypeInVi = 'Quay màn hình';
+    if (event.key == 'screen_share_attempt') eventTypeInVi = 'Chia sẻ màn hình';
+    if (event.key == 'minimize_app') eventTypeInVi = 'Thoát về Home';
+    if (event.key == 'window_blur') eventTypeInVi = 'Mất tiêu điểm';
+    if (event.key == 'app_switching') eventTypeInVi = 'Chuyển đổi ứng dụng';
+    if (event.key == 'copy_attempt') eventTypeInVi = 'Sao chép nội dung';
+    if (event.key == 'paste_attempt') eventTypeInVi = 'Dán nội dung';
+
     // Send realtime violation event via Socket
     try {
       if (socketClient.isConnected) {
         socketClient.emit('student:cheating', {
           'submissionId': event.submissionId,
-          'reason': event.key,
+          'reason': eventTypeInVi,
           'details': event.description,
         });
       }
@@ -187,11 +197,11 @@ class TakeExamBloc extends Bloc<TakeExamEvent, TakeExamState> {
     // Send to backend via proctor-event API to log in DB
     try {
       final response = await dioClient.dio.post('/submissions/${event.submissionId}/proctor-event', data: {
-        'event_type': event.key,
+        'event_type': eventTypeInVi,
         'cheating_count': newViolations,
         'details': {
           'message': event.description,
-          'key': event.key,
+          'key': eventTypeInVi,
           'severity': 'high',
         },
       });
