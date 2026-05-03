@@ -26,3 +26,10 @@ class ApproveAllScoresEvent extends ExamResultsEvent {
   final String examId;
   ApproveAllScoresEvent(this.examId);
 }
+
+class DeleteSubmissionEvent extends ExamResultsEvent {
+  final String examId;
+  final String studentId;
+  DeleteSubmissionEvent({required this.examId, required this.studentId});
+}
+

@@ -415,6 +415,100 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
     );
   }
 
+  void _confirmSubmission(BuildContext context, TakeExamState state) {
+    // Determine unanswered questions
+    final List<int> unansweredIndices = [];
+    final questions = state.questions;
+    for (int i = 0; i < questions.length; i++) {
+      final q = questions[i];
+      final qId = q['question_id']?.toString() ?? '';
+      final ans = state.localAnswers[qId];
+      bool isAnswered = false;
+      if (ans != null) {
+        if (ans is String && ans.trim().isNotEmpty) {
+          isAnswered = true;
+        } else if (ans is int || ans is num) {
+          isAnswered = true;
+        }
+      }
+      if (!isAnswered) {
+        unansweredIndices.add(i + 1);
+      }
+    }
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text(
+          "Xác nhận nộp bài",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "Bạn có muốn nộp bài không?",
+              style: TextStyle(fontSize: 15),
+            ),
+            if (unansweredIndices.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Text(
+                "Bạn chưa làm các câu sau:",
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                unansweredIndices.map((n) => "Câu $n").join(", "),
+                style: const TextStyle(color: Colors.red, fontSize: 14),
+              ),
+            ] else ...[
+              const SizedBox(height: 12),
+              const Text(
+                "Bạn đã hoàn thành tất cả các câu hỏi!",
+                style: TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            ]
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text(
+              "Quay lại",
+              style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF10B981),
+              foregroundColor: Colors.white,
+              elevation: 0,
+            ),
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              context.read<TakeExamBloc>().add(
+                    SubmitExamEvent(submissionId: widget.submissionId),
+                  );
+            },
+            child: const Text(
+              "Xác nhận nộp",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showQuestionMenu(TakeExamState state) {
     showGeneralDialog(
       context: context,
@@ -719,9 +813,7 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                                   ),
                                 );
                               } else {
-                                context.read<TakeExamBloc>().add(
-                                      SubmitExamEvent(submissionId: widget.submissionId),
-                                    );
+                                _confirmSubmission(context, state);
                               }
                             },
                       child: Container(
