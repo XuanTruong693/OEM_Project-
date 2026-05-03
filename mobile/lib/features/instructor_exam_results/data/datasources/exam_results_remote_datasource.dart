@@ -137,4 +137,9 @@ class ExamResultsRemoteDataSource {
     }
     return null;
   }
+
+  Future<void> deleteStudentExamRecord(String examId, String studentId) async {
+    await _dioClient.dio.delete('/instructor/exams/$examId/students/$studentId');
+  }
 }
+

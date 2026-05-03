@@ -17,6 +17,7 @@ class ExamResultsBloc extends Bloc<ExamResultsEvent, ExamResultsState> {
     on<SearchQueryChangedEvent>(_onSearchQueryChanged);
     on<StatusFilterChangedEvent>(_onStatusFilterChanged);
     on<ApproveAllScoresEvent>(_onApproveAllScores);
+    on<DeleteSubmissionEvent>(_onDeleteSubmission);
   }
 
   @override
@@ -155,6 +156,16 @@ class ExamResultsBloc extends Bloc<ExamResultsEvent, ExamResultsState> {
       emit(ExamResultsError("Lỗi duyệt điểm: $e"));
     }
   }
+
+  Future<void> _onDeleteSubmission(DeleteSubmissionEvent event, Emitter<ExamResultsState> emit) async {
+    try {
+      await _dataSource.deleteStudentExamRecord(event.examId, event.studentId);
+      add(SelectExamEvent(event.examId)); // Refresh data
+    } catch (e) {
+      emit(ExamResultsError("Lỗi xóa bài thi: $e"));
+    }
+  }
+
 
   List<ExamResultEntity> _applyFilters(List<ExamResultEntity> all, String query, String status) {
     var result = all;

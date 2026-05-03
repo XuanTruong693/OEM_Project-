@@ -443,6 +443,7 @@ class _InstructorExamResultsPageState extends State<InstructorExamResultsPage> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       elevation: 1,
       child: InkWell(
+        onLongPress: () => _showDeleteDialog(context, result),
         onTap: () {
           // Mở Detail Page
           final blocState = context.read<ExamResultsBloc>().state;
@@ -497,6 +498,14 @@ class _InstructorExamResultsPageState extends State<InstructorExamResultsPage> {
                       ),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    constraints: const BoxConstraints(),
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                    onPressed: () => _showDeleteDialog(context, result),
+                    tooltip: "Xóa bài thi",
+                  ),
                 ],
               ),
               const SizedBox(height: 4),
@@ -539,6 +548,51 @@ class _InstructorExamResultsPageState extends State<InstructorExamResultsPage> {
       ),
     );
   }
+
+  void _showDeleteDialog(BuildContext context, ExamResultEntity result) {
+    final blocState = context.read<ExamResultsBloc>().state;
+    if (blocState is! ExamResultsLoaded) return;
+    final examId = blocState.selectedExamId;
+    if (examId == null || result.studentId == null) return;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("Xóa bài thi?"),
+        content: Text(
+          "Bạn có chắc chắn muốn xóa bài thi của sinh viên \"${result.studentName ?? result.studentId}\" không? Hành động này không thể hoàn tác!",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text("Hủy"),
+          ),
+          TextButton(
+            onPressed: () {
+              context.read<ExamResultsBloc>().add(
+                DeleteSubmissionEvent(
+                  examId: examId,
+                  studentId: result.studentId!,
+                ),
+              );
+              Navigator.pop(dialogContext);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Đang xóa bài thi của sinh viên...")),
+              );
+            },
+            child: const Text(
+              "Xóa ngay",
+              style: TextStyle(
+                color: Colors.red,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
 
   Widget _scoreItem(String label, String value, {bool isBold = false}) {
     return Column(
