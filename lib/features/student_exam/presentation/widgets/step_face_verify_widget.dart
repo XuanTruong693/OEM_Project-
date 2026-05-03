@@ -83,8 +83,10 @@ class _StepFaceVerifyWidgetState extends State<StepFaceVerifyWidget> {
       // Kiểm tra góc mặt xem có nhìn thẳng khung hình không (Y và Z dao động nhẹ quanh 0)
       // Nới lỏng góc lên 45 độ và fallback true nếu null để đảm bảo nhận diện tốt trên Android
       final isCentered =
-          (face.headEulerAngleY == null || (face.headEulerAngleY! > -45 && face.headEulerAngleY! < 45)) &&
-          (face.headEulerAngleZ == null || (face.headEulerAngleZ! > -45 && face.headEulerAngleZ! < 45));
+          (face.headEulerAngleY == null ||
+              (face.headEulerAngleY! > -45 && face.headEulerAngleY! < 45)) &&
+          (face.headEulerAngleZ == null ||
+              (face.headEulerAngleZ! > -45 && face.headEulerAngleZ! < 45));
 
       // Logic đếm nháy mắt: 1 hoặc cả 2 mắt nhắm tịt (< 40%), sau đó mở to (> 55%)
       if (leftEye < 40 || rightEye < 40) {
@@ -138,9 +140,11 @@ class _StepFaceVerifyWidgetState extends State<StepFaceVerifyWidget> {
       final rightEye = face.rightEyeOpenProbability ?? 0.0;
 
       final isCentered =
-          (face.headEulerAngleY == null || (face.headEulerAngleY! > -45 && face.headEulerAngleY! < 45));
+          (face.headEulerAngleY == null ||
+          (face.headEulerAngleY! > -45 && face.headEulerAngleY! < 45));
       final isStraight =
-          (face.headEulerAngleZ == null || (face.headEulerAngleZ! > -45 && face.headEulerAngleZ! < 45));
+          (face.headEulerAngleZ == null ||
+          (face.headEulerAngleZ! > -45 && face.headEulerAngleZ! < 45));
       final eyesOpen = (leftEye > 0.4 && rightEye > 0.4);
 
       if (isCentered && isStraight && eyesOpen) {

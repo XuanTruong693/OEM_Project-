@@ -803,19 +803,7 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                     GestureDetector(
                       onTap: state.isSubmitting
                           ? null
-                          : () {
-                              if (state.errorMessage != null) {
-                                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(state.errorMessage!),
-                                    backgroundColor: Colors.red.shade700,
-                                  ),
-                                );
-                              } else {
-                                _confirmSubmission(context, state);
-                              }
-                            },
+                          : () => _confirmSubmission(context, state),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                         decoration: BoxDecoration(
@@ -831,8 +819,11 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                     const SizedBox(width: 12),
                   ],
                 ),
-                body: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                body: GestureDetector(
+                  onTap: () => FocusScope.of(context).unfocus(),
+                  child: SingleChildScrollView(
+                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -1076,6 +1067,7 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                     ],
                   ),
                 ),
+              ),
               ),
             ),
             if (_showBlurOverlay)
