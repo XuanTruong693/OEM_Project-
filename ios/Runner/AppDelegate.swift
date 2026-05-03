@@ -19,7 +19,7 @@ import UIKit
         (call: FlutterMethodCall, result: @escaping FlutterResult) -> Void in
         if call.method == "checkScreenStatus" {
           let isCaptured = UIScreen.main.isCaptured
-          let isMirrored = UIScreen.screens.count > 1 || UIScreen.main.mirroredScreen != nil
+          let isMirrored = UIScreen.screens.count > 1 || UIScreen.main.mirrored != nil
           result([
             "isRecording": isCaptured && !isMirrored,
             "isSharing": isMirrored
