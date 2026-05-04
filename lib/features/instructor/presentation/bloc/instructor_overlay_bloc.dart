@@ -21,8 +21,12 @@ class InstructorOverlayBloc
     _cheatingListener = _socketClient.onEvent('cheating:detected', (data) {
       try {
         print("📡 [OverlayBloc] Global cheating detected: $data");
+        if (data != null && data['deviceChangeApproval'] == true) {
+          print("ℹ️ [OverlayBloc] Skipping own device change approval event on mobile");
+          return;
+        }
         if (data != null &&
-            (data['submissionId'] != null || data['submission_id'] != null)) {
+            (data['submissionId'] != null || data['submission_id'] != null || data['deviceChange'] == true)) {
           // Haptic Feedback để giảng viên chú ý
           HapticFeedback.vibrate();
 

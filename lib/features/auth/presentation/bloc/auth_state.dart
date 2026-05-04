@@ -42,3 +42,8 @@ class AuthVerifyRoomFailure extends AuthState {
 
   AuthVerifyRoomFailure({required this.errorMessage});
 }
+
+class AuthRequire2FA extends AuthState {
+  final String email;
+  AuthRequire2FA({required this.email});
+}

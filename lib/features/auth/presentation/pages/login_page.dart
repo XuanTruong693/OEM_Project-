@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mobile/core/network/dio_client.dart';
 import '../../../../core/storage/secure_storage_helper.dart';
 import '../bloc/auth_bloc.dart';
 import '../bloc/auth_event.dart';
@@ -99,6 +100,8 @@ class _LoginPageState extends State<LoginPage> {
                 } else if (state is AuthFailure) {
                   // TODO: Tương lai sẽ xử lý hiển thị Modal "Hết lượt thi" ở đây dựa vào state.error
                   _showError(state.error);
+                } else if (state is AuthRequire2FA) {
+                  _showTwoFactorDialog(context, state.email);
                 }
               },
               builder: (context, state) {
@@ -380,6 +383,103 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _showTwoFactorDialog(BuildContext context, String email) {
+    final otpCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          "Xác thực 2FA",
+          style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "Mã 2FA đã được gửi đến email của bạn ($email). Vui lòng nhập mã để tiếp tục.",
+              style: const TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: otpCtrl,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: "Mã OTP 2FA",
+                hintText: "VD: 123456",
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text("Hủy", style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final otp = otpCtrl.text.trim();
+              if (otp.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Vui lòng nhập mã OTP.'), backgroundColor: Colors.orange),
+                );
+                return;
+              }
+              try {
+                final dio = DioClient(onLogout: () {});
+                final res = await dio.dio.post('/auth/verify-2fa', data: {'email': email, 'otp': otp});
+                final token = res.data['token'];
+                final refreshToken = res.data['refreshToken'];
+                final userData = res.data['user'];
+
+                if (token != null && userData != null) {
+                  await SecureStorageHelper.saveTokens(
+                    accessToken: token,
+                    refreshToken: refreshToken ?? '',
+                  );
+                  await SecureStorageHelper.saveSelectedRole(userData['role'] ?? '');
+
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Đăng nhập thành công!"), backgroundColor: Colors.green),
+                    );
+                    Navigator.of(ctx).pop();
+
+                    final actualRole = userData['role']?.toString().toLowerCase();
+                    if (actualRole == 'instructor' || actualRole == 'admin') {
+                      context.go('/instructor-dashboard');
+                    } else {
+                      final examId = await SecureStorageHelper.getPendingExamId();
+                      final roomToken = await SecureStorageHelper.getRoomToken();
+                      if (examId != null && roomToken != null) {
+                        context.go('/prepare-exam?examId=$examId&roomToken=$roomToken');
+                      } else {
+                        context.go('/verify-room');
+                      }
+                    }
+                  }
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(res.data['message'] ?? 'Lỗi xác thực'), backgroundColor: Colors.red),
+                  );
+                }
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Xác thực thất bại: $e'), backgroundColor: Colors.red),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2563EB)),
+            child: const Text("Xác thực", style: TextStyle(color: Colors.white)),
+          ),
+        ],
       ),
     );
   }

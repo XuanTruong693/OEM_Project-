@@ -7,6 +7,7 @@ class UserProfileEntity {
   final String? avatar;
   final String? gender;
   final String role;
+  final bool isTwoFactorEnabled;
 
   UserProfileEntity({
     required this.id,
@@ -17,5 +18,6 @@ class UserProfileEntity {
     this.avatar,
     this.gender,
     required this.role,
+    this.isTwoFactorEnabled = false,
   });
 }

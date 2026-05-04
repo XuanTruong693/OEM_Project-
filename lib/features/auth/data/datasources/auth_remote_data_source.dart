@@ -27,6 +27,10 @@ class AuthRemoteDataSource {
         },
       );
 
+      if (response.data != null && response.data['status'] == 'require_2fa') {
+        throw Exception('require_2fa:$email');
+      }
+
       // Nhét thẳng cái response.data (bản chất là Map<String, dynamic>) vào hàm fromJson
       return UserModel.fromJson(response.data);
     } on DioException catch (e) {

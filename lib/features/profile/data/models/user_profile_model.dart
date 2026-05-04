@@ -10,6 +10,7 @@ class UserProfileModel extends UserProfileEntity {
     super.avatar,
     super.gender,
     required super.role,
+    super.isTwoFactorEnabled = false,
   });
 
   factory UserProfileModel.fromJson(Map<String, dynamic> json) {
@@ -23,6 +24,7 @@ class UserProfileModel extends UserProfileEntity {
       avatar: data['avatar'],
       gender: data['gender'],
       role: data['role'] ?? '',
+      isTwoFactorEnabled: data['is_two_factor_enabled'] == true || data['is_two_factor_enabled'] == 1,
     );
   }
 
