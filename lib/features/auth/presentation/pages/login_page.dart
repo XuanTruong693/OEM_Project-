@@ -261,13 +261,10 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                       ),
 
-                      // Quên mật khẩu
                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton(
-                          onPressed: () {
-                            // TODO: Chuyển hướng trang quên mật khẩu
-                          },
+                          onPressed: () => context.push('/forgot-password'),
                           child: const Text(
                             "Quên mật khẩu?",
                             style: TextStyle(color: Colors.blue, fontSize: 13),

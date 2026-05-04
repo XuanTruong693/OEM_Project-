@@ -334,7 +334,30 @@ class VerifyExamBloc extends Bloc<VerifyExamEvent, VerifyExamState> {
     Emitter<VerifyExamState> emit,
   ) {
     emit(
-      state.copyWith(
+      VerifyExamState(
+        isLoading: state.isLoading,
+        errorMessage: state.errorMessage,
+        warningMessage: state.warningMessage,
+        uploadSuccessMsg: state.uploadSuccessMsg,
+        isKicked: state.isKicked,
+        examInfo: state.examInfo,
+        joinData: state.joinData,
+        isBypassed: state.isBypassed,
+        cardOk: state.cardOk,
+        monitorOk: state.monitorOk,
+        studentCode: state.studentCode,
+        isSearchingCard: state.isSearchingCard,
+        isVerifyingCard: state.isVerifyingCard,
+        cardUploaded: state.cardUploaded,
+        cardVerified: state.cardVerified,
+        cardPreviewUrl: state.cardPreviewUrl,
+        cardLocalPath: state.cardLocalPath,
+        ocrProgress: state.ocrProgress,
+        cardVerifyLog: state.cardVerifyLog,
+        cardErr: state.cardErr,
+        screenCount: state.screenCount,
+        multiScreenDetected: state.multiScreenDetected,
+        // Resetting face & blink fields to defaults:
         faceUploaded: false,
         faceVerified: false,
         facesCompared: false,
@@ -343,8 +366,14 @@ class VerifyExamBloc extends Bloc<VerifyExamEvent, VerifyExamState> {
         faceVerifyLog: '',
         compareLog: '',
         faceErr: null,
-        faceGuideMsg: 'Hãy căn khuôn mặt vào khung và nhìn thẳng',
+        blinkPhase: 'idle',
+        blinkCount: 0,
+        isDebugBlink: false,
+        leftEyePct: 0,
+        rightEyePct: 0,
+        blinkFaceOk: false,
         faceGuideOk: false,
+        faceGuideMsg: 'Hãy căn khuôn mặt vào khung và nhìn thẳng',
       ),
     );
   }

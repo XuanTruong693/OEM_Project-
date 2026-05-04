@@ -388,7 +388,7 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                   child: ElevatedButton(
                     onPressed: () {
                       Navigator.of(ctx).pop();
-                      context.go('/verify-room');
+                      context.go('/student-dashboard');
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF2563EB),
