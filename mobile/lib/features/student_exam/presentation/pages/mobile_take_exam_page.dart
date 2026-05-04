@@ -29,7 +29,7 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
   static const _securityChannel = MethodChannel('com.example.mobile/security');
   Timer? _countdownTimer;
   Timer? _inactivityTimer;
-  int _secondsLeft = 3600; // default to 1 hour
+  final ValueNotifier<int> _secondsLeftNotifier = ValueNotifier<int>(3600);
   int _inactiveSeconds = 0;
   bool _isDarkMode = false;
   late final DateTime _pageInitTime;
@@ -180,17 +180,15 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
   void _startLocalCountdown() {
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) return;
-      setState(() {
-        if (_secondsLeft > 0) {
-          _secondsLeft--;
-        } else {
-          _countdownTimer?.cancel();
-          // Auto submit when time runs out
-          context.read<TakeExamBloc>().add(
-                SubmitExamEvent(submissionId: widget.submissionId),
-              );
-        }
-      });
+      if (_secondsLeftNotifier.value > 0) {
+        _secondsLeftNotifier.value--;
+      } else {
+        _countdownTimer?.cancel();
+        // Auto submit when time runs out
+        context.read<TakeExamBloc>().add(
+              SubmitExamEvent(submissionId: widget.submissionId),
+            );
+      }
     });
   }
 
@@ -621,9 +619,6 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
     final Color cardColor = _isDarkMode ? const Color(0xFF1E293B) : Colors.white;
     final Color textColor = _isDarkMode ? Colors.white : const Color(0xFF1E293B);
 
-    int minutes = _secondsLeft ~/ 60;
-    int seconds = _secondsLeft % 60;
-
     return BlocConsumer<TakeExamBloc, TakeExamState>(
       listener: (context, state) {
         if (state.errorMessage != null && state.errorMessage != _lastShownError) {
@@ -646,21 +641,17 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
         if (state.showResultModal) {
           _showResultOverlayModal(context, state);
         }
-        if (state.examData != null && _secondsLeft == 3600) {
+        if (state.examData != null && _secondsLeftNotifier.value == 3600) {
           final startedAtStr = state.examData!['started_at'];
           final durationMinutes = state.examData!['duration_minutes'] ?? 60;
           if (startedAtStr != null) {
             final startTime = DateTime.tryParse(startedAtStr) ?? DateTime.now();
             final now = DateTime.now();
             final elapsed = now.difference(startTime).inSeconds;
-            setState(() {
-              _secondsLeft = (durationMinutes * 60) - elapsed;
-              if (_secondsLeft <= 0) _secondsLeft = 0;
-            });
+            _secondsLeftNotifier.value = (durationMinutes * 60) - elapsed;
+            if (_secondsLeftNotifier.value <= 0) _secondsLeftNotifier.value = 0;
           } else {
-            setState(() {
-              _secondsLeft = durationMinutes * 60;
-            });
+            _secondsLeftNotifier.value = durationMinutes * 60;
           }
         }
       },
@@ -761,28 +752,35 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                     ],
                   ),
                   centerTitle: true,
-                  title: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: pingDotColor,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        "${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}",
-                        style: TextStyle(
-                          color: pingDotColor,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
+                  title: ValueListenableBuilder<int>(
+                    valueListenable: _secondsLeftNotifier,
+                    builder: (context, secondsLeft, child) {
+                      int minutes = secondsLeft ~/ 60;
+                      int seconds = secondsLeft % 60;
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: pingDotColor,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            "${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}",
+                            style: TextStyle(
+                              color: pingDotColor,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                   actions: [
                     CupertinoButton(
