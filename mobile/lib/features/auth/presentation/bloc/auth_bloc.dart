@@ -68,11 +68,12 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           accessToken: user.accessToken,
           refreshToken: user.refreshToken,
         );
-        await SecureStorageHelper.saveSelectedRole(user.role); // 🔴 BẮT BUỘC ĐỂ KHÔNG BỊ LỖI 403
+        await SecureStorageHelper.saveSelectedRole(
+          user.role,
+        ); // 🔴 BẮT BUỘC ĐỂ KHÔNG BỊ LỖI 403
       }
 
       emit(AuthSuccess(message: "Registration successful", role: user.role));
-
     } catch (e) {
       emit(AuthFailure(error: e.toString()));
     }
@@ -95,13 +96,20 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           accessToken: user.accessToken,
           refreshToken: user.refreshToken,
         );
-        await SecureStorageHelper.saveSelectedRole(user.role); // 🔴 BẮT BUỘC ĐỂ KHÔNG BỊ LỖI 403
+        await SecureStorageHelper.saveSelectedRole(
+          user.role,
+        ); // 🔴 BẮT BUỘC ĐỂ KHÔNG BỊ LỖI 403
       }
 
       emit(AuthSuccess(message: "Đăng nhập thành công", role: user.role));
-
     } catch (e) {
-      emit(AuthFailure(error: e.toString()));
+      final errorStr = e.toString();
+      if (errorStr.contains('require_2fa:')) {
+        final email = errorStr.split('require_2fa:')[1];
+        emit(AuthRequire2FA(email: email.trim()));
+      } else {
+        emit(AuthFailure(error: e.toString()));
+      }
     }
   }
 
@@ -184,7 +192,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           accessToken: user.accessToken,
           refreshToken: user.refreshToken,
         );
-        await SecureStorageHelper.saveSelectedRole(user.role); // 🔴 BẮT BUỘC ĐỂ KHÔNG BỊ LỖI 403
+        await SecureStorageHelper.saveSelectedRole(
+          user.role,
+        ); // 🔴 BẮT BUỘC ĐỂ KHÔNG BỊ LỖI 403
       }
 
       emit(AuthSuccess(message: "Đăng ký Google thành công", role: user.role));

@@ -545,6 +545,10 @@ class MyApp extends StatelessWidget {
   }
 
   void _showGlobalCheatingDialog(BuildContext context, dynamic violation) {
+    if (violation != null && violation.deviceChange == true) {
+      _showDeviceChangeDialog(context, violation);
+      return;
+    }
     showDialog(
       context: router.configuration.navigatorKey.currentContext ?? context,
       barrierDismissible: false,
@@ -840,5 +844,172 @@ class MyApp extends StatelessWidget {
   String _formatNow() {
     final now = DateTime.now();
     return "${now.hour}:${now.minute}:${now.second}  ${now.day}/${now.month}/${now.year}";
+  }
+
+  void _showDeviceChangeDialog(BuildContext context, dynamic violation) {
+    showDialog(
+      context: router.configuration.navigatorKey.currentContext ?? context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        contentPadding: EdgeInsets.zero,
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFF8F00),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      color: Colors.white,
+                      size: 30,
+                    ),
+                    SizedBox(width: 10),
+                    Text(
+                      "XIN ĐỔI THIẾT BỊ",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildSectionTitle("SINH VIÊN"),
+                    const SizedBox(height: 4),
+                    Text(
+                      violation.studentName,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 20,
+                        color: Color(0xFF1A237E),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildSectionTitle("LÝ DO XIN ĐỔI MÁY"),
+                    const SizedBox(height: 4),
+                    Text(
+                      violation.reason.isEmpty ? "Không có lý do cụ thể" : violation.reason,
+                      style: const TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildSectionTitle("THIẾT BỊ TRUY CẬP"),
+                    const SizedBox(height: 6),
+                    Text(
+                      "Máy 1: ${violation.firstDeviceName.isEmpty ? "Không rõ" : violation.firstDeviceName}",
+                      style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                    ),
+                    Text(
+                      "Máy 2: ${violation.secondDeviceName.isEmpty ? "Không rõ" : violation.secondDeviceName}",
+                      style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildSectionTitle("THỜI GIAN YÊU CẦU"),
+                    const SizedBox(height: 4),
+                    Text(
+                      _formatNow(),
+                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: 20, right: 20, bottom: 20),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            final subId = violation.submissionId;
+                            try {
+                              final dio = DioClient(onLogout: () {});
+                              await dio.dio.post('/instructor/rooms/students/$subId/device-approval', data: {'action': 'approved'});
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Phê duyệt đổi máy thành công!'), backgroundColor: Colors.green),
+                              );
+                            } catch (e) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Phê duyệt thất bại: $e'), backgroundColor: Colors.red),
+                              );
+                            }
+                            context.read<InstructorOverlayBloc>().add(DismissOverlayEvent());
+                            Navigator.of(ctx).pop();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text(
+                            "Duyệt đổi máy",
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SizedBox(
+                        height: 50,
+                        child: OutlinedButton(
+                          onPressed: () async {
+                            final subId = violation.submissionId;
+                            try {
+                              final dio = DioClient(onLogout: () {});
+                              await dio.dio.post('/instructor/rooms/students/$subId/device-approval', data: {'action': 'rejected'});
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Đã từ chối yêu cầu đổi máy.'), backgroundColor: Colors.orange),
+                              );
+                            } catch (e) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Từ chối thất bại: $e'), backgroundColor: Colors.red),
+                              );
+                            }
+                            context.read<InstructorOverlayBloc>().add(DismissOverlayEvent());
+                            Navigator.of(ctx).pop();
+                          },
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Colors.red),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text(
+                            "Từ chối",
+                            style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

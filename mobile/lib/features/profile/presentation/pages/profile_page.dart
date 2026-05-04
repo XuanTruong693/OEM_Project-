@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mobile/core/network/dio_client.dart';
 import '../../../../core/utils/image_utils.dart';
 import '../bloc/profile_bloc.dart';
 import '../bloc/profile_event.dart';
@@ -24,6 +25,27 @@ class _ProfilePageState extends State<ProfilePage> {
   late TextEditingController _addressController;
   late TextEditingController _emailController;
   String? _selectedGender;
+  bool? _isTwoFactorEnabled;
+
+  void _toggleTwoFactor(bool value) async {
+    setState(() => _isTwoFactorEnabled = value);
+    try {
+      final dio = DioClient(onLogout: () {});
+      final res = await dio.dio.post('/profile/2fa/toggle');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(res.data['message'] ?? 'Thao tác 2FA thành công!'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isTwoFactorEnabled = !value);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Không thể thay đổi trạng thái 2FA: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
 
 
   @override
@@ -64,10 +86,9 @@ class _ProfilePageState extends State<ProfilePage> {
     _addressController.text = profile.address ?? '';
     _emailController.text = profile.email ?? '';
     
-    // Map gender từ BE (male/female/other) sang UI (Nam/Nữ/Khác)
-
     final genderMap = {'male': 'Nam', 'female': 'Nữ', 'other': 'Khác'};
     _selectedGender = genderMap[profile.gender] ?? profile.gender;
+    _isTwoFactorEnabled ??= profile.isTwoFactorEnabled;
   }
 
   Future<void> _pickImage() async {
@@ -299,6 +320,28 @@ class _ProfilePageState extends State<ProfilePage> {
                               label: 'Địa chỉ',
                               hint: 'Nhập địa chỉ của bạn',
                               icon: Icons.location_on_outlined,
+                            ),
+                            const SizedBox(height: 24),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.indigo.withOpacity(0.05),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.indigo.withOpacity(0.1)),
+                              ),
+                              child: SwitchListTile(
+                                title: const Text(
+                                  "Xác thực hai yếu tố (2FA)",
+                                  style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                                ),
+                                subtitle: const Text(
+                                  "Bật để tăng cường bảo mật cho tài khoản của bạn.",
+                                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                                ),
+                                value: _isTwoFactorEnabled ?? false,
+                                activeColor: Colors.indigo,
+                                onChanged: _toggleTwoFactor,
+                              ),
                             ),
                             const SizedBox(height: 40),
                             SizedBox(

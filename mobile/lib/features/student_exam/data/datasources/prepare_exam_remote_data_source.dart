@@ -25,6 +25,8 @@ abstract class PrepareExamRemoteDataSource {
     String? cardPath,
   );
   Future<Map<String, dynamic>> getSubmissionStatus(String submissionId);
+  Future<Map<String, dynamic>> verifyDevice(String submissionId, String fingerprintId, String deviceName);
+  Future<Map<String, dynamic>> requestDeviceChange(String submissionId, String fingerprintId, String deviceName, String reason);
 }
 
 class PrepareExamRemoteDataSourceImpl implements PrepareExamRemoteDataSource {
@@ -185,6 +187,66 @@ class PrepareExamRemoteDataSourceImpl implements PrepareExamRemoteDataSource {
       throw ServerException(
         e.response?.data['message'] ?? 'Lỗi lấy trạng thái bài thi',
       );
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> verifyDevice(
+    String submissionId,
+    String fingerprintId,
+    String deviceName,
+  ) async {
+    try {
+      final response = await dioClient.dio.post(
+        '/submissions/$submissionId/verify-device',
+        data: {
+          'submissionId': submissionId,
+          'fingerprintId': fingerprintId,
+          'fingerprint_id': fingerprintId,
+          'deviceName': deviceName,
+          'device_name': deviceName,
+        },
+      );
+      return response.data;
+    } on DioException catch (e) {
+      String msg = 'Lỗi xác minh thiết bị';
+      if (e.response?.data is Map) {
+        msg = e.response?.data['message']?.toString() ?? msg;
+      } else if (e.response?.data != null) {
+        msg = e.response?.data.toString() ?? msg;
+      }
+      throw ServerException(msg);
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> requestDeviceChange(
+    String submissionId,
+    String fingerprintId,
+    String deviceName,
+    String reason,
+  ) async {
+    try {
+      final response = await dioClient.dio.post(
+        '/submissions/$submissionId/request-device-change',
+        data: {
+          'submissionId': submissionId,
+          'fingerprintId': fingerprintId,
+          'fingerprint_id': fingerprintId,
+          'deviceName': deviceName,
+          'device_name': deviceName,
+          'reason': reason,
+        },
+      );
+      return response.data;
+    } on DioException catch (e) {
+      String msg = 'Lỗi yêu cầu đổi thiết bị';
+      if (e.response?.data is Map) {
+        msg = e.response?.data['message']?.toString() ?? msg;
+      } else if (e.response?.data != null) {
+        msg = e.response?.data.toString() ?? msg;
+      }
+      throw ServerException(msg);
     }
   }
 }
