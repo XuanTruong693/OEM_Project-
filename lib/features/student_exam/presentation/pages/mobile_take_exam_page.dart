@@ -819,41 +819,43 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                 ),
                 body: GestureDetector(
                   onTap: () => FocusScope.of(context).unfocus(),
-                  child: SingleChildScrollView(
+                  child: ListView.builder(
+                    cacheExtent: 9999,
                     keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Progress Bar
-                      Container(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: LinearProgressIndicator(
-                                  value: totalQuestions > 0 ? answeredQuestions / totalQuestions : 0,
-                                  backgroundColor: _isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
-                                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF2563EB)),
-                                  minHeight: 4,
+                    itemCount: totalQuestions == 0 ? 1 : (totalQuestions + (state.violations > 0 ? 2 : 1)),
+                    itemBuilder: (context, idx) {
+                      if (idx == 0) {
+                        // Progress Bar
+                        return Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: LinearProgressIndicator(
+                                    value: totalQuestions > 0 ? answeredQuestions / totalQuestions : 0,
+                                    backgroundColor: _isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF2563EB)),
+                                    minHeight: 4,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              "$answeredQuestions/$totalQuestions đã làm",
-                              style: TextStyle(color: _isDarkMode ? Colors.grey : const Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
+                              const SizedBox(width: 12),
+                              Text(
+                                "$answeredQuestions/$totalQuestions đã làm",
+                                style: TextStyle(color: _isDarkMode ? Colors.grey : const Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
 
-                      // High visibility cheating violation alert
-                      if (state.violations > 0) ...[
-                        Container(
+                      if (state.violations > 0 && idx == 1) {
+                        // High visibility cheating violation alert
+                        return Container(
+                          margin: const EdgeInsets.only(top: 12, bottom: 4),
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
                             color: const Color(0xFFFEF2F2),
@@ -872,200 +874,204 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                               ),
                             ],
                           ),
+                        );
+                      }
+
+                      if (totalQuestions == 0) {
+                        return const Padding(
+                          padding: EdgeInsets.only(top: 40),
+                          child: Center(
+                            child: Text("Không tìm thấy câu hỏi trong đề thi."),
+                          ),
+                        );
+                      }
+
+                      // Adjust the index for questions
+                      final qIdx = idx - (state.violations > 0 ? 2 : 1);
+                      if (qIdx < 0 || qIdx >= totalQuestions) {
+                        return const SizedBox.shrink();
+                      }
+
+                      final q = state.questions[qIdx];
+                      final qId = q['question_id']?.toString() ?? '';
+                      final qText = q['question_text'] ?? '';
+                      final qType = q['type'] ?? 'MCQ';
+                      final points = q['points'] ?? 1.0;
+                      final options = q['options'] ?? [];
+                      final isAnswered = state.localAnswers.containsKey(qId);
+                      final currentAnswer = state.localAnswers[qId];
+
+                      return Container(
+                        key: _keys[qIdx],
+                        margin: const EdgeInsets.only(top: 12, bottom: 16),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: cardColor,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10),
+                          ],
+                          border: Border.all(
+                            color: isAnswered ? const Color(0xFFDBEAFE) : (_isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+                            width: 1.5,
+                          ),
                         ),
-                        const SizedBox(height: 16),
-                      ],
-
-                      // All questions displayed vertically for direct scrolling
-                      if (totalQuestions > 0)
-                        ...state.questions.asMap().entries.map((entry) {
-                          int index = entry.key;
-                          final q = entry.value;
-                          final qId = q['question_id']?.toString() ?? '';
-                          final qText = q['question_text'] ?? '';
-                          final qType = q['type'] ?? 'MCQ';
-                          final points = q['points'] ?? 1.0;
-                          final options = q['options'] ?? [];
-                          final isAnswered = state.localAnswers.containsKey(qId);
-                          final currentAnswer = state.localAnswers[qId];
-
-                          return Container(
-                            key: _keys[index],
-                            margin: const EdgeInsets.only(bottom: 16),
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: cardColor,
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10),
-                              ],
-                              border: Border.all(
-                                color: isAnswered ? const Color(0xFFDBEAFE) : (_isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
-                                width: 1.5,
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
                               children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF2563EB),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Text(
-                                        "${index + 1}",
-                                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      "CÂU HỎI ${index + 1}",
-                                      style: const TextStyle(color: Color(0xFF2563EB), fontSize: 11, fontWeight: FontWeight.bold),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: _isDarkMode ? const Color(0xFF334155) : const Color(0xFFF1F5F9),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Text(
-                                        qType == 'MCQ' ? 'TRẮC NGHIỆM' : 'TỰ LUẬN',
-                                        style: TextStyle(color: _isDarkMode ? Colors.grey.shade300 : const Color(0xFF64748B), fontSize: 9, fontWeight: FontWeight.bold),
-                                      ),
-                                    ),
-                                    const Spacer(),
-                                    Text(
-                                      "$points Điểm",
-                                      style: TextStyle(color: _isDarkMode ? Colors.grey.shade400 : const Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.bold),
-                                    ),
-                                  ],
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF2563EB),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    "${qIdx + 1}",
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                  ),
                                 ),
-                                const SizedBox(height: 12),
+                                const SizedBox(width: 8),
                                 Text(
-                                  qText,
-                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor, height: 1.4),
+                                  "CÂU HỎI ${qIdx + 1}",
+                                  style: const TextStyle(color: Color(0xFF2563EB), fontSize: 11, fontWeight: FontWeight.bold),
                                 ),
-                                const SizedBox(height: 16),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: _isDarkMode ? const Color(0xFF334155) : const Color(0xFFF1F5F9),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    qType == 'MCQ' ? 'TRẮC NGHIỆM' : 'TỰ LUẬN',
+                                    style: TextStyle(color: _isDarkMode ? Colors.grey.shade300 : const Color(0xFF64748B), fontSize: 9, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                                const Spacer(),
+                                Text(
+                                  "$points Điểm",
+                                  style: TextStyle(color: _isDarkMode ? Colors.grey.shade400 : const Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              qText,
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor, height: 1.4),
+                            ),
+                            const SizedBox(height: 16),
 
-                                if (qType == 'MCQ') ...[
-                                  ...options.asMap().entries.map((optEntry) {
-                                    int optIdx = optEntry.key;
-                                    final opt = optEntry.value;
-                                    final optId = opt['option_id'];
-                                    final optText = opt['option_text'] ?? '';
-                                    String letter = String.fromCharCode(65 + optIdx); // A, B, C, D
-                                    bool isSelected = currentAnswer == optId;
+                            if (qType == 'MCQ') ...[
+                              ...options.asMap().entries.map((optEntry) {
+                                int optIdx = optEntry.key;
+                                final opt = optEntry.value;
+                                final optId = opt['option_id'];
+                                final optText = opt['option_text'] ?? '';
+                                String letter = String.fromCharCode(65 + optIdx); // A, B, C, D
+                                bool isSelected = currentAnswer == optId;
 
-                                    return Container(
-                                      margin: const EdgeInsets.only(bottom: 8),
-                                      child: CupertinoButton(
-                                        padding: EdgeInsets.zero,
-                                        onPressed: () {
-                                          context.read<TakeExamBloc>().add(
-                                                SaveAnswerEvent(
-                                                  submissionId: widget.submissionId,
-                                                  questionId: qId,
-                                                  answer: optId,
-                                                ),
-                                              );
-                                        },
-                                        child: Container(
-                                          padding: const EdgeInsets.all(12),
-                                          decoration: BoxDecoration(
-                                            color: isSelected ? const Color(0xFF2563EB).withOpacity(0.05) : cardColor,
-                                            borderRadius: BorderRadius.circular(10),
-                                            border: Border.all(
-                                              color: isSelected ? const Color(0xFF2563EB) : (_isDarkMode ? const Color(0xFF475569) : const Color(0xFFE2E8F0)),
-                                              width: isSelected ? 1.5 : 1,
-                                            ),
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              Container(
-                                                width: 24,
-                                                height: 24,
-                                                decoration: BoxDecoration(
-                                                  color: isSelected ? const Color(0xFF2563EB) : (_isDarkMode ? const Color(0xFF334155) : const Color(0xFFF1F5F9)),
-                                                  borderRadius: BorderRadius.circular(6),
-                                                ),
-                                                child: Center(
-                                                  child: Text(
-                                                    letter,
-                                                    style: TextStyle(
-                                                      color: isSelected ? Colors.white : (_isDarkMode ? Colors.grey.shade300 : Colors.black54),
-                                                      fontSize: 11,
-                                                      fontWeight: FontWeight.bold,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                              const SizedBox(width: 12),
-                                              Expanded(
-                                                child: Text(
-                                                  optText,
-                                                  style: TextStyle(
-                                                    color: isSelected ? const Color(0xFF2563EB) : textColor,
-                                                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                                                    fontSize: 14,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  }),
-                                ] else ...[
-                                  TextFormField(
-                                    initialValue: currentAnswer ?? '',
-                                    maxLines: 4,
-                                    decoration: InputDecoration(
-                                      hintText: 'Nhập câu trả lời tự luận của bạn...',
-                                      hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
-                                      filled: true,
-                                      fillColor: _isDarkMode ? const Color(0xFF334155) : const Color(0xFFF8FAFC),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                        borderSide: BorderSide(color: _isDarkMode ? Colors.transparent : const Color(0xFFE2E8F0)),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                        borderSide: BorderSide(color: _isDarkMode ? Colors.transparent : const Color(0xFFE2E8F0)),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                        borderSide: const BorderSide(color: Color(0xFF2563EB)),
-                                      ),
-                                    ),
-                                    style: TextStyle(fontSize: 13, color: textColor),
-                                    onChanged: (val) {
+                                return Container(
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  child: CupertinoButton(
+                                    padding: EdgeInsets.zero,
+                                    onPressed: () {
                                       context.read<TakeExamBloc>().add(
                                             SaveAnswerEvent(
                                               submissionId: widget.submissionId,
                                               questionId: qId,
-                                              answer: val,
+                                              answer: optId,
                                             ),
                                           );
                                     },
+                                    child: Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: isSelected ? const Color(0xFF2563EB).withOpacity(0.05) : cardColor,
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(
+                                          color: isSelected ? const Color(0xFF2563EB) : (_isDarkMode ? const Color(0xFF475569) : const Color(0xFFE2E8F0)),
+                                          width: isSelected ? 1.5 : 1,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            width: 24,
+                                            height: 24,
+                                            decoration: BoxDecoration(
+                                              color: isSelected ? const Color(0xFF2563EB) : (_isDarkMode ? const Color(0xFF334155) : const Color(0xFFF1F5F9)),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Center(
+                                              child: Text(
+                                                letter,
+                                                style: TextStyle(
+                                                  color: isSelected ? Colors.white : (_isDarkMode ? Colors.grey.shade300 : Colors.black54),
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Text(
+                                              optText,
+                                              style: TextStyle(
+                                                color: isSelected ? const Color(0xFF2563EB) : textColor,
+                                                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                                                fontSize: 14,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ),
-                                ],
-                              ],
-                            ),
-                          );
-                        })
-                      else
-                        const Center(
-                          child: Text("Không tìm thấy câu hỏi trong đề thi."),
+                                );
+                              }),
+                            ] else ...[
+                              TextFormField(
+                                initialValue: currentAnswer ?? '',
+                                maxLines: 4,
+                                decoration: InputDecoration(
+                                  hintText: 'Nhập câu trả lời tự luận của bạn...',
+                                  hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                                  filled: true,
+                                  fillColor: _isDarkMode ? const Color(0xFF334155) : const Color(0xFFF8FAFC),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: BorderSide(color: _isDarkMode ? Colors.transparent : const Color(0xFFE2E8F0)),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: BorderSide(color: _isDarkMode ? Colors.transparent : const Color(0xFFE2E8F0)),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: const BorderSide(color: Color(0xFF2563EB)),
+                                  ),
+                                ),
+                                style: TextStyle(fontSize: 13, color: textColor),
+                                onChanged: (val) {
+                                  context.read<TakeExamBloc>().add(
+                                        SaveAnswerEvent(
+                                          submissionId: widget.submissionId,
+                                          questionId: qId,
+                                          answer: val,
+                                        ),
+                                      );
+                                },
+                              ),
+                            ],
+                          ],
                         ),
-                    ],
+                      );
+                    },
                   ),
                 ),
-              ),
               ),
             ),
             if (_showBlurOverlay)
