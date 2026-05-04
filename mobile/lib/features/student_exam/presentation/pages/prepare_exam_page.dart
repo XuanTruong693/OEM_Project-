@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobile/core/network/dio_client.dart';
 import 'package:mobile/features/student_exam/data/datasources/prepare_exam_remote_data_source.dart';
 
@@ -50,6 +51,12 @@ class _PrepareExamPageState extends State<PrepareExamPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+          onPressed: () {
+            context.go('/student-dashboard');
+          },
+        ),
         title: const Text(
           'Chuẩn bị vào thi',
           style: TextStyle(

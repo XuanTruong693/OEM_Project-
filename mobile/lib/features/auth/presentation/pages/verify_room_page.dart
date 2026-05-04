@@ -89,8 +89,18 @@ class _VerifyRoomPageState extends State<VerifyRoomPage> {
 
             if (mounted) {
               // Delay nhẹ 800ms tạo cảm giác mượt mà giống bản React
-              Future.delayed(const Duration(milliseconds: 800), () {
-                if (mounted) context.go('/login');
+              Future.delayed(const Duration(milliseconds: 800), () async {
+                if (mounted) {
+                  final token = await SecureStorageHelper.getAccessToken();
+                  final examId = await SecureStorageHelper.getPendingExamId();
+                  final roomToken = await SecureStorageHelper.getRoomToken();
+
+                  if (token != null && examId != null && roomToken != null) {
+                    context.go('/prepare-exam?examId=$examId&roomToken=$roomToken');
+                  } else {
+                    context.go('/login');
+                  }
+                }
               });
             }
           }

@@ -60,6 +60,24 @@ class _RolePageState extends State<RolePage> {
         final isLoading = state is AuthLoading;
 
         return Scaffold(
+          extendBodyBehindAppBar: true,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(
+                Icons.arrow_back_ios_new,
+                color: Color(0xFF1E293B),
+              ),
+              onPressed: () {
+                if (context.canPop()) {
+                  context.pop();
+                } else {
+                  context.go('/landing');
+                }
+              },
+            ),
+          ),
           body: Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(

@@ -53,7 +53,7 @@ class _SplashPageState extends State<SplashPage> with SingleTickerProviderStateM
           context.go('/verify-room');
         }
       } else {
-        context.go('/role');
+        context.go('/landing');
       }
     }
   }

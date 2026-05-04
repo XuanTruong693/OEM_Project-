@@ -27,6 +27,14 @@ class InstructorOverlayBloc
         }
         if (data != null &&
             (data['submissionId'] != null || data['submission_id'] != null || data['deviceChange'] == true)) {
+          final examId = (data['examId'] ?? data['exam_id'] ?? data['eventDetails']?['examId'])?.toString();
+          print("🔍 [OverlayBloc] Checking examId: $examId against joined exams: $_currentExamIds");
+
+          if (examId != null && _currentExamIds.isNotEmpty && !_currentExamIds.contains(examId)) {
+            print("ℹ️ [OverlayBloc] Skipping alert. ExamId $examId not matching current instructor's joined exams.");
+            return;
+          }
+
           // Haptic Feedback để giảng viên chú ý
           HapticFeedback.vibrate();
 

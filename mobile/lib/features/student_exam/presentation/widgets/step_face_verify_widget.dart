@@ -378,12 +378,12 @@ class _StepFaceVerifyWidgetState extends State<StepFaceVerifyWidget> {
                   margin: const EdgeInsets.only(top: 12),
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: state.faceOk
+                    color: (state.faceOk || state.faceVerified)
                         ? const Color(0xFFF0FDF4)
                         : const Color(0xFFFEF2F2),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: state.faceOk
+                      color: (state.faceOk || state.faceVerified)
                           ? const Color(0xFFDCFCE7)
                           : const Color(0xFFFEE2E2),
                     ),
@@ -394,7 +394,7 @@ class _StepFaceVerifyWidgetState extends State<StepFaceVerifyWidget> {
                       fontFamily: 'monospace',
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
-                      color: state.faceOk
+                      color: (state.faceOk || state.faceVerified)
                           ? const Color(0xFF15803D)
                           : const Color(0xFFB91C1C),
                     ),
@@ -481,9 +481,11 @@ class _StepFaceVerifyWidgetState extends State<StepFaceVerifyWidget> {
                   width: double.infinity,
                   margin: const EdgeInsets.only(top: 12),
                   child: OutlinedButton.icon(
-                    onPressed: () => context.read<VerifyExamBloc>().add(
-                      ResetFaceVerificationEvent(),
-                    ),
+                    onPressed: () async {
+                      context.read<VerifyExamBloc>().add(ResetFaceVerificationEvent());
+                      _cameraHelper.dispose();
+                      await _startCamera();
+                    },
                     icon: const Icon(Icons.refresh, size: 16),
                     label: const Text(
                       'Chụp lại ảnh khuôn mặt',

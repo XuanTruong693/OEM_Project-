@@ -5,6 +5,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'package:mobile/core/network/dio_client.dart';
 import 'package:mobile/core/utils/excel_parser_service.dart';
+import 'package:mobile/core/storage/secure_storage_helper.dart';
 
 // --- IMPORT MÀN HÌNH AUTH ---
 import 'package:mobile/features/auth/data/datasources/auth_remote_data_source.dart';
@@ -20,6 +21,7 @@ import 'package:mobile/features/auth/presentation/pages/role_page.dart';
 import 'package:mobile/features/auth/presentation/pages/login_page.dart';
 import 'package:mobile/features/auth/presentation/pages/verify_room_page.dart';
 import 'package:mobile/features/auth/presentation/pages/register_page.dart';
+import 'package:mobile/features/auth/presentation/pages/forgot_password_page.dart';
 import 'package:mobile/features/auth/presentation/pages/splash_page.dart';
 import 'package:mobile/features/auth/presentation/bloc/auth_bloc.dart';
 
@@ -120,6 +122,26 @@ import 'features/profile/domain/usecases/update_profile_use_case.dart';
 import 'features/profile/domain/usecases/update_avatar_use_case.dart';
 import 'features/profile/presentation/bloc/profile_bloc.dart';
 import 'features/profile/presentation/pages/profile_page.dart';
+
+// --- IMPORT HOME / LANDING / STUDENT DASHBOARD ---
+import 'landing_page.dart';
+import 'features/student_dashboard/data/datasources/student_dashboard_remote_datasource.dart';
+import 'features/student_dashboard/data/repositories/student_dashboard_repository_impl.dart';
+import 'features/student_dashboard/domain/usecases/get_student_dashboard_data_usecase.dart';
+import 'features/student_dashboard/presentation/bloc/student_dashboard_bloc.dart';
+import 'features/student_dashboard/presentation/pages/student_dashboard_page.dart';
+
+// --- IMPORT STUDENT HELPING ---
+import 'features/student_helping/data/datasources/student_results_remote_datasource.dart';
+import 'features/student_helping/data/repositories/student_results_repository_impl.dart';
+import 'features/student_helping/presentation/bloc/results_list/results_list_bloc.dart';
+import 'features/student_helping/presentation/bloc/result_detail/result_detail_bloc.dart';
+import 'features/student_helping/presentation/pages/results_dashboard_page.dart';
+import 'features/student_helping/presentation/pages/exam_guidelines_page.dart';
+import 'features/student_helping/presentation/pages/support_page.dart';
+import 'features/student_helping/domain/usecases/get_my_results_usecase.dart';
+import 'features/student_helping/domain/usecases/get_result_detail_usecase.dart';
+import 'features/student_helping/domain/usecases/filter_results_usecase.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -264,6 +286,7 @@ Future<void> main() async {
       ),
       GoRoute(path: '/role', builder: (context, state) => const RolePage()),
       GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
+      GoRoute(path: '/forgot-password', builder: (context, state) => const ForgotPasswordPage()),
       GoRoute(
         path: '/verify-room',
         builder: (context, state) => const VerifyRoomPage(),
@@ -478,6 +501,59 @@ Future<void> main() async {
           );
         },
       ),
+      GoRoute(
+        path: '/landing',
+        builder: (context, state) => const LandingPage(),
+      ),
+      GoRoute(
+        path: '/student-dashboard',
+        builder: (context, state) {
+          final repo = StudentDashboardRepositoryImpl(
+            StudentDashboardRemoteDataSource(dioClient),
+          );
+          return BlocProvider(
+            create: (context) => StudentDashboardBloc(
+              getDashboardDataUseCase: GetStudentDashboardDataUseCase(repo),
+            ),
+            child: const StudentDashboardPage(),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/student-dashboard/results',
+        builder: (context, state) {
+          final remoteDS = StudentResultsRemoteDataSource(
+            dioClient: dioClient,
+            socketClient: socketClient,
+          );
+          final repo = StudentResultsRepositoryImpl(remoteDS);
+          return MultiBlocProvider(
+            providers: [
+              BlocProvider<ResultsListBloc>(
+                create: (context) => ResultsListBloc(
+                  getMyResultsUseCase: GetMyResultsUseCase(repo),
+                  filterResultsUseCase: FilterResultsUseCase(),
+                  repository: repo,
+                ),
+              ),
+              BlocProvider<ResultDetailBloc>(
+                create: (context) => ResultDetailBloc(
+                  getResultDetailUseCase: GetResultDetailUseCase(repo),
+                ),
+              ),
+            ],
+            child: const ResultsDashboardPage(),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/student-dashboard/guidelines',
+        builder: (context, state) => const ExamGuidelinesPage(),
+      ),
+      GoRoute(
+        path: '/student-dashboard/support',
+        builder: (context, state) => const SupportPage(),
+      ),
     ],
   );
 
@@ -530,8 +606,14 @@ class MyApp extends StatelessWidget {
       routerConfig: router,
       builder: (context, child) {
         return BlocListener<InstructorOverlayBloc, InstructorOverlayState>(
-          listener: (context, state) {
+          listener: (context, state) async {
             if (state is InstructorOverlayActive) {
+              final role = await SecureStorageHelper.getSelectedRole();
+              print("🔍 [MyApp Overlay] Current user role: $role");
+              if (role == 'student') {
+                print("ℹ️ [MyApp Overlay] User is a student, not showing overlay");
+                return;
+              }
               print(
                 "🚨 [MyApp] Displaying global cheating dialog for student: ${state.violation.studentName}",
               );
