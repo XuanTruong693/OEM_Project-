@@ -53,6 +53,7 @@ class TakeExamBloc extends Bloc<TakeExamEvent, TakeExamState> {
       final int offsetMs = serverNow.difference(DateTime.now()).inMilliseconds;
 
       final examData = {
+        'submission_id': event.submissionId,
         'exam_id': data['exam_id'],
         'exam_title': data['exam_title'] ?? '',
         'duration_minutes': data['duration_minutes'] ?? 60,
