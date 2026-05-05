@@ -296,7 +296,7 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFDCFCE7),
+                    color: state.isKicked ? const Color(0xFFFEE2E2) : const Color(0xFFDCFCE7),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Icon(
@@ -624,7 +624,7 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
 
     return BlocConsumer<TakeExamBloc, TakeExamState>(
       listener: (context, state) {
-        if (state.errorMessage != null && state.errorMessage != _lastShownError) {
+        if (state.errorMessage != null && state.errorMessage != _lastShownError && !state.isKicked) {
           _lastShownError = state.errorMessage;
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(
