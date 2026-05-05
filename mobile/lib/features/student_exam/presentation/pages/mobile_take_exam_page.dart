@@ -34,6 +34,7 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
   bool _isDarkMode = false;
   late final DateTime _pageInitTime;
   String? _lastShownError;
+  int _lastExamSync = -1;
 
   // List of GlobalKeys for scrolling directly to specific question
   final List<GlobalKey> _keys = [];
@@ -298,26 +299,28 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                     color: const Color(0xFFDCFCE7),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Icon(
-                    Icons.check_circle_outline_rounded,
-                    color: Color(0xFF16A34A),
+                  child: Icon(
+                    state.isKicked ? Icons.gavel_rounded : Icons.check_circle_outline_rounded,
+                    color: state.isKicked ? const Color(0xFFDC2626) : const Color(0xFF16A34A),
                     size: 48,
                   ),
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Nộp bài thành công!',
+                  state.isKicked ? 'Bị mời khỏi bài thi!' : 'Nộp bài thành công!',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w900,
-                    color: _isDarkMode ? Colors.white : const Color(0xFF1E293B),
+                    color: state.isKicked ? const Color(0xFFDC2626) : (_isDarkMode ? Colors.white : const Color(0xFF1E293B)),
                     letterSpacing: -0.5,
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Bài thi trắc nghiệm của bạn đã được hệ thống chấm điểm ngay lập tức.',
+                  state.isKicked 
+                    ? 'Bạn đã bị giảng viên mời ra khỏi phòng thi. Hệ thống đã tự động nộp các câu hỏi bạn đã làm.'
+                    : 'Bài thi trắc nghiệm của bạn đã được hệ thống chấm điểm ngay lập tức.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 13,
@@ -641,17 +644,45 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
         if (state.showResultModal) {
           _showResultOverlayModal(context, state);
         }
-        if (state.examData != null && _secondsLeftNotifier.value == 3600) {
-          final startedAtStr = state.examData!['started_at'];
-          final durationMinutes = state.examData!['duration_minutes'] ?? 60;
-          if (startedAtStr != null) {
-            final startTime = DateTime.tryParse(startedAtStr) ?? DateTime.now();
-            final now = DateTime.now();
-            final elapsed = now.difference(startTime).inSeconds;
-            _secondsLeftNotifier.value = (durationMinutes * 60) - elapsed;
-            if (_secondsLeftNotifier.value <= 0) _secondsLeftNotifier.value = 0;
-          } else {
-            _secondsLeftNotifier.value = durationMinutes * 60;
+        if (state.examData != null) {
+          final examData = state.examData!;
+          final lastSync = examData['last_sync'] ?? 0;
+
+          if (lastSync != _lastExamSync) {
+            final isInitialLoad = _lastExamSync == -1;
+            _lastExamSync = lastSync;
+
+            // Recalculate remaining time
+            final startedAtStr = examData['started_at'];
+            final durationMinutes = examData['duration_minutes'] ?? 60;
+
+            DateTime startTime = DateTime.tryParse(startedAtStr ?? '') ?? DateTime.now();
+
+            // AUTHORITATIVE RECALCULATION: New Duration - (CurrentTimeServer - StartTime)
+            DateTime nowServer = DateTime.now().add(Duration(milliseconds: state.timeOffsetMs));
+            int elapsedSeconds = nowServer.difference(startTime).inSeconds;
+            int calculatedRemaining = (durationMinutes * 60) - elapsedSeconds;
+
+            if (calculatedRemaining < 0) calculatedRemaining = 0;
+            _secondsLeftNotifier.value = calculatedRemaining;
+
+            // Notify user of update (except on first load)
+            if (!isInitialLoad) {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Row(
+                    children: [
+                      Icon(Icons.sync_alt, color: Colors.white),
+                      SizedBox(width: 12),
+                      Expanded(child: Text("Cấu hình bài thi đã được cập nhật từ giảng viên.")),
+                    ],
+                  ),
+                  backgroundColor: Colors.blueAccent,
+                  duration: Duration(seconds: 3),
+                ),
+              );
+            }
           }
         }
       },

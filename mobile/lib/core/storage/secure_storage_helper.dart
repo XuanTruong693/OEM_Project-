@@ -94,4 +94,20 @@ class SecureStorageHelper {
     await _storage.write(key: 'exam_time_open', value: timeOpen ?? '');
     await _storage.write(key: 'exam_time_close', value: timeClose ?? '');
   }
+
+  static Future<void> saveUserId(int id) async {
+    await _storage.write(key: 'user_id', value: id.toString());
+  }
+
+  static Future<String?> getUserId() async {
+    return await _storage.read(key: 'user_id');
+  }
+
+  static Future<void> saveFullName(String name) async {
+    await _storage.write(key: 'full_name', value: name);
+  }
+
+  static Future<String?> getFullName() async {
+    return await _storage.read(key: 'full_name');
+  }
 }

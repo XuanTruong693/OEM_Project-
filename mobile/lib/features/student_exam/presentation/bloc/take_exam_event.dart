@@ -53,8 +53,26 @@ class CheckPingAndSyncEvent extends TakeExamEvent {
 
 class SubmitExamEvent extends TakeExamEvent {
   final String submissionId;
-  const SubmitExamEvent({required this.submissionId});
+  final String? reason; // 'time', 'violation', 'kicked', etc.
+  const SubmitExamEvent({required this.submissionId, this.reason});
 
   @override
-  List<Object?> get props => [submissionId];
+  List<Object?> get props => [submissionId, reason];
 }
+
+class StudentKickedEvent extends TakeExamEvent {
+  final String message;
+  const StudentKickedEvent({required this.message});
+
+  @override
+  List<Object?> get props => [message];
+}
+
+class ExamConfigUpdatedEvent extends TakeExamEvent {
+  final Map<String, dynamic> updates;
+  const ExamConfigUpdatedEvent({required this.updates});
+
+  @override
+  List<Object?> get props => [updates];
+}
+
