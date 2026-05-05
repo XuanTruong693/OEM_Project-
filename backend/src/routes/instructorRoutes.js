@@ -42,6 +42,7 @@ router.post("/rooms/:examId/close", ...auth, roomManagementController.closeRoom)
 router.patch("/rooms/:examId/config", ...auth, roomManagementController.updateRoomConfig);
 router.get("/rooms/:examId/students", ...auth, roomManagementController.getRoomStudents);
 router.post("/rooms/students/:submissionId/action", ...auth, roomManagementController.performStudentAction);
+router.post("/rooms/students/:id/device-approval", ...auth, require("../controllers/exam/ExamSessionController").approveDeviceChange);
 
 // ==============================
 // 📊 Dashboard APIs

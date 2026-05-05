@@ -103,3 +103,4 @@ ai_services/tests/
 backend/uploads/
 models/my_finetuned_mpnet_oem_v3/
 
+test_scripts/

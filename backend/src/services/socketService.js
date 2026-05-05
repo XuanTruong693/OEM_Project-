@@ -136,6 +136,7 @@ function initializeSocket(httpServer) {
       localActiveSubmissions.set(submissionId, subData);
 
       socket.join(`submission:${submissionId}`);
+      socket.join(`exam:${examId}`); // Students must join exam room for global updates
       io.to(`exam:${examId}`).emit("student:registered", subData);
     });
 
@@ -159,7 +160,7 @@ function broadcastCheatingEvent(examId, cheatingData) {
   // Remove .volatile to ensure notifications are delivered even during brief connectivity jitter
   io.to(`exam:${examId}`).emit("cheating:detected", {
     ...cheatingData,
-    detectedAt: new Date(cheatingData.detectedAt).toISOString(),
+    detectedAt: cheatingData.detectedAt ? new Date(cheatingData.detectedAt).toISOString() : new Date().toISOString(),
     timestamp: new Date().toISOString(),
     examId: parseInt(examId),
   });

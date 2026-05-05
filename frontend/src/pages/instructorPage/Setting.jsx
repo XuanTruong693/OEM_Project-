@@ -1,8 +1,39 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useUi } from "../../context/UiContext.jsx";
+import axiosClient from "../../api/axiosClient";
 
 export default function Setting() {
   const { lang, setLang } = useUi();
+  const [twoFA, setTwoFA] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    axiosClient.get("/profile")
+      .then(res => {
+        if (res.data) {
+          const userData = res.data.data || res.data.user;
+          if (userData) {
+            setTwoFA(!!userData.is_two_factor_enabled);
+          }
+        }
+      })
+      .catch(err => console.error("Error loading profile:", err));
+  }, []);
+
+  const handleToggle2FA = () => {
+    axiosClient.post("/profile/2fa/toggle")
+      .then(res => {
+        if (res.data && res.data.success) {
+          setTwoFA(res.data.is_two_factor_enabled);
+          setMessage(res.data.message);
+          setTimeout(() => setMessage(""), 3000);
+        }
+      })
+      .catch(err => {
+        console.error("Error toggling 2fa:", err);
+      });
+  };
+
 
   const Toggle = ({ checked, onChange }) => (
     <button
@@ -79,9 +110,30 @@ export default function Setting() {
         </div>
       </section>
 
+      {/* 2FA Section */}
+      <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm mt-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="font-medium text-slate-800">Xác thực 2 bước (2FA)</div>
+            <div className="text-sm text-slate-500">
+              Bật xác thực 2 bước (2FA) để bảo vệ tài khoản của bạn
+            </div>
+          </div>
+          <div>
+            <Toggle checked={twoFA} onChange={handleToggle2FA} />
+          </div>
+        </div>
+        {message && (
+          <div className="mt-2 text-sm text-emerald-600 font-medium">
+            {message}
+          </div>
+        )}
+      </section>
+
       <p className="text-xs text-slate-500 mt-3">
         Gợi ý: Một số trang sẽ phản ứng ngay; phần còn lại sẽ được áp dụng dần.
       </p>
     </div>
   );
 }
+

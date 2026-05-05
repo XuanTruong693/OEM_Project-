@@ -51,9 +51,19 @@ const User = sequelize.define(
       defaultValue: false,
       allowNull: false,
     },
+    two_factor_secret: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    is_two_factor_enabled: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: false,
+    },
   },
   { tableName: "users", timestamps: false }
 );
+
 
 // --- Model UserVerifiedRoom ---
 const UserVerifiedRoom = sequelize.define(

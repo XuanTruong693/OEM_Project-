@@ -20,6 +20,10 @@ const LoginPage = () => {
   const [maxAttemptsInfo, setMaxAttemptsInfo] = useState(null);
   const role = sessionStorage.getItem("selectedRole") || localStorage.getItem("selectedRole") || "";
   const [showPassword, setShowPassword] = useState(false);
+  const [show2FA, setShow2FA] = useState(false);
+  const [otpForm, setOtpForm] = useState("");
+  const [email2FA, setEmail2FA] = useState("");
+
 
   useEffect(() => {
     const fromRoleSelection = location.state?.fromRoleSelection;
@@ -101,7 +105,16 @@ const LoginPage = () => {
 
       console.log("[DEV] ✅ Đăng nhập thành công:", res.data);
 
+      if (res.data.status === "require_2fa") {
+        setShow2FA(true);
+        setEmail2FA(res.data.email);
+        setSuccess(res.data.message || "Vui lòng nhập mã 2FA được gửi tới email của bạn.");
+        setLoading(false);
+        return;
+      }
+
       setSuccess("🎉 Đăng nhập thành công! Đang chuyển hướng...");
+
 
       setTimeout(() => {
         const token = res.data.token;
@@ -207,6 +220,59 @@ const LoginPage = () => {
           "Đăng nhập thất bại, vui lòng thử lại.",
       });
       setSuccess("");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerify2FA = async (e) => {
+    e.preventDefault();
+    if (!otpForm.trim()) {
+      setErrors({ general: "Vui lòng nhập mã OTP" });
+      return;
+    }
+    setLoading(true);
+    setErrors({});
+    try {
+      const res = await axiosClient.post("/auth/verify-2fa", {
+        email: email2FA,
+        otp: otpForm,
+      });
+
+      setSuccess("🎉 Xác thực 2FA thành công! Đang chuyển hướng...");
+      setTimeout(() => {
+        const token = res.data.token;
+        const refreshToken = res.data.refreshToken;
+        const user = res.data.user;
+        const userRole = user.role;
+        const fullName = user.full_name || "Người dùng";
+        const avatar = user.avatar || "/icons/UI Image/default-avatar.png";
+
+        localStorage.setItem("token", token);
+        sessionStorage.setItem("token", token);
+        if (refreshToken) {
+          localStorage.setItem("refreshToken", refreshToken);
+          sessionStorage.setItem("refreshToken", refreshToken);
+        }
+        localStorage.setItem("user", JSON.stringify(user));
+        sessionStorage.setItem("user", JSON.stringify(user));
+        localStorage.setItem("role", userRole);
+        sessionStorage.setItem("role", userRole);
+        localStorage.setItem("fullname", fullName);
+        sessionStorage.setItem("fullname", fullName);
+        localStorage.setItem("avatar", avatar);
+        sessionStorage.setItem("avatar", avatar);
+
+        const dashboardPath = userRole === "admin"
+          ? "/admin-dashboard"
+          : userRole === "instructor"
+            ? "/instructor-dashboard"
+            : "/student-dashboard";
+        navigate(dashboardPath);
+      }, 1500);
+    } catch (err) {
+      console.error("❌ [2FA Error]:", err);
+      setErrors({ general: err.response?.data?.message || "Xác thực 2FA thất bại" });
     } finally {
       setLoading(false);
     }
@@ -375,92 +441,131 @@ const LoginPage = () => {
           </div>
 
           <h3 className="text-2xl md:text-3xl font-bold text-red-600 mb-6 text-center uppercase">
-            Đăng nhập
+            {show2FA ? "Xác thực 2FA" : "Đăng nhập"}
           </h3>
 
-          <form className="space-y-4" onSubmit={handleLogin}>
-            <div>
-              <input
-                type="email"
-                name="email"
-                value={form.email}
-                onChange={handleChange}
-                placeholder="Email"
-                disabled={loading}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none text-gray-800 placeholder-gray-400"
-              />
-              {errors.email && (
-                <p className="text-red-500 text-sm mt-1">{errors.email}</p>
-              )}
-            </div>
-
-            <div>
-              <div className="relative">
+          {show2FA ? (
+            <form className="space-y-4" onSubmit={handleVerify2FA}>
+              <div className="text-sm text-slate-600 text-center mb-4">
+                Mã OTP đã được gửi đến email <strong>{email2FA}</strong>. Vui lòng kiểm tra và nhập mã.
+              </div>
+              <div>
                 <input
-                  type={showPassword ? "text" : "password"}
-                  name="password"
-                  value={form.password}
+                  type="text"
+                  maxLength={6}
+                  placeholder="Nhập mã OTP 6 số"
+                  value={otpForm}
+                  onChange={(e) => setOtpForm(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none text-gray-800 text-center font-bold tracking-widest text-xl placeholder-gray-400"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className={`w-full py-3 rounded-lg text-white font-semibold mt-2 active:scale-95 transition-all flex items-center justify-center gap-2 ${loading
+                  ? "bg-gray-400 cursor-not-allowed"
+                  : "bg-blue-600 hover:bg-blue-700"
+                  }`}
+              >
+                {loading ? <LoadingSpinner size="sm" text="Đang xác thực..." /> : "Xác nhận OTP"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShow2FA(false);
+                  setOtpForm("");
+                }}
+                className="w-full py-2 text-center text-sm text-blue-500 hover:underline"
+              >
+                Quay lại
+              </button>
+            </form>
+          ) : (
+            <form className="space-y-4" onSubmit={handleLogin}>
+              <div>
+                <input
+                  type="email"
+                  name="email"
+                  value={form.email}
                   onChange={handleChange}
-                  placeholder="Mật khẩu"
+                  placeholder="Email"
                   disabled={loading}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none text-gray-800 placeholder-gray-400"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((s) => !s)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-900"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showPassword ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-5 0-9-4-9-7s4-7 9-7a9.97 9.97 0 013.293.546M3 3l18 18" />
-                    </svg>
-                  ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                  )}
-                </button>
+                {errors.email && (
+                  <p className="text-red-500 text-sm mt-1">{errors.email}</p>
+                )}
               </div>
-              {errors.password && (
-                <p className="text-red-500 text-sm mt-1">{errors.password}</p>
-              )}
-              <div className="text-right mt-1">
-                <span
-                  className="text-blue-500 text-xs cursor-pointer hover:underline"
-                  onClick={() => navigate("/forgot-password")}
-                >
-                  Quên mật khẩu?
-                </span>
+
+              <div>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    name="password"
+                    value={form.password}
+                    onChange={handleChange}
+                    placeholder="Mật khẩu"
+                    disabled={loading}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none text-gray-800 placeholder-gray-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((s) => !s)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-900"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-5 0-9-4-9-7s4-7 9-7a9.97 9.97 0 013.293.546M3 3l18 18" />
+                      </svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+                {errors.password && (
+                  <p className="text-red-500 text-sm mt-1">{errors.password}</p>
+                )}
+                <div className="text-right mt-1">
+                  <span
+                    className="text-blue-500 text-xs cursor-pointer hover:underline"
+                    onClick={() => navigate("/forgot-password")}
+                  >
+                    Quên mật khẩu?
+                  </span>
+                </div>
               </div>
-            </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className={`w-full py-3 rounded-lg text-white font-semibold mt-2 active:scale-95 transition-all flex items-center justify-center gap-2 ${loading
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-blue-600 hover:bg-blue-700"
-                }`}
-            >
-              {loading ? (
-                <LoadingSpinner size="sm" text="Đang đăng nhập..." />
-              ) : (
-                "Đăng nhập"
-              )}
-            </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className={`w-full py-3 rounded-lg text-white font-semibold mt-2 active:scale-95 transition-all flex items-center justify-center gap-2 ${loading
+                  ? "bg-gray-400 cursor-not-allowed"
+                  : "bg-blue-600 hover:bg-blue-700"
+                  }`}
+              >
+                {loading ? (
+                  <LoadingSpinner size="sm" text="Đang đăng nhập..." />
+                ) : (
+                  "Đăng nhập"
+                )}
+              </button>
 
-            <span className="block text-center text-gray-500 text-sm mt-3">
-              Hoặc đăng nhập bằng
-            </span>
-            <div className="flex justify-center mt-3">
-              <GoogleLogin
-                onSuccess={handleGoogleLoginSuccess}
-                onError={handleGoogleLoginError}
-              />
-            </div>
-          </form>
+              <span className="block text-center text-gray-500 text-sm mt-3">
+                Hoặc đăng nhập bằng
+              </span>
+              <div className="flex justify-center mt-3">
+                <GoogleLogin
+                  onSuccess={handleGoogleLoginSuccess}
+                  onError={handleGoogleLoginError}
+                />
+              </div>
+            </form>
+          )}
+
 
           {errors.general && (
             <p className="text-red-500 text-sm mt-2 text-center">

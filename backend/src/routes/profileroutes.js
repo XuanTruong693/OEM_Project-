@@ -65,4 +65,27 @@ router.post('/avatar-test', upload.single('avatar'), (req, res) => {
 	}
 });
 
+const { User } = require("../models/User");
+
+// --- Enable 2FA ---
+router.post("/2fa/toggle", verifyToken, async (req, res) => {
+	try {
+		const user = await User.findByPk(req.user.id);
+		if (!user) return res.status(404).json({ success: false, message: "Không tìm thấy người dùng" });
+
+		const nextStatus = !user.is_two_factor_enabled;
+		await user.update({ is_two_factor_enabled: nextStatus });
+
+		return res.json({
+			success: true,
+			is_two_factor_enabled: nextStatus,
+			message: nextStatus ? "Đã bật xác thực 2FA thành công!" : "Đã tắt xác thực 2FA thành công!"
+		});
+	} catch (err) {
+		console.error("❌ Lỗi toggle 2fa:", err);
+		return res.status(500).json({ success: false, message: "Lỗi server" });
+	}
+});
+
 module.exports = router;
+

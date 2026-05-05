@@ -19,6 +19,9 @@ const {
   getExamPublicInfo,
   getSubmissionStatus,
   getSubmissionDetail,
+  verifyDevice,
+  requestDeviceChange,
+  approveDeviceChange,
 } = require("../controllers/studentExamController");
 
 // Import proctor event handler from submission controller
@@ -65,6 +68,10 @@ router.post("/submissions/:id/proctor-event", verifyToken, requireRoomVerificati
 router.delete("/submissions/:id/reset-cheating", verifyToken, requireRoomVerification, resetCheatingLogs);
 
 router.post("/submissions/:id/submit", verifyToken, requireRoomVerification, submitExam);
+
+router.post("/submissions/:id/verify-device", verifyToken, requireRoomVerification, verifyDevice);
+router.post("/submissions/:id/request-device-change", verifyToken, requireRoomVerification, requestDeviceChange);
+router.post("/submissions/:id/approve-device-change", verifyToken, approveDeviceChange);
 
 // Results
 router.get("/results/my", verifyToken, myResults);

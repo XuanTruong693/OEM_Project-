@@ -831,7 +831,7 @@ async function verifyStudentCardByCode(req, res) {
         if (!Array.isArray(cardRows) || cardRows.length === 0) {
             return res.status(404).json({
                 ok: false,
-                message: `❌ Không tìm thấy dữ liệu thẻ sinh viên cho MSSV: ${student_code}. Vui lòng liên hệ Giảng viên hoặc Admin để được cập nhật dữ liệu thi.`
+                message: `Không tìm thấy dữ liệu thẻ sinh viên cho MSSV: ${student_code}. Vui lòng liên hệ Giảng viên hoặc Admin để được cập nhật dữ liệu thi.`
             });
         }
 
@@ -842,7 +842,7 @@ async function verifyStudentCardByCode(req, res) {
         if (!cardBlob) {
             return res.status(400).json({
                 ok: false,
-                message: `❌ Dữ liệu thẻ sinh viên của MSSV ${student_code} bị thiếu ảnh. Vui lòng báo lại với Admin.`
+                message: `Dữ liệu thẻ sinh viên của MSSV ${student_code} bị thiếu ảnh. Vui lòng báo lại với Admin.`
             });
         }
 

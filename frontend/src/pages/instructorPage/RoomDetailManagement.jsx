@@ -26,6 +26,7 @@ const RoomDetailManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [error, setError] = useState(null);
   const [toast, setToast] = useState(null);
+  const [deviceRequests, setDeviceRequests] = useState([]);
 
   // Config form state
   const [config, setConfig] = useState({
@@ -133,11 +134,18 @@ const RoomDetailManagement = () => {
     // Listen for cheating detections to update counts in real-time
     socketRef.current.on("cheating:detected", (data) => {
       if (String(data.examId) === String(examId)) {
-        setStudents(prev => prev.map(s =>
-          String(s.submission_id) === String(data.submissionId)
-            ? { ...s, cheating_count: data.cheatingCount }
-            : s
-        ));
+        if (data.deviceChange) {
+          setDeviceRequests(prev => {
+            if (prev.find(r => r.submissionId === data.submissionId)) return prev;
+            return [...prev, data];
+          });
+        } else {
+          setStudents(prev => prev.map(s =>
+            String(s.submission_id) === String(data.submissionId)
+              ? { ...s, cheating_count: data.cheatingCount }
+              : s
+          ));
+        }
       }
     });
 

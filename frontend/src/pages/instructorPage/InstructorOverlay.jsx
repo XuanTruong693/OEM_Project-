@@ -17,6 +17,14 @@ export default function InstructorOverlay() {
   const lastEventRef = useRef(null);
   const audioRef = useRef(null);
   const [examIds, setExamIds] = useState([]); // List of exams instructor is monitoring
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+
+  useEffect(() => {
+    if (toast.show) {
+      const timer = setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast.show]);
 
   // ===== Extract examId from current route or use context =====
   const getExamIdFromRoute = () => {
@@ -123,6 +131,11 @@ export default function InstructorOverlay() {
     socket.on("cheating:detected", (data) => {
       console.log("🚨 [Instructor] Cheating detected:", data);
 
+      if (data && data.deviceChangeApproval) {
+        console.log("ℹ️ Skipping own device change approval event in instructor overlay");
+        return;
+      }
+
       // ✅ Phát âm thanh cảnh báo
       playAlarmSound();
 
@@ -133,13 +146,17 @@ export default function InstructorOverlay() {
       const newNotification = {
         id: data.submissionId,
         student_name: data.studentName,
-        timestamp: data.detectedAt,
+        timestamp: data.detectedAt || new Date().toISOString(),
         details: data.eventDetails || {},
         cheating_count: data.cheatingCount,
         severity: data.severity,
         eventType: data.eventType,
         examId: data.examId,
         queueId: Date.now() + Math.random(), // Unique ID for queue item
+        deviceChange: !!data.deviceChange,
+        firstDeviceName: data.firstDeviceName,
+        secondDeviceName: data.secondDeviceName,
+        reason: data.reason
       };
 
       setQueue((prev) => {
@@ -313,6 +330,7 @@ export default function InstructorOverlay() {
       screen_share_stopped: "[AI PHÁT HIỆN] NGẮT CHIA SẺ MÀN HÌNH GỌI THI",
       prolonged_away: "[AI PHÁT HIỆN] VẮNG MẶT QUÁ LÂU (>15 GIÂY)"
     };
+    if (!eventType) return "ĐỔI THIẾT BỊ";
     return typeMap[eventType] || eventType.replace(/_/g, ' ').toUpperCase();
   };
 
@@ -353,8 +371,9 @@ export default function InstructorOverlay() {
       drag_drop_attempt: () => `Thí sinh thực hiện kéo thả tập tin hoặc nội dung từ bên ngoài vào khu vực làm bài.`,
     };
 
+    if (!eventType) return "Yêu cầu thay đổi thiết bị dự thi.";
     const descFunc = descriptions[eventType];
-    const baseDesc = descFunc ? descFunc() : `Hành vi bất thường ghi nhận: ${eventType}`;
+    const baseDesc = descFunc ? descFunc() : `Hành vi bất thường ghi nhận: ${eventType || ''}`;
     return details.message ? `${baseDesc} (${details.message})` : baseDesc;
   };
 
@@ -401,7 +420,148 @@ export default function InstructorOverlay() {
     return () => clearTimeout(timer);
   }, [event, show, queue.length]);
 
-  if (!show || !event) return null;
+  if (!show || !event) {
+    return toast.show ? (
+      <div className={`fixed top-5 right-5 z-[10000] px-4 py-3 rounded-xl shadow-lg font-semibold text-white transition-all duration-300 transform translate-y-0 ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-red-600'}`}>
+        {toast.type === 'success' ? '✅' : '❌'} {toast.message}
+      </div>
+    ) : null;
+  }
+
+  if (event.deviceChange) {
+    return (
+      <>
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden border-2 border-amber-500">
+          {/* Header - Amber Alert Bar */}
+          <div className="bg-gradient-to-r from-amber-600 to-orange-600 px-6 py-4 flex items-center justify-center gap-3">
+            <div className="text-4xl">⚠️</div>
+            <h2 className="text-2xl font-bold text-white uppercase tracking-wider">Xin đổi thiết bị</h2>
+          </div>
+
+          {/* Content */}
+          <div className="p-6 space-y-4">
+            {/* Student Name */}
+            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                Sinh viên
+              </p>
+              <p className="text-xl font-bold text-slate-900">
+                {event.student_name}
+              </p>
+            </div>
+
+            {/* Device Details */}
+            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                Lý do xin đổi máy
+              </p>
+              <p className="text-sm font-semibold text-amber-700 leading-relaxed bg-amber-50/50 p-3 rounded border border-amber-100">
+                {event.reason || "Không có lý do"}
+              </p>
+            </div>
+
+            {/* Devices transition */}
+            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                Thiết bị truy cập
+              </p>
+              <div className="text-xs text-slate-600 space-y-1">
+                <p><strong>Máy 1:</strong> {event.firstDeviceName || "Không rõ"}</p>
+                <p><strong>Máy 2:</strong> {event.secondDeviceName || "Không rõ"}</p>
+              </div>
+            </div>
+
+            {/* Timestamp */}
+            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                Thời gian yêu cầu
+              </p>
+              <p className="text-sm text-slate-700 font-mono">
+                {new Date(event.timestamp).toLocaleString("vi-VN")}
+              </p>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex items-center gap-3">
+            <button
+              onClick={async () => {
+                const subId = event.id || event.submissionId;
+                if (!subId) {
+                  setToast({ show: true, message: "Không tìm thấy mã bài nộp!", type: 'error' });
+                  return;
+                }
+                try {
+                  const res = await axiosClient.post(`/instructor/rooms/students/${subId}/device-approval`, { action: 'approved' });
+                  setToast({ show: true, message: res.data?.message || "Phê duyệt đổi máy thành công!", type: 'success' });
+                  setQueue((prev) => {
+                    const remaining = prev.filter((n) => {
+                      const idMatch = (n.id || n.submissionId) === subId;
+                      const nameMatch = n.student_name === event?.student_name;
+                      return !idMatch && !nameMatch;
+                    });
+                    if (remaining.length > 0) {
+                      setEvent(remaining[0]);
+                    } else {
+                      setShow(false);
+                      setEvent(null);
+                    }
+                    return remaining;
+                  });
+                } catch (e) {
+                  const msg = e.response?.data?.message || e.message || "Phê duyệt thất bại!";
+                  setToast({ show: true, message: `Phê duyệt thất bại: ${msg}`, type: 'error' });
+                }
+              }}
+              className="flex-1 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition duration-200 flex items-center justify-center gap-2 shadow-lg"
+            >
+              Duyệt đổi máy
+            </button>
+            <button
+              onClick={async () => {
+                const subId = event.id || event.submissionId;
+                if (!subId) {
+                  setToast({ show: true, message: "Không tìm thấy mã bài nộp!", type: 'error' });
+                  return;
+                }
+                try {
+                  const res = await axiosClient.post(`/instructor/rooms/students/${subId}/device-approval`, { action: 'rejected' });
+                  setToast({ show: true, message: res.data?.message || "Đã từ chối yêu cầu đổi máy.", type: 'success' });
+                  setQueue((prev) => {
+                    const remaining = prev.filter((n) => {
+                      const idMatch = (n.id || n.submissionId) === subId;
+                      const nameMatch = n.student_name === event?.student_name;
+                      return !idMatch && !nameMatch;
+                    });
+                    if (remaining.length > 0) {
+                      setEvent(remaining[0]);
+                    } else {
+                      setShow(false);
+                      setEvent(null);
+                    }
+                    return remaining;
+                  });
+                } catch (e) {
+                  const msg = e.response?.data?.message || e.message || "Từ chối thất bại!";
+                  setToast({ show: true, message: `Từ chối thất bại: ${msg}`, type: 'error' });
+                }
+              }}
+              className="flex-1 px-6 py-3 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl font-bold transition duration-200 flex items-center justify-center gap-2 border border-red-200"
+            >
+              Từ chối
+            </button>
+          </div>
+        </div>
+      </div>
+      {toast.show && (
+        <div className={`fixed top-5 right-5 z-[10000] px-4 py-3 rounded-xl shadow-lg font-semibold text-white transition-all duration-300 transform translate-y-0 ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-red-600'}`}>
+          {toast.type === 'success' ? '✅' : '❌'} {toast.message}
+        </div>
+      )}
+      </>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40">

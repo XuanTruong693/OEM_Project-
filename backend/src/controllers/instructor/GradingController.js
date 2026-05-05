@@ -431,7 +431,7 @@ async function updateStudentAnswerScore(req, res) {
 
         const aiSuggestedScore = Number(oldAnswer[0]?.ai_suggested_score ?? 0);
         // Only trigger learning if the instructor actually CHANGED the AI's recommendation
-        const scoreCorrected = Math.abs(score - aiSuggestedScore) > 0.05;
+        const scoreCorrected = Number(score) !== aiSuggestedScore;
         let aiLearned = false;
 
         // Update answer score
@@ -628,7 +628,7 @@ async function updateStudentExamScore(req, res) {
                         const new_score = Number(item.score);
 
                         // GUARD: Only learn if score was actually changed
-                        if (Math.abs(new_score - old_score) > 0.05) {
+                        if (new_score !== old_score) {
                             samples.push({
                                 student_answer: qDetail[0].answer_text,
                                 model_answer: qDetail[0].model_answer,
@@ -637,17 +637,6 @@ async function updateStudentExamScore(req, res) {
                                 max_points: Number(qDetail[0].max_points || 10),
                                 feedback: item.feedback || `Bulk Instructor correction`
                             });
-
-                            // Also append to local file for consistency
-                            saveToAiTrainingData({
-                                question: qDetail[0].question_text,
-                                model_answer: qDetail[0].model_answer,
-                                student_answer: qDetail[0].answer_text,
-                                score: item.score,
-                                ai_score: old_score,
-                                max_points: qDetail[0].max_points,
-                                feedback: item.feedback || ''
-                            }).catch(e => { });
                         } else {
                             console.log(`⏭️ [AI Learning] Skipped answer ${item.answer_id} (no change: ${old_score} == ${new_score})`);
                         }

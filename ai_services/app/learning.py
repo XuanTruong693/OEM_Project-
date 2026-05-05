@@ -323,7 +323,7 @@ class LearningEngine:
                         # Filter: only keep real corrections
                         filtered = [
                             p for p in data 
-                            if abs(float(p.get('confirmed_score', 0)) - float(p.get('ai_score', 0))) > 0.05
+                            if float(p.get('confirmed_score', 0)) != float(p.get('ai_score', 0))
                         ]
                         skipped = len(data) - len(filtered)
                         self.patterns_cache = filtered
@@ -337,7 +337,7 @@ class LearningEngine:
         try:
             filtered = [
                 p for p in self.patterns_cache 
-                if abs(float(p.get('confirmed_score', 0)) - float(p.get('ai_score', 0))) > 0.05
+                if float(p.get('confirmed_score', 0)) != float(p.get('ai_score', 0))
             ]
             skipped = len(self.patterns_cache) - len(filtered)
             with open(LEARNED_DATA_PATH, 'w', encoding='utf-8') as f:
@@ -450,7 +450,7 @@ class LearningEngine:
                 }
                 
                 # GUARD: Skip if instructor didn't actually change the score
-                if abs(pattern["confirmed_score"] - pattern["ai_score"]) <= 0.05:
+                if pattern["confirmed_score"] == pattern["ai_score"]:
                     skipped_no_change += 1
                     continue
                 
@@ -699,7 +699,7 @@ class LearningEngine:
                            confirmed_score: float, max_points: float = 1.0, 
                            feedback: str = "", ai_score: float = None) -> None:
         # GUARD: Skip if instructor didn't change the score
-        if ai_score is not None and abs(float(confirmed_score) - float(ai_score)) <= 0.05:
+        if ai_score is not None and float(confirmed_score) == float(ai_score):
             print(f"[Learning] Skipped add_learned_pattern (no change): ai={ai_score} == gv={confirmed_score} for '{student_answer[:30]}...'")
             return
         

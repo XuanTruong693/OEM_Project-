@@ -74,16 +74,16 @@ const frontendProc = startProcess(
 );
 
 // Start AI Service with venv Python
-// Use cmd /c with full absolute path to avoid path resolution issues
 const aiPythonPath = path.join(ROOT_DIR, 'ai_services', '.venv', 'Scripts', 'python.exe');
 const aiProc = startProcess(
     'AI',
-    'cmd',
-    ['/c', `"${aiPythonPath}" -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload`],
+    aiPythonPath,
+    ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '8000', '--reload'],
     path.join(ROOT_DIR, 'ai_services'),
     colors.magenta,
     { PYTHONIOENCODING: 'utf-8' }
 );
+
 
 // Handle Ctrl+C
 process.on('SIGINT', () => {

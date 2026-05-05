@@ -190,13 +190,12 @@ exports.postProctorEvent = async (req, res) => {
       studentId = subRows[0].user_id;
       examId = subRows[0].exam_id;
       const studentName = subRows[0].student_name || `Student ${studentId}`;
-      const currentCount = reqCheatingCount !== undefined ? parseInt(reqCheatingCount) : (subRows[0].cheating_count || 0) + 1;
-
-      // Cập nhật lại số lần vi phạm vào bảng submissions
-      await pool.query(
-        "UPDATE submissions SET cheating_count = ? WHERE id = ?",
-        [currentCount, submissionId]
+      // Lấy số lượng vi phạm thực tế từ bảng logs
+      const [countRow] = await pool.query(
+        "SELECT COUNT(*) as cnt FROM cheating_logs WHERE submission_id = ? AND event_type != 'admin_bypass'",
+        [submissionId]
       );
+      const currentCount = reqCheatingCount !== undefined ? parseInt(reqCheatingCount) : (countRow[0]?.cnt || 0) + 1;
 
       // Broadcast immediately
       broadcastCheatingEvent(examId, {
@@ -488,7 +487,7 @@ exports.getStudentCheatingDetails = async (req, res) => {
       [submissionId]
     );
 
-    if (subCheck.length > 0 && totalFromLogs > subCheck[0].cheating_count) {
+    if (subCheck.length > 0 && totalFromLogs !== subCheck[0].cheating_count) {
       console.log(`🔄 [Sync] Correcting cheating_count for submission ${submissionId}: ${subCheck[0].cheating_count} -> ${totalFromLogs}`);
       await conn.query(
         "UPDATE submissions SET cheating_count = ? WHERE id = ?",
@@ -552,7 +551,7 @@ exports.approveStudentScores = async (req, res) => {
             );
 
             // Gửi dữ liệu training cho AI (Bất đồng bộ - Fire and Forget)
-            if (qInfo.type === 'Essay' && Math.abs(newScore - qInfo.old_score) > 0.05) {
+            if (qInfo.type === 'Essay' && parseFloat(newScore) !== parseFloat(qInfo.old_score)) {
               const aiUrl = process.env.AI_SERVICE_URL || "http://127.0.0.1:8000";
               axios.post(`${aiUrl}/learn/from-correction`, {
                 student_answer: qInfo.answer_text,

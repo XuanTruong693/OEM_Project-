@@ -207,6 +207,65 @@ export default function PrepareExam() {
     });
   }, []);
 
+  const [deviceApprovalState, setDeviceApprovalState] = useState({
+    canEnter: true,
+    status: 'none',
+    msg: '',
+    reason: ''
+  });
+
+  useEffect(() => {
+    if (!submissionId) return;
+
+    let pollInterval;
+
+    const checkDevice = async () => {
+      try {
+        const screenInfo = `${window.screen.width}x${window.screen.height}`;
+        const userAgent = navigator.userAgent;
+        let fingerprint = localStorage.getItem('student_device_fingerprint');
+        if (!fingerprint) {
+          fingerprint = 'dev_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11);
+          localStorage.setItem('student_device_fingerprint', fingerprint);
+        }
+
+        let deviceName = "PC / Laptop";
+        if (/android/i.test(userAgent)) deviceName = "Android Mobile";
+        else if (/iphone|ipad/i.test(userAgent)) deviceName = "iOS Device";
+        else if (/macintosh/i.test(userAgent)) deviceName = "Mac Device";
+        deviceName += ` (${screenInfo})`;
+
+        const res = await axiosClient.post(`/submissions/${submissionId}/verify-device`, {
+          fingerprint_id: fingerprint,
+          device_name: deviceName
+        });
+
+        if (res.data) {
+          if (res.data.can_enter) {
+            setDeviceApprovalState({ canEnter: true, status: 'approved', msg: '', reason: '' });
+          } else {
+            setDeviceApprovalState(prev => ({
+              ...prev,
+              canEnter: false,
+              status: res.data.status,
+              msg: res.data.msg
+            }));
+          }
+        }
+      } catch (err) {
+        console.error("verifyDevice error:", err);
+      }
+    };
+
+    checkDevice();
+
+    pollInterval = setInterval(() => {
+      checkDevice();
+    }, 5000);
+
+    return () => clearInterval(pollInterval);
+  }, [submissionId]);
+
   useEffect(() => {
     if (!submissionId || !examId || isVerifyingRef.current) return;
     isVerifyingRef.current = true;
@@ -892,14 +951,14 @@ export default function PrepareExam() {
         blinkCountRef.current = 0;
         blinkStateRef.current = "calibrating";
         smoothedEarRef.current = null;
-        rollingMaxEarRef.current = 0.3; 
+        rollingMaxEarRef.current = 0.3;
         setBlinkCount(0);
         setBlinkPhase("detecting");
         setLeftEyePct(0);
         setRightEyePct(0);
 
         const baselineSamples = [];
-        const EMA_ALPHA = 0.4; 
+        const EMA_ALPHA = 0.4;
         let faceLostCount = 0;
 
         blinkIntervalRef.current = setInterval(async () => {
@@ -938,7 +997,7 @@ export default function PrepareExam() {
 
             if (smoothedEarRef.current === null) smoothedEarRef.current = rawAvgEAR;
             else smoothedEarRef.current = EMA_ALPHA * rawAvgEAR + (1 - EMA_ALPHA) * smoothedEarRef.current;
-            
+
             const currentEar = smoothedEarRef.current;
 
             // ── GIAI ĐOẠN 1: Calibration (1 giây)
@@ -948,10 +1007,10 @@ export default function PrepareExam() {
                 const calPct = Math.round((baselineSamples.length / 25) * 100);
                 setLeftEyePct(calPct);
                 setRightEyePct(calPct);
-                
+
                 if (baselineSamples.length >= 25) {
                   const sorted = [...baselineSamples].sort((a, b) => b - a);
-                  rollingMaxEarRef.current = sorted[Math.floor(sorted.length * 0.2)]; 
+                  rollingMaxEarRef.current = sorted[Math.floor(sorted.length * 0.2)];
                   blinkStateRef.current = "open";
                 }
               }
@@ -1153,7 +1212,7 @@ export default function PrepareExam() {
             );
 
             // TỰ ĐỘNG CHỤP khi giữ ổn định 3 giây (vòng xanh)
-            if (ok && !facePreviewUrl) {
+            if (ok && !facePreviewBlobRef.current) {
               stableOkCountRef.current += 1;
               if (stableOkCountRef.current >= 7) {
                 // Final verification: kiểm tra face lần cuối trước khi chụp
@@ -1580,6 +1639,38 @@ export default function PrepareExam() {
     } finally {
       setIsVerifyingFace(false);
     }
+  };
+
+  const resetFaceStep = () => {
+    // Dừng camera và các interval hiện tại
+    try {
+      streamRef.current?.getTracks()?.forEach((t) => t.stop());
+    } catch { }
+    clearInterval(guideIntervalRef.current);
+    clearInterval(blinkIntervalRef.current);
+
+    // Reset các trạng thái của Bước 2
+    setFaceOk(false);
+    setFaceErr("");
+    setFaceUploaded(false);
+    setFaceVerified(false);
+    setFacePreviewUrl("");
+    setFaceVerifyLog("");
+    setFacesCompared(false);
+    setCompareLog("");
+    setUploadSuccessMsg("");
+    facePreviewBlobRef.current = null;
+
+    // Reset trạng thái hướng dẫn
+    setFaceGuideOk(false);
+    setFaceGuideMsg("Hãy căn khuôn mặt vào khung và nhìn thẳng");
+    setBlinkPhase("idle");
+    setBlinkCount(0);
+    stableOkCountRef.current = 0;
+    prevFacePositionRef.current = null;
+
+    // Khởi động lại camera để SV chụp lại
+    startCamera();
   };
 
   // So sánh 2 khuôn mặt và CHỈ LƯU VÀO DB NẾU PASS
@@ -2333,6 +2424,19 @@ export default function PrepareExam() {
                     }`}
                 >
                   {faceVerifyLog}
+
+                  {/* Nút chụp lại nếu xác minh khuôn mặt thất bại */}
+                  {!faceVerified && !isVerifyingFace && (
+                    <div className="mt-3">
+                      <button
+                        onClick={resetFaceStep}
+                        className="px-3 py-2 rounded-lg text-white font-semibold shadow transition hover:brightness-105 bg-amber-500 hover:bg-amber-600 flex items-center gap-2"
+                      >
+                        <RefreshCw size={16} />
+                        Chụp lại khuôn mặt
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -3183,6 +3287,64 @@ export default function PrepareExam() {
             >
               <RefreshCw className="w-5 h-5" /> Đã tắt, quét lại thiết bị
             </button>
+          </div>
+        </div>
+      )}
+
+      {!deviceApprovalState.canEnter && (
+        <div className="fixed inset-0 z-[99999] bg-slate-900/95 flex items-center justify-center p-4 backdrop-blur-md">
+          <div className="max-w-md w-full bg-slate-800/80 border border-slate-700 p-6 rounded-2xl shadow-2xl text-center">
+            <div className="text-amber-500 text-5xl mb-4">⚠️</div>
+            <h3 className="text-xl font-bold text-slate-100 mb-2">Phát hiện thiết bị khác đang truy cập</h3>
+            <p className="text-slate-300 text-sm mb-6 leading-relaxed">
+              Tài khoản của bạn đã được đăng nhập và vào phòng thi từ thiết bị khác. Vui lòng xin phép giảng viên nếu bạn muốn đổi sang thiết bị này.
+            </p>
+
+            {deviceApprovalState.status === 'none' && (
+              <div className="text-left mb-6">
+                <label className="text-xs font-semibold text-slate-300 mb-1 block">Lý do xin đổi máy:</label>
+                <textarea
+                  value={deviceApprovalState.reason}
+                  onChange={(e) => setDeviceApprovalState(prev => ({ ...prev, reason: e.target.value }))}
+                  placeholder="Ví dụ: Máy 1 bị hỏng, lỗi mạng, mất kết nối..."
+                  className="w-full bg-slate-700/50 border border-slate-600 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500 min-h-[90px]"
+                />
+                <button
+                  onClick={async () => {
+                    if (!deviceApprovalState.reason.trim()) {
+                      alert("Vui lòng nhập lý do!");
+                      return;
+                    }
+                    try {
+                      await axiosClient.post(`/submissions/${submissionId}/request-device-change`, {
+                        reason: deviceApprovalState.reason
+                      });
+                      setDeviceApprovalState(prev => ({ ...prev, status: 'requesting', msg: 'Đang chờ giảng viên phê duyệt...' }));
+                    } catch (e) {
+                      alert(e?.response?.data?.message || "Lỗi khi gửi yêu cầu");
+                    }
+                  }}
+                  className="mt-3 w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl shadow-lg transition-all"
+                >
+                  Gửi yêu cầu tới giảng viên
+                </button>
+              </div>
+            )}
+
+            {deviceApprovalState.status === 'requesting' && (
+              <div className="text-center p-4 border border-blue-500/30 bg-blue-500/10 rounded-xl mb-4">
+                <div className="animate-spin inline-block w-6 h-6 border-2 border-current border-t-transparent text-blue-400 rounded-full mb-2"></div>
+                <p className="text-blue-300 text-sm font-semibold">{deviceApprovalState.msg || "Đang chờ giảng viên phê duyệt..."}</p>
+                <p className="text-xs text-slate-400 mt-1">Vui lòng không tắt trình duyệt, hệ thống sẽ tự động chuyển trang khi được duyệt.</p>
+              </div>
+            )}
+
+            {deviceApprovalState.status === 'rejected' && (
+              <div className="text-center p-4 border border-red-500/30 bg-red-500/10 rounded-xl mb-4">
+                <p className="text-red-400 text-sm font-bold">{deviceApprovalState.msg || "Giảng viên đã từ chối yêu cầu đổi thiết bị."}</p>
+                <p className="text-xs text-slate-400 mt-1">Bạn không thể tiếp tục thi trên thiết bị này.</p>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -36,8 +36,12 @@ CREATE TABLE users (
     verify_room_code BOOLEAN DEFAULT FALSE,
     failed_login_attempts INT DEFAULT 0 NOT NULL,
     is_locked BOOLEAN DEFAULT FALSE NOT NULL,
+    two_factor_secret VARCHAR(255) NULL,
+    is_two_factor_enabled BOOLEAN DEFAULT FALSE NOT NULL,
+    refresh_token TEXT NULL,
     INDEX idx_users_role (role)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
 
 -- 2.2 exams
 CREATE TABLE exams (
@@ -140,6 +144,12 @@ CREATE TABLE submissions (
     student_card_url VARCHAR(500) NULL,
     proctor_flags JSON NULL,
     cheating_count INT DEFAULT 0 COMMENT 'Total number of cheating incidents',
+    fingerprint_id VARCHAR(255) NULL,
+    device_name VARCHAR(255) NULL,
+    second_fingerprint_id VARCHAR(255) NULL,
+    second_device_name VARCHAR(255) NULL,
+    device_change_status VARCHAR(50) NULL,
+    device_change_reason TEXT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_submissions_exam_user_attempt (exam_id, user_id, attempt_no),

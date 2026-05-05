@@ -17,6 +17,7 @@ const getProfile = async (req, res) => {
 				"gender",
 				"role",
 				"created_at",
+				"is_two_factor_enabled",
 			],
 		});
 

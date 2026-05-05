@@ -25,6 +25,9 @@ module.exports = {
     saveAnswer: ExamSessionController.saveAnswer,
     proctorEvent: ExamSessionController.proctorEvent,
     submitExam: ExamSessionController.submitExam,
+    verifyDevice: ExamSessionController.verifyDevice,
+    requestDeviceChange: ExamSessionController.requestDeviceChange,
+    approveDeviceChange: ExamSessionController.approveDeviceChange,
 
     // Student Result Controller
     myResults: StudentResultController.myResults,

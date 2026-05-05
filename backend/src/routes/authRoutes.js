@@ -237,7 +237,7 @@ router.post("/google", async (req, res) => {
         process.env.GOOGLE_CLIENT_ID_MOBILE,  // Cho Mobile Flutter cũ
         '429788829057-vt6vshn3mc3gunrr6ktjgqs2cutirmih.apps.googleusercontent.com', // Android Client ID mới
         '429788829057-lgird6tqa1u83bshg56c67h4e6fn18ji.apps.googleusercontent.com'  // iOS Client ID mới
-      ],
+      ].filter(Boolean),
     });
     const payload = ticket.getPayload();
     const email = payload.email?.toLowerCase().trim();
@@ -354,6 +354,7 @@ router.post("/google", async (req, res) => {
     // Removed appRole enforcement - users should be able to log in with their actual role
 
     const tokens = generateTokens(user, req);
+    //console.log(`[Google Login] 🔑 JWT Token: ${tokens.accessToken}`);
     res.json({
       message: "Đăng nhập Google thành công",
       status: "success",
@@ -365,7 +366,7 @@ router.post("/google", async (req, res) => {
     console.error("❌ Lỗi Google Login:", err.stack);
     res
       .status(500)
-      .json({ message: "Lỗi xác thực Google hoặc server", status: "error" });
+      .json({ message: err.message || "Lỗi xác thực Google hoặc server", status: "error" });
   }
 });
 
@@ -611,6 +612,23 @@ router.post("/login", async (req, res) => {
       return res.status(403).json({ message: `Tài khoản của bạn là ${viRole}. Vui lòng chọn đúng vai trò để đăng nhập.`, status: "error" });
     }
 
+    // Check for optional 2FA
+    if (user.is_two_factor_enabled && (user.role === "instructor" || user.role === "admin")) {
+      const otp = generateOTP();
+      otpStorage.set(user.email.toLowerCase().trim() + "_2fa", {
+        otp,
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+        attempts: 0
+      });
+      await sendOTPEmail(user.email, otp);
+      return res.json({
+        status: "require_2fa",
+        email: user.email,
+        message: "Mã 2FA đã được gửi đến email của bạn. Vui lòng xác thực để đăng nhập.",
+      });
+    }
+
+
 
     if (role === "student") {
       if (!roomId) {
@@ -690,6 +708,7 @@ router.post("/login", async (req, res) => {
 
     const tokens = generateTokens(user, req);
     console.log(`[Login] ✅ Đăng nhập thành công cho user: ${email}`);
+    console.log(`[Token] 🔑 JWT Token: ${tokens.accessToken}`);
 
     let response = {
       message: "Đăng nhập thành công",
@@ -717,6 +736,65 @@ router.post("/login", async (req, res) => {
     });
   }
 });
+
+// --- Verify 2FA after successful login ---
+router.post("/verify-2fa", async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      return res.status(400).json({ message: "Email và OTP là bắt buộc", status: "error" });
+    }
+
+    const emailKey = email.toLowerCase().trim() + "_2fa";
+    const otpData = otpStorage.get(emailKey);
+
+    if (!otpData) {
+      return res.status(400).json({ message: "Mã OTP không tồn tại hoặc đã hết hạn", status: "error" });
+    }
+
+    if (new Date() > otpData.expiresAt) {
+      otpStorage.delete(emailKey);
+      return res.status(400).json({ message: "Mã OTP đã hết hạn", status: "error" });
+    }
+
+    if (otpData.otp !== otp) {
+      return res.status(400).json({ message: "Mã OTP không chính xác", status: "error" });
+    }
+
+    // Success -> Clear OTP and return full login response
+    otpStorage.delete(emailKey);
+
+    const user = await User.findOne({ where: { email: email.toLowerCase().trim() } });
+    if (!user) {
+      return res.status(404).json({ message: "Không tìm thấy người dùng", status: "error" });
+    }
+
+    const tokens = generateTokens(user, req);
+
+    let response = {
+      message: "Đăng nhập thành công",
+      status: "success",
+      token: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      user: {
+        id: user.id,
+        full_name: user.full_name,
+        email: user.email,
+        role: user.role,
+      },
+    };
+
+    if (user.role === "admin") {
+      response.redirect = "/admin/dashboard";
+    }
+
+    return res.json(response);
+  } catch (err) {
+    console.error("❌ Lỗi verify 2fa:", err);
+    return res.status(500).json({ message: "Lỗi server", status: "error" });
+  }
+});
+
 
 // --- Verify Room ---
 router.get("/verify-room/:code", async (req, res) => {

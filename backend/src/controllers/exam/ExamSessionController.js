@@ -172,7 +172,7 @@ async function startExam(req, res) {
         const enriched = questions.map((q) =>
             q.type === "MCQ" ? { ...q, options: optionsByQ[q.question_id] || [] } : q
         );
-        let exSel = "SELECT e.title AS exam_title, u.full_name AS instructor_name, e.intent_shuffle,";
+        let exSel = "SELECT e.title AS exam_title, u.full_name AS instructor_name, e.intent_shuffle, e.time_close,";
         exSel += hasDurMin
             ? " e.duration_minutes AS duration_minutes"
             : " e.duration AS duration_minutes";
@@ -209,8 +209,10 @@ async function startExam(req, res) {
 
         return res.json({
             questions: enriched,
+            exam_id: sub.exam_id,
             duration_minutes: ex.duration_minutes || sub.duration || 60,
             started_at: started,
+            time_close: ex.time_close,
             server_now: nowRow.server_now,
             exam_title: ex.exam_title || "",
             instructor_name: ex.instructor_name || "",
@@ -471,10 +473,183 @@ async function submitExam(req, res) {
     }
 }
 
+async function verifyDevice(req, res) {
+    try {
+        const { id: submissionId } = req.params;
+        const { fingerprint_id, device_name } = req.body;
+
+        if (!fingerprint_id || !device_name) {
+            return res.status(400).json({ message: "Thiếu thông tin thiết bị" });
+        }
+
+        const [subRows] = await sequelize.query(
+            `SELECT fingerprint_id, device_name, second_fingerprint_id, second_device_name, device_change_status FROM submissions WHERE id = ?`,
+            { replacements: [submissionId] }
+        );
+
+        if (!subRows || subRows.length === 0) {
+            return res.status(404).json({ message: "Không tìm thấy bài thi" });
+        }
+
+        const sub = subRows[0];
+
+        // Nếu chưa có thiết bị nào -> Đây là máy 1
+        if (!sub.fingerprint_id) {
+            await sequelize.query(
+                `UPDATE submissions SET fingerprint_id = ?, device_name = ? WHERE id = ?`,
+                { replacements: [fingerprint_id, device_name, submissionId] }
+            );
+            return res.json({ can_enter: true });
+        }
+
+        // Nếu máy 1 trùng khớp với vân tay hiện tại
+        if (sub.fingerprint_id === fingerprint_id) {
+            return res.json({ can_enter: true });
+        }
+
+        // Tự động nâng cấp fingerprint định dạng cũ (base64) sang định dạng mới (dev_...)
+        if (sub.fingerprint_id && !sub.fingerprint_id.startsWith('dev_') && fingerprint_id.startsWith('dev_')) {
+            await sequelize.query(
+                `UPDATE submissions SET fingerprint_id = ?, device_name = ? WHERE id = ?`,
+                { replacements: [fingerprint_id, device_name, submissionId] }
+            );
+            return res.json({ can_enter: true });
+        }
+
+        // Khác máy 1 -> Đây là máy 2
+        // Cập nhật thông tin máy 2 vào bảng submissions
+        await sequelize.query(
+            `UPDATE submissions SET second_fingerprint_id = ?, second_device_name = ? WHERE id = ?`,
+            { replacements: [fingerprint_id, device_name, submissionId] }
+        );
+
+        // Kiểm tra xem yêu cầu đổi máy đã được duyệt chưa
+        const status = sub.device_change_status || 'none';
+        if (status === 'none') {
+            return res.json({ can_enter: false, status: 'none', msg: 'Vui lòng gửi yêu cầu đổi máy để tiếp tục.' });
+        } else if (status === 'requesting') {
+            return res.json({ can_enter: false, status: 'requesting', msg: 'Đang chờ giảng viên phê duyệt...' });
+        } else if (status === 'approved') {
+            return res.json({ can_enter: true, status: 'approved' });
+        } else if (status === 'rejected') {
+            return res.json({ can_enter: false, status: 'rejected', msg: 'Giảng viên đã từ chối yêu cầu đổi thiết bị.' });
+        } else {
+            return res.json({ can_enter: false, status: 'none', msg: 'Vui lòng gửi yêu cầu đổi máy để tiếp tục.' });
+        }
+    } catch (e) {
+        console.error('verifyDevice error:', e);
+        return res.status(500).json({ message: 'Server error', error: e.message });
+    }
+}
+
+async function requestDeviceChange(req, res) {
+    try {
+        const { id: submissionId } = req.params;
+        const { reason } = req.body;
+
+        if (!reason) {
+            return res.status(400).json({ message: 'Lý do là bắt buộc' });
+        }
+
+        try {
+            await sequelize.query(
+                `UPDATE submissions SET device_change_status = 'requesting', device_change_reason = ? WHERE id = ?`,
+                { replacements: [reason, submissionId] }
+            );
+        } catch (dbErr) {
+            console.error('Database query error in requestDeviceChange:', dbErr);
+            return res.status(500).json({ 
+                message: 'Bạn cần chạy lệnh SQL thêm các cột mới vào database: ' + dbErr.message, 
+                error: dbErr.message 
+            });
+        }
+
+        // Lấy thông tin sinh viên & bài thi để thông báo real-time
+        let rows = [];
+        try {
+            const [queryRows] = await sequelize.query(`
+                SELECT u.full_name as student_name, e.title as exam_title, s.device_name as first_device_name, s.second_device_name, s.exam_id
+                FROM submissions s
+                JOIN users u ON s.user_id = u.id
+                JOIN exams e ON s.exam_id = e.id
+                WHERE s.id = ?
+            `, { replacements: [submissionId] });
+            rows = queryRows;
+        } catch (dbQueryErr) {
+            console.error('Database query error fetching student/exam data:', dbQueryErr);
+        }
+
+        if (rows && rows.length > 0) {
+            const data = rows[0];
+            const { broadcastCheatingEvent } = require("../../services/socketService");
+            broadcastCheatingEvent(data.exam_id, {
+                submissionId: parseInt(submissionId),
+                studentName: data.student_name,
+                examTitle: data.exam_title,
+                deviceChange: true,
+                firstDeviceName: data.first_device_name,
+                secondDeviceName: data.second_device_name,
+                reason: reason,
+                status: 'requesting',
+                detectedAt: new Date()
+            });
+        }
+
+        return res.json({ success: true, status: 'requesting', message: 'Yêu cầu đổi máy đã được gửi tới giảng viên.' });
+    } catch (e) {
+        console.error('requestDeviceChange error:', e);
+        return res.status(500).json({ message: 'Server error', error: e.message });
+    }
+}
+
+async function approveDeviceChange(req, res) {
+    try {
+        const { id: submissionId } = req.params;
+        const { action } = req.body; // 'approved' or 'rejected'
+
+        if (action !== 'approved' && action !== 'rejected') {
+            return res.status(400).json({ message: 'Hành động không hợp lệ' });
+        }
+
+        try {
+            await sequelize.query(
+                `UPDATE submissions SET device_change_status = ? WHERE id = ?`,
+                { replacements: [action, submissionId] }
+            );
+        } catch (dbErr) {
+            console.error('Database error in approveDeviceChange update:', dbErr);
+            return res.status(500).json({ message: 'Lỗi cập nhật trạng thái đổi thiết bị: ' + dbErr.message });
+        }
+
+        try {
+            const [rows] = await sequelize.query(`SELECT exam_id FROM submissions WHERE id = ?`, { replacements: [submissionId] });
+            if (rows && rows.length > 0) {
+                const { broadcastCheatingEvent } = require("../../services/socketService");
+                broadcastCheatingEvent(rows[0].exam_id, {
+                    submissionId: parseInt(submissionId),
+                    deviceChangeApproval: true,
+                    status: action,
+                    detectedAt: new Date()
+                });
+            }
+        } catch (socketErr) {
+            console.error('Error broadcasting in approveDeviceChange:', socketErr);
+        }
+
+        return res.json({ success: true, status: action, message: action === 'approved' ? 'Phê duyệt đổi máy thành công!' : 'Đã từ chối yêu cầu đổi máy.' });
+    } catch (e) {
+        console.error('approveDeviceChange error:', e);
+        return res.status(500).json({ message: 'Server error', error: e.message });
+    }
+}
+
 module.exports = {
     startExam,
     saveAnswer,
     proctorEvent,
     submitExam,
+    verifyDevice,
+    requestDeviceChange,
+    approveDeviceChange,
 };
 

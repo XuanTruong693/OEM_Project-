@@ -1,6 +1,6 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const User = require("../models/User");
+const { User } = require("../models/User");
 const ExamRoom = require("../models/ExamRoom");
 const { generateAccessToken, generateRefreshToken } = require("../utils/generateToken");
 const { addToBlacklist } = require("../utils/tokenBlacklist");
@@ -78,6 +78,8 @@ async function register(req, res) {
     const accessToken = generateAccessToken(payload, clientIp);
     const refreshToken = generateRefreshToken(payload);
 
+    await newUser.update({ refresh_token: refreshToken });
+
     console.log(`✅ [Auth] User registered: ${newUser.email} from IP: ${clientIp}`);
 
     return res.status(201).json({
@@ -124,6 +126,8 @@ async function login(req, res) {
     const accessToken = generateAccessToken(payload, clientIp);
     const refreshToken = generateRefreshToken(payload);
 
+    await user.update({ refresh_token: refreshToken });
+
     console.log(`✅ [Auth] User logged in: ${user.email} from IP: ${clientIp}`);
 
     return res.status(200).json({
@@ -160,7 +164,11 @@ async function refreshTokenHandler(req, res) {
       return res.status(401).json({ message: "Người dùng không tồn tại" });
     }
 
-    // Generate new access token
+    if (!user.refresh_token || user.refresh_token !== token) {
+      return res.status(401).json({ message: "Refresh token đã hết hạn hoặc không hợp lệ" });
+    }
+
+    // Generate new access token and rotate refresh token
     const payload = {
       id: user.id,
       email: user.email,
@@ -169,11 +177,15 @@ async function refreshTokenHandler(req, res) {
 
     const clientIp = getClientIp(req);
     const newAccessToken = generateAccessToken(payload, clientIp);
+    const newRefreshToken = generateRefreshToken(payload);
 
-    console.log(`🔄 [Auth] Token refreshed for: ${user.email}`);
+    await user.update({ refresh_token: newRefreshToken });
+
+    console.log(`🔄 [Auth] Token refreshed and rotated for: ${user.email}`);
 
     return res.status(200).json({
       accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
       user: {
         id: user.id,
         fullName: user.full_name,

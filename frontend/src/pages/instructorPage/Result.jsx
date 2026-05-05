@@ -401,42 +401,22 @@ export default function Result() {
         try {
           const res = await axiosClient.get(
             `/instructor/exams/${examId}/submissions/count?lastCount=${currentCount}`
-          );
+          ).catch(() => ({ data: { count: currentCount, hasChanges: false, hasNew: false } }));
 
           if (!isActive) break;
 
-          if (res.data?.hasChanges) {
+          if (res.data && (res.data.hasChanges || res.data.hasNew || res.data.count !== currentCount)) {
             const newCount = res.data.count;
 
-            const [summaryRes, resultsRes] = await Promise.all([
+            const [summaryRes, resultsRes, adminMod] = await Promise.all([
               axiosClient.get(`/instructor/exams/${examId}/summary`),
               axiosClient.get(`/instructor/exams/${examId}/results`),
+              axiosClient.get(`/instructor/exams/${examId}/admin-modified`).catch(() => ({ data: { submission_ids: [] } })),
             ]);
 
             setSummary(summaryRes?.data || null);
-
-            const newData = Array.isArray(resultsRes?.data)
-              ? resultsRes.data
-              : [];
-            setRows((prevRows) => {
-              const existingMap = new Map(
-                prevRows.map((row) => [row.student_id, row])
-              );
-
-              return newData.map((newRow) => {
-                const existing = existingMap.get(newRow.student_id);
-                if (existing) {
-                  return {
-                    ...existing,
-
-                    status: newRow.status || existing.status,
-                    submitted_at: newRow.submitted_at || existing.submitted_at,
-                  };
-                }
-
-                return newRow;
-              });
-            });
+            setRows(Array.isArray(resultsRes?.data) ? resultsRes.data : []);
+            setAdminModifiedIds(adminMod?.data?.submission_ids || []);
 
             currentCount = newCount;
           }

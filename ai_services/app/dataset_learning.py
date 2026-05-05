@@ -488,7 +488,7 @@ def learn_correction(
     if not student_text or not model_text:
         return False
     
-    if ai_score is not None and abs(actual_score - ai_score) <= 0.05:
+    if ai_score is not None and actual_score == ai_score:
         print(f"[AI Learning] Skipped (no change): ai={ai_score} == gv={actual_score} for '{student_text[:30]}...'")
         return False
     

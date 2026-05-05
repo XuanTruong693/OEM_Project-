@@ -2058,5 +2058,215 @@
     "score_ratio": 0.15,
     "feedback": "",
     "learned_at": "2026-05-01T16:07:25.277887"
+  },
+  {
+    "student_answer": "su kien thay doi du lieu\n",
+    "model_answer": "event",
+    "confirmed_score": 0,
+    "ai_score": 0.05,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-05-05T10:48:53.617947"
+  },
+  {
+    "student_answer": "@product_id",
+    "model_answer": "@id|1",
+    "confirmed_score": 0,
+    "ai_score": 0.03,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-05-05T10:48:53.965709"
+  },
+  {
+    "student_answer": "Remove Duplicates",
+    "model_answer": "DISTINCT",
+    "confirmed_score": 0,
+    "ai_score": 0.02,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-05-05T10:48:53.975388"
+  },
+  {
+    "student_answer": "FOR,AFTER",
+    "model_answer": "INSTEAD OF",
+    "confirmed_score": 0,
+    "ai_score": 0.03,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-05-05T10:48:53.982145"
+  },
+  {
+    "student_answer": "<gia_tri_cu_the>",
+    "model_answer": "@id|1",
+    "confirmed_score": 0,
+    "ai_score": 0.03,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-05-05T10:48:53.992728"
+  },
+  {
+    "student_answer": "PRODUCT TABLE",
+    "model_answer": "OrderDetails",
+    "confirmed_score": 0,
+    "ai_score": 0.03,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-05-05T10:48:53.996694"
+  },
+  {
+    "student_answer": "su thay doi du lieu (các câu lệnh INSERT, UPDATE, DELETE)",
+    "model_answer": "event",
+    "confirmed_score": 0,
+    "ai_score": 0.05,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-05-05T10:48:54.059373"
+  },
+  {
+    "student_answer": "su kien lam thay doi du lieu",
+    "model_answer": "event",
+    "confirmed_score": 0,
+    "ai_score": 0.05,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-05-05T10:48:54.069448"
+  },
+  {
+    "student_answer": "su kien",
+    "model_answer": "event",
+    "confirmed_score": 0,
+    "ai_score": 0.05,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-05-05T10:48:54.129027"
+  },
+  {
+    "student_answer": "For After",
+    "model_answer": "INSTEAD OF",
+    "confirmed_score": 0,
+    "ai_score": 0.03,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-05-05T10:48:54.153832"
+  },
+  {
+    "student_answer": "Where city=' Đà Nẵng'",
+    "model_answer": "Da Nang",
+    "confirmed_score": 0,
+    "ai_score": 0.04,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-05-05T10:48:54.240317"
+  },
+  {
+    "student_answer": "SELECT * INTO",
+    "model_answer": "inserted",
+    "confirmed_score": 0,
+    "ai_score": 0.02,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-05-05T10:48:54.302488"
+  },
+  {
+    "student_answer": "mot su kien tren bang hoac co so du lieu",
+    "model_answer": "event",
+    "confirmed_score": 0,
+    "ai_score": 0.05,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-05-05T10:48:54.326635"
+  },
+  {
+    "student_answer": "ssujw",
+    "model_answer": "event",
+    "confirmed_score": 0,
+    "ai_score": 0.02,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-05-05T10:48:54.407234"
+  },
+  {
+    "student_answer": "Thay đổi dữ liệu",
+    "model_answer": "event",
+    "confirmed_score": 0,
+    "ai_score": 0.05,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-05-05T10:48:54.453679"
+  },
+  {
+    "student_answer": "OR",
+    "model_answer": "Orders",
+    "confirmed_score": 0,
+    "ai_score": 0.02,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-05-05T10:48:54.513602"
+  },
+  {
+    "student_answer": "INSERTED",
+    "model_answer": "@id|1",
+    "confirmed_score": 0,
+    "ai_score": 0.02,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-05-05T10:48:54.515602"
+  },
+  {
+    "student_answer": "thay doi du lieu",
+    "model_answer": "event",
+    "confirmed_score": 0,
+    "ai_score": 0.02,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-05-05T10:48:54.650593"
+  },
+  {
+    "student_answer": "@PRODUCT",
+    "model_answer": "@id|1",
+    "confirmed_score": 0,
+    "ai_score": 0.05,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-05-05T10:48:54.668504"
+  },
+  {
+    "student_answer": "ODER",
+    "model_answer": "Orders",
+    "confirmed_score": 0,
+    "ai_score": 0.03,
+    "max_points": 0.2,
+    "score_ratio": 0.0,
+    "feedback": "",
+    "learned_at": "2026-05-05T10:48:54.774273"
+  },
+  {
+    "student_answer": "ROLLBLACK",
+    "model_answer": "ROLLBACK",
+    "confirmed_score": 0.15,
+    "ai_score": 0.18,
+    "max_points": 0.2,
+    "score_ratio": 0.7499999999999999,
+    "feedback": "",
+    "learned_at": "2026-05-05T10:48:54.961067"
   }
 ]

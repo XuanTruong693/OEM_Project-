@@ -42,4 +42,15 @@ export default defineConfig({
   optimizeDeps: {
     include: ["axios", "react", "react-dom", "react-router-dom"],
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ["react", "react-dom", "react-router-dom", "axios"],
+          ui: ["lucide-react", "framer-motion", "recharts"],
+        },
+      },
+    },
+  },
 });
+

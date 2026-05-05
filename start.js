@@ -14,20 +14,21 @@ const colors = {
 };
 
 function startProcess(name, command, args, cwd, color, customEnv = {}) {
-    console.log(`${color}[${name}]${colors.reset} Starting...`);
+    console.log(`\x1b[32m[PM2]\x1b[0m${color}[${name}]\x1b[0m Starting...`);
 
     const proc = spawn(command, args, {
         cwd,
         shell: true,
         stdio: 'pipe',
         env: { ...process.env, ...customEnv },
+        windowsHide: true
     });
 
     proc.stdout.on('data', (data) => {
         const lines = data.toString().trim().split('\n');
         lines.forEach(line => {
             if (line.trim()) {
-                console.log(`${color}[${name}]${colors.reset} ${line}`);
+                console.log(`\x1b[32m[PM2]\x1b[0m${color}[${name}]\x1b[0m ${line}`);
             }
         });
     });
@@ -36,27 +37,50 @@ function startProcess(name, command, args, cwd, color, customEnv = {}) {
         const lines = data.toString().trim().split('\n');
         lines.forEach(line => {
             if (line.trim()) {
-                console.log(`${color}[${name}]${colors.reset} ${line}`);
+                console.log(`\x1b[32m[PM2]\x1b[0m${color}[${name}]\x1b[0m ${line}`);
             }
         });
     });
 
     proc.on('error', (err) => {
-        console.error(`${color}[${name}]${colors.reset} Error: ${err.message}`);
+        console.error(`\x1b[32m[PM2]\x1b[0m${color}[${name}]\x1b[0m Error: ${err.message}`);
     });
 
     proc.on('close', (code) => {
-        console.log(`${color}[${name}]${colors.reset} Exited with code ${code}`);
+        console.log(`\x1b[32m[PM2]\x1b[0m${color}[${name}]\x1b[0m Exited with code ${code}`);
     });
 
     return proc;
 }
 
+// Pre-flight check: Kill any processes running on port 5000 or 8000
+const { execSync } = require('child_process');
+function clearPorts(ports) {
+    ports.forEach(port => {
+        try {
+            const stdout = execSync(`netstat -ano | findstr :${port}`).toString();
+            const lines = stdout.trim().split('\n');
+            lines.forEach(line => {
+                const parts = line.trim().split(/\s+/);
+                const pid = parts[parts.length - 1];
+                if (pid && !isNaN(pid) && pid !== '0') {
+                    execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
+                }
+            });
+        } catch (e) {
+            // No process using that port, proceed
+        }
+    });
+}
+
+console.log('🔄 Cleaning up existing processes on port 5000 and 8000...');
+clearPorts([5000, 8000]);
+
 // Start Backend
 const backendProc = startProcess(
     'Backend',
-    'npm',
-    ['start'],
+    'node',
+    ['src/app.js'],
     path.join(ROOT_DIR, 'backend'),
     colors.green
 );
@@ -65,11 +89,11 @@ const backendProc = startProcess(
 console.log(`${colors.blue}[Frontend]${colors.reset} Served by Cloudflare Pages (https://oes.io.vn)`);
 
 // Start AI Service with venv Python
-const pythonPath = path.join(ROOT_DIR, 'ai_services', '.venv', 'Scripts', 'python.exe');
+const aiPythonPath = path.join(ROOT_DIR, 'ai_services', '.venv', 'Scripts', 'python.exe');
 const aiProc = startProcess(
     'AI',
-    'cmd',
-    ['/c', `"${pythonPath}" -m uvicorn app.main:app --host 0.0.0.0 --port 8000`],
+    aiPythonPath,
+    ['-m', 'uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', '8000'],
     path.join(ROOT_DIR, 'ai_services'),
     colors.magenta,
     { PYTHONIOENCODING: 'utf-8' }
@@ -87,9 +111,16 @@ const tunnelProc = startProcess(
 // Handle Ctrl+C
 process.on('SIGINT', () => {
     console.log('\nShutting down all services...');
-    backendProc.kill();
-    aiProc.kill();
-    tunnelProc.kill();
+    
+    const { execSync } = require('child_process');
+    try {
+        if (backendProc.pid) execSync(`taskkill /F /T /PID ${backendProc.pid}`, { stdio: 'ignore' });
+        if (aiProc.pid) execSync(`taskkill /F /T /PID ${aiProc.pid}`, { stdio: 'ignore' });
+        if (tunnelProc.pid) execSync(`taskkill /F /T /PID ${tunnelProc.pid}`, { stdio: 'ignore' });
+    } catch (e) {
+        // Suppress errors if process already exited
+    }
+
     process.exit();
 });
 

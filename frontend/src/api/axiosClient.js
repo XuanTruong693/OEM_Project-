@@ -63,8 +63,14 @@ axiosClient.interceptors.response.use(
           });
 
           const newToken = res.data.accessToken;
+          const newRefreshToken = res.data.refreshToken;
+
           sessionStorage.setItem("token", newToken);
           localStorage.setItem("token", newToken);
+          if (newRefreshToken) {
+            sessionStorage.setItem("refreshToken", newRefreshToken);
+            localStorage.setItem("refreshToken", newRefreshToken);
+          }
 
           processQueue(null, newToken);
           isRefreshing = false;

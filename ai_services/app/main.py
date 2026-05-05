@@ -57,7 +57,7 @@ app.add_middleware(
 )
 
 # ===== AUTO-RETRAIN SYSTEM =====
-RETRAIN_THRESHOLD = int(os.getenv("RETRAIN_THRESHOLD", "20"))  # Increased to 20 for stability
+RETRAIN_THRESHOLD = int(os.getenv("RETRAIN_THRESHOLD", "1"))  # Increased to 20 for stability
 RETRAIN_LOG_PATH = os.path.join(os.path.dirname(__file__), "retrain_history.json")
 _retrain_lock = threading.Lock()
 
@@ -380,8 +380,8 @@ class CorrectionRequest(BaseModel):
 @app.post("/learn/from-correction")
 def learn_from_correction(req: CorrectionRequest):
     try:
-        # GUARD: Skip if instructor didn't actually change the score
-        score_actually_changed = abs(req.new_score - req.old_score) > 0.05
+        # GUARD: Skip only if instructor didn't change the score at all
+        score_actually_changed = req.new_score != req.old_score
         if not score_actually_changed:
             return {
                 "status": "skipped",
@@ -484,10 +484,10 @@ def batch_train(req: BatchTrainRequest):
     
     for i, sample in enumerate(req.samples):
         try:
-            # GUARD: Skip if score wasn't actually changed
-            if abs(sample.new_score - sample.old_score) <= 0.05:
+            # GUARD: Skip only if score wasn't changed at all
+            if sample.new_score == sample.old_score:
                 print(f"[BatchTrain] Skipped sample {i} (no change): old={sample.old_score} == new={sample.new_score}")
-                results["success"] += 1  # Not an error, just no learning needed
+                results["success"] += 1
                 continue
             
             # 1. Save to dataset_learning.py

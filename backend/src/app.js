@@ -69,6 +69,12 @@ const allowedOrigins = [
 // Trust Cloudflare proxy for correct client IP and secure cookies
 app.set("trust proxy", 1);
 
+const securityMiddleware = require("./middleware/securityMiddleware");
+app.use(securityMiddleware);
+
+const pm2Autoscaler = require("./middleware/pm2Autoscaler");
+app.use(pm2Autoscaler);
+
 
 app.use(
   cors({

@@ -42,6 +42,8 @@ export default function TakeExam() {
   const monitorScreenConfigRef = useRef(false); // Store the admin config for cheating monitoring
   const isCurrentlyExitedRef = useRef(false); // Track if student is currently 'out' to prevent strike spam
   const mousePosRef = useRef({ x: 0, y: 0 }); // 🖱️ Track mouse pos for AI context
+  const startedAtRef = useRef(null);
+  const timeOffsetRef = useRef(0); // Difference between server and local clock
 
   // ===== State =====
   const [theme, setTheme] = useState(
@@ -76,8 +78,66 @@ export default function TakeExam() {
   const [showMobileNav, setShowMobileNav] = useState(false); // Mobile drawer state
   const [showFullscreenOverlay, setShowFullscreenOverlay] = useState(false); // Overlay bắt buộc vào lại fullscreen
   const [monitoringActive, setMonitoringActive] = useState(false); // State for inactivity hook (not ref)
-  const [showBlurOverlay, setShowBlurOverlay] = useState(false); // Blur overlay for focus loss
-  const [showScreenshotProtection, setShowScreenshotProtection] = useState(false); // 3s black-out for anti-screenshot
+  const [showBlurOverlay, setShowBlurOverlay] = useState(false);
+  const [showScreenshotProtection, setShowScreenshotProtection] = useState(false);
+  const [deviceApprovalState, setDeviceApprovalState] = useState({
+    canEnter: true,
+    status: 'none',
+    msg: '',
+    reason: ''
+  });
+
+  useEffect(() => {
+    if (!submissionId) return;
+
+    let pollInterval;
+
+    const checkDevice = async () => {
+      try {
+        const screenInfo = `${window.screen.width}x${window.screen.height}`;
+        const userAgent = navigator.userAgent;
+        let fingerprint = localStorage.getItem('student_device_fingerprint');
+        if (!fingerprint) {
+          fingerprint = 'dev_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11);
+          localStorage.setItem('student_device_fingerprint', fingerprint);
+        }
+
+        let deviceName = "PC / Laptop";
+        if (/android/i.test(userAgent)) deviceName = "Android Mobile";
+        else if (/iphone|ipad/i.test(userAgent)) deviceName = "iOS Device";
+        else if (/macintosh/i.test(userAgent)) deviceName = "Mac Device";
+        deviceName += ` (${screenInfo})`;
+
+        const res = await axiosClient.post(`/submissions/${submissionId}/verify-device`, {
+          fingerprint_id: fingerprint,
+          device_name: deviceName
+        });
+
+        if (res.data) {
+          if (res.data.can_enter) {
+            setDeviceApprovalState({ canEnter: true, status: 'approved', msg: '', reason: '' });
+          } else {
+            setDeviceApprovalState(prev => ({
+              ...prev,
+              canEnter: false,
+              status: res.data.status,
+              msg: res.data.msg
+            }));
+          }
+        }
+      } catch (err) {
+        console.error("verifyDevice error:", err);
+      }
+    };
+
+    checkDevice();
+
+    pollInterval = setInterval(() => {
+      checkDevice();
+    }, 5000);
+
+    return () => clearInterval(pollInterval);
+  }, [submissionId]);
 
   const flash = useCallback((msg, kind = "warn", ms = 1200) => {
     setToast({ msg, kind });
@@ -654,21 +714,17 @@ export default function TakeExam() {
         const startedAt = res.data?.started_at
           ? new Date(res.data.started_at).getTime()
           : Date.now();
+        startedAtRef.current = startedAt;
+
         const serverNow = res.data?.server_now
           ? new Date(res.data.server_now).getTime()
           : Date.now();
+        timeOffsetRef.current = serverNow - Date.now();
+
         const durSec = (res.data?.duration_minutes || duration) * 60;
         const passed = Math.max(0, Math.floor((serverNow - startedAt) / 1000));
 
         let calculatedRemaining = Math.max(0, durSec - passed);
-        if (res.data?.seconds_until_close !== undefined && res.data?.seconds_until_close !== null) {
-          calculatedRemaining = Math.min(calculatedRemaining, Math.max(0, res.data.seconds_until_close));
-        } else if (res.data?.time_close) {
-          const closeTime = new Date(res.data.time_close).getTime();
-          const secondsUntilClose = Math.floor((closeTime - serverNow) / 1000);
-          calculatedRemaining = Math.min(calculatedRemaining, Math.max(0, secondsUntilClose));
-        }
-
         setRemaining(calculatedRemaining);
 
         setExamTitle(res.data?.exam_title || `Bài thi #${examId}`);
@@ -1721,25 +1777,23 @@ export default function TakeExam() {
       console.log("🔄 [Socket] Exam config updated:", updates);
       flash("⚙️ Giảng viên vừa cập nhật cấu hình bài thi.", "success", 3000);
 
-      if (updates.duration_minutes) {
-        setDuration(updates.duration_minutes);
+      if (updates.duration_minutes && startedAtRef.current) {
+        const newDur = updates.duration_minutes;
+        setDuration(newDur);
+
+        // AUTHORITATIVE RECALCULATION: New Duration - (CurrentTime - StartTime)
+        // We use timeOffsetRef to align local clock with server clock
+        const nowServer = Date.now() + timeOffsetRef.current;
+        const elapsedSeconds = Math.floor((nowServer - startedAtRef.current) / 1000);
+        const newRemaining = Math.max(0, (newDur * 60) - elapsedSeconds);
+        
+        console.log(`⏱️ [Sync] Duration updated to ${newDur}m. Elapsed: ${elapsedSeconds}s. New remaining: ${newRemaining}s`);
+        setRemaining(newRemaining);
       }
 
       if (updates.time_close) {
-        const closeTime = new Date(updates.time_close).getTime();
-        if (!isNaN(closeTime)) {
-          const now = Date.now();
-          const secondsUntilClose = Math.floor((closeTime - now) / 1000);
-          // Only update if it's a realistic update, avoid sudden close due to tiny sync diffs
-          setRemaining(prev => {
-            const newRemaining = Math.max(0, secondsUntilClose);
-            if (newRemaining <= 0 && prev > 10) {
-              console.warn("⚠️ [Sync] Ignoring near-zero sync jitter (preventing instant kick)");
-              return prev;
-            }
-            return newRemaining;
-          });
-        }
+        // We still receive time_close but user requested timer to be "working time"
+        console.log("ℹ️ [Socket] time_close updated, but timer follows duration_minutes.");
       }
 
       if (updates.monitor_screen !== undefined) {
@@ -2791,6 +2845,64 @@ export default function TakeExam() {
             <span className="text-2xl">⚡</span>
             BẮT ĐẦU CHIA SẺ MÀN HÌNH (ANDROID)
           </button>
+        </div>
+      )}
+
+      {!deviceApprovalState.canEnter && (
+        <div className="fixed inset-0 z-[99999] bg-slate-900/95 flex items-center justify-center p-4 backdrop-blur-md">
+          <div className="max-w-md w-full bg-slate-800/80 border border-slate-700 p-6 rounded-2xl shadow-2xl text-center">
+            <div className="text-amber-500 text-5xl mb-4">⚠️</div>
+            <h3 className="text-xl font-bold text-slate-100 mb-2">Phát hiện thiết bị khác đang truy cập</h3>
+            <p className="text-slate-300 text-sm mb-6 leading-relaxed">
+              Tài khoản của bạn đã được đăng nhập và vào phòng thi từ thiết bị khác. Vui lòng xin phép giảng viên nếu bạn muốn đổi sang thiết bị này.
+            </p>
+
+            {deviceApprovalState.status === 'none' && (
+              <div className="text-left mb-6">
+                <label className="text-xs font-semibold text-slate-300 mb-1 block">Lý do xin đổi máy:</label>
+                <textarea
+                  value={deviceApprovalState.reason}
+                  onChange={(e) => setDeviceApprovalState(prev => ({ ...prev, reason: e.target.value }))}
+                  placeholder="Ví dụ: Máy 1 bị hỏng, lỗi mạng, mất kết nối..."
+                  className="w-full bg-slate-700/50 border border-slate-600 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500 min-h-[90px]"
+                />
+                <button
+                  onClick={async () => {
+                    if (!deviceApprovalState.reason.trim()) {
+                      alert("Vui lòng nhập lý do!");
+                      return;
+                    }
+                    try {
+                      await axiosClient.post(`/submissions/${submissionId}/request-device-change`, {
+                        reason: deviceApprovalState.reason
+                      });
+                      setDeviceApprovalState(prev => ({ ...prev, status: 'requesting', msg: 'Đang chờ giảng viên phê duyệt...' }));
+                    } catch (e) {
+                      alert(e?.response?.data?.message || "Lỗi khi gửi yêu cầu");
+                    }
+                  }}
+                  className="mt-3 w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl shadow-lg transition-all"
+                >
+                  Gửi yêu cầu tới giảng viên
+                </button>
+              </div>
+            )}
+
+            {deviceApprovalState.status === 'requesting' && (
+              <div className="text-center p-4 border border-blue-500/30 bg-blue-500/10 rounded-xl mb-4">
+                <div className="animate-spin inline-block w-6 h-6 border-2 border-current border-t-transparent text-blue-400 rounded-full mb-2"></div>
+                <p className="text-blue-300 text-sm font-semibold">{deviceApprovalState.msg || "Đang chờ giảng viên phê duyệt..."}</p>
+                <p className="text-xs text-slate-400 mt-1">Vui lòng không tắt trình duyệt, hệ thống sẽ tự động chuyển trang khi được duyệt.</p>
+              </div>
+            )}
+
+            {deviceApprovalState.status === 'rejected' && (
+              <div className="text-center p-4 border border-red-500/30 bg-red-500/10 rounded-xl mb-4">
+                <p className="text-red-400 text-sm font-bold">{deviceApprovalState.msg || "Giảng viên đã từ chối yêu cầu đổi thiết bị."}</p>
+                <p className="text-xs text-slate-400 mt-1">Bạn không thể tiếp tục thi trên thiết bị này.</p>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
