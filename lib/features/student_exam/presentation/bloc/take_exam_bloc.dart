@@ -13,6 +13,8 @@ class TakeExamBloc extends Bloc<TakeExamEvent, TakeExamState> {
   final DioClient dioClient;
   static const _storage = FlutterSecureStorage();
   Timer? _pingTimer;
+  Function? _configListenerRemover;
+  Function? _kickedListenerRemover;
 
   TakeExamBloc({required this.dioClient}) : super(const TakeExamState()) {
     on<LoadExamQuestionsEvent>(_onLoadExamQuestions);
@@ -20,6 +22,8 @@ class TakeExamBloc extends Bloc<TakeExamEvent, TakeExamState> {
     on<CheatEvent>(_onCheat);
     on<CheckPingAndSyncEvent>(_onCheckPingAndSync);
     on<SubmitExamEvent>(_onSubmitExam);
+    on<ExamConfigUpdatedEvent>(_onExamConfigUpdated);
+    on<StudentKickedEvent>(_onStudentKicked);
   }
 
   Future<void> _onLoadExamQuestions(
@@ -44,11 +48,19 @@ class TakeExamBloc extends Bloc<TakeExamEvent, TakeExamState> {
       final data = response.data;
 
       final questions = data['questions'] ?? [];
+      final serverNowStr = data['server_now'];
+      final DateTime serverNow = DateTime.tryParse(serverNowStr ?? '') ?? DateTime.now();
+      final int offsetMs = serverNow.difference(DateTime.now()).inMilliseconds;
+
       final examData = {
+        'exam_id': data['exam_id'],
         'exam_title': data['exam_title'] ?? '',
         'duration_minutes': data['duration_minutes'] ?? 60,
         'started_at': data['started_at'],
+        'time_close': data['time_close'],
+        'server_now': serverNowStr,
         'monitor_screen': data['monitor_screen'] ?? false,
+        'last_sync': DateTime.now().millisecondsSinceEpoch, // To trigger UI update
       };
 
       // Also merge BE answers into local answers if they are not already cached locally
@@ -74,6 +86,7 @@ class TakeExamBloc extends Bloc<TakeExamEvent, TakeExamState> {
         questions: questions,
         examData: examData,
         localAnswers: localAnswers,
+        timeOffsetMs: offsetMs,
         violations: data['cheating_count'] != null ? (data['cheating_count'] as num).toInt() : 0,
       ));
 
@@ -91,6 +104,31 @@ class TakeExamBloc extends Bloc<TakeExamEvent, TakeExamState> {
             socketClient.connectSocket(token);
           }
         }
+
+        // Register for real-time updates
+        final userId = await SecureStorageHelper.getUserId();
+        final studentName = await SecureStorageHelper.getFullName();
+        
+        socketClient.emit('student:register-submission', {
+          'submissionId': int.tryParse(event.submissionId) ?? event.submissionId,
+          'studentId': int.tryParse(userId ?? '') ?? userId,
+          'examId': data['exam_id'],
+          'studentName': studentName ?? 'Student',
+        });
+
+        _configListenerRemover?.call();
+        _configListenerRemover = socketClient.onEvent('exam:config-updated', (updates) {
+          if (!isClosed) {
+             add(ExamConfigUpdatedEvent(updates: Map<String, dynamic>.from(updates)));
+          }
+        });
+
+        _kickedListenerRemover?.call();
+        _kickedListenerRemover = socketClient.onEvent('student:kicked:${event.submissionId}', (data) {
+          if (!isClosed) {
+            add(StudentKickedEvent(message: data is Map ? (data['message'] ?? 'Bạn đã bị giảng viên mời ra khỏi phòng thi.') : 'Bạn đã bị giảng viên mời ra khỏi phòng thi.'));
+          }
+        });
       } catch (e) {
         debugPrint("Error initiating socket inside TakeExamBloc: $e");
       }
@@ -313,7 +351,10 @@ class TakeExamBloc extends Bloc<TakeExamEvent, TakeExamState> {
     }
 
     try {
-      final response = await dioClient.dio.post('/submissions/${event.submissionId}/submit');
+      final response = await dioClient.dio.post(
+        '/submissions/${event.submissionId}/submit',
+        data: event.reason != null ? {'reason': event.reason} : {},
+      );
       final totalScore = response.data?['total_score'] ?? mcqScore;
       final aiScore = response.data?['ai_score'];
 
@@ -333,9 +374,56 @@ class TakeExamBloc extends Bloc<TakeExamEvent, TakeExamState> {
     }
   }
 
+  Future<void> _onExamConfigUpdated(
+    ExamConfigUpdatedEvent event,
+    Emitter<TakeExamState> emit,
+  ) async {
+    if (state.examData == null) return;
+
+    final updatedExamData = Map<String, dynamic>.from(state.examData!);
+    
+    bool changed = false;
+    if (event.updates.containsKey('duration_minutes')) {
+      updatedExamData['duration_minutes'] = event.updates['duration_minutes'];
+      changed = true;
+    }
+    if (event.updates.containsKey('time_close')) {
+      updatedExamData['time_close'] = event.updates['time_close'];
+      changed = true;
+    }
+
+    if (changed) {
+      updatedExamData['last_sync'] = DateTime.now().millisecondsSinceEpoch;
+      // We don't refresh server_now here because we rely on the initial offset and started_at
+      emit(state.copyWith(examData: updatedExamData));
+    }
+  }
+
+  Future<void> _onStudentKicked(
+    StudentKickedEvent event,
+    Emitter<TakeExamState> emit,
+  ) async {
+    // 1. Show high-visibility notification via errorMessage
+    emit(state.copyWith(
+      errorMessage: event.message,
+      isSubmitting: true,
+      isKicked: true,
+    ));
+
+    // 2. Automatically submit answers
+    final submissionId = state.examData?['submission_id']?.toString() ?? 
+                       state.examData?['id']?.toString() ?? '';
+    
+    if (submissionId.isNotEmpty) {
+      add(SubmitExamEvent(submissionId: submissionId, reason: 'kicked'));
+    }
+  }
+
   @override
   Future<void> close() {
     _pingTimer?.cancel();
+    _configListenerRemover?.call();
+    _kickedListenerRemover?.call();
     return super.close();
   }
 }

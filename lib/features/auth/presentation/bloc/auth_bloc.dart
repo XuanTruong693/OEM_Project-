@@ -71,6 +71,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         await SecureStorageHelper.saveSelectedRole(
           user.role,
         ); // 🔴 BẮT BUỘC ĐỂ KHÔNG BỊ LỖI 403
+        await SecureStorageHelper.saveUserId(user.id);
+        await SecureStorageHelper.saveFullName(user.fullName);
       }
 
       emit(AuthSuccess(message: "Registration successful", role: user.role));
@@ -99,6 +101,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         await SecureStorageHelper.saveSelectedRole(
           user.role,
         ); // 🔴 BẮT BUỘC ĐỂ KHÔNG BỊ LỖI 403
+        await SecureStorageHelper.saveUserId(user.id);
+        await SecureStorageHelper.saveFullName(user.fullName);
       }
 
       emit(AuthSuccess(message: "Đăng nhập thành công", role: user.role));
@@ -195,6 +199,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         await SecureStorageHelper.saveSelectedRole(
           user.role,
         ); // 🔴 BẮT BUỘC ĐỂ KHÔNG BỊ LỖI 403
+        await SecureStorageHelper.saveUserId(user.id);
+        await SecureStorageHelper.saveFullName(user.fullName);
       }
 
       emit(AuthSuccess(message: "Đăng ký Google thành công", role: user.role));

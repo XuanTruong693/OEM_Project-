@@ -24,6 +24,8 @@ class TakeExamState extends Equatable {
   final double? aiScore;
   final double? totalScore;
   final bool showResultModal;
+  final int timeOffsetMs;
+  final bool isKicked;
 
   const TakeExamState({
     this.isLoading = false,
@@ -42,6 +44,8 @@ class TakeExamState extends Equatable {
     this.aiScore,
     this.totalScore,
     this.showResultModal = false,
+    this.timeOffsetMs = 0,
+    this.isKicked = false,
   });
 
   TakeExamState copyWith({
@@ -61,6 +65,8 @@ class TakeExamState extends Equatable {
     double? aiScore,
     double? totalScore,
     bool? showResultModal,
+    int? timeOffsetMs,
+    bool? isKicked,
   }) {
     return TakeExamState(
       isLoading: isLoading ?? this.isLoading,
@@ -79,6 +85,8 @@ class TakeExamState extends Equatable {
       aiScore: aiScore ?? this.aiScore,
       totalScore: totalScore ?? this.totalScore,
       showResultModal: showResultModal ?? this.showResultModal,
+      timeOffsetMs: timeOffsetMs ?? this.timeOffsetMs,
+      isKicked: isKicked ?? this.isKicked,
     );
   }
 
@@ -100,5 +108,7 @@ class TakeExamState extends Equatable {
         aiScore,
         totalScore,
         showResultModal,
+        timeOffsetMs,
+        isKicked,
       ];
 }
