@@ -29,6 +29,7 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
   static const _securityChannel = MethodChannel('com.example.mobile/security');
   Timer? _countdownTimer;
   Timer? _inactivityTimer;
+  Timer? _gracePeriodTimer;
   final ValueNotifier<int> _secondsLeftNotifier = ValueNotifier<int>(3600);
   int _inactiveSeconds = 0;
   bool _isDarkMode = false;
@@ -43,6 +44,30 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
   void initState() {
     super.initState();
     _pageInitTime = DateTime.now();
+    _gracePeriodTimer = Timer(const Duration(seconds: 10), () {
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.security_rounded, color: Colors.white),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Hệ thống giám sát hoạt động! Bắt đầu tính lỗi vi phạm quy chế thi.',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.blueAccent,
+            duration: const Duration(seconds: 5),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    });
     WidgetsBinding.instance.addObserver(this);
 
     // Lock to portrait mode to disable rotation entirely
@@ -110,25 +135,22 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
     }
     try {
       await ScreenProtector.preventScreenshotOn();
-      if (Theme.of(context).platform == TargetPlatform.iOS) {
-        await ScreenProtector.protectDataLeakageWithColor(Colors.black);
-      }
 
-      // Listen for screenshots or recordings
+      // Listen for screenshots or recordings (First is screenshotCallback [0 params], second is screenRecordCallback [1 param])
       ScreenProtector.addListener(
         () {
           if (mounted) {
             _handleCheatingEvent(
-              'screen_record_attempt',
-              'Thí sinh đang quay màn hình bài thi (Screen Record Attempt)',
+              'screenshot_attempt',
+              'Thí sinh đã chụp màn hình bài thi (Screenshot Attempt)',
             );
           }
         },
-        (screenshotPath) {
+        (isRecording) {
           if (mounted) {
             _handleCheatingEvent(
-              'screenshot_attempt',
-              'Thí sinh đã chụp màn hình bài thi (Screenshot Attempt)',
+              'screen_record_attempt',
+              'Thí sinh đang quay màn hình bài thi (Screen Record Attempt)',
             );
           }
         },
@@ -188,6 +210,7 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
     WidgetsBinding.instance.removeObserver(this);
     _countdownTimer?.cancel();
     _inactivityTimer?.cancel();
+    _gracePeriodTimer?.cancel();
     _disableScreenSecurity();
 
     // Re-allow all orientations when leaving
@@ -224,12 +247,13 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
     if (!mounted) return;
 
     final now = DateTime.now();
-    if (now.difference(_pageInitTime).inSeconds < 2) {
-      return; // Ignore any initial glitches within first 2s
+    if (now.difference(_pageInitTime).inSeconds < 10) {
+      return; // Ignore any initial glitches within first 10s
     }
 
     // Global debounce: Prevent any two cheating events from firing within 2 seconds
-    if (_lastAnyEventTime != null && now.difference(_lastAnyEventTime!).inSeconds < 2) {
+    if (_lastAnyEventTime != null &&
+        now.difference(_lastAnyEventTime!).inSeconds < 2) {
       return;
     }
 
@@ -716,6 +740,7 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
 
   @override
   Widget build(BuildContext context) {
+    final takeExamBloc = context.read<TakeExamBloc>();
     final Color bgColor = _isDarkMode
         ? const Color(0xFF0F172A)
         : const Color(0xFFF8FAFC);
@@ -1293,83 +1318,59 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                                 );
                               }),
                             ] else ...[
-                              TextFormField(
-                                initialValue: currentAnswer ?? '',
-                                maxLines: 4,
-                                contextMenuBuilder: (context, editableTextState) {
-                                  final List<ContextMenuButtonItem> buttonItems =
-                                      editableTextState.contextMenuButtonItems;
-                                  
-                                  final state = context.read<TakeExamBloc>().state;
-                                  final isMonitoring = state.examData?['monitor_screen'] == true;
+                               EssayAnswerField(
+                                 initialAnswer: currentAnswer ?? '',
+                                 questionId: qId,
+                                 submissionId: widget.submissionId,
+                                 isDarkMode: _isDarkMode,
+                                 textColor: textColor,
+                                 onChanged: (val) {
+                                   context.read<TakeExamBloc>().add(
+                                     SaveAnswerEvent(
+                                       submissionId: widget.submissionId,
+                                       questionId: qId,
+                                       answer: val,
+                                     ),
+                                   );
+                                 },
+                                 contextMenuBuilder: (menuContext, editableTextState) {
+                                   final List<ContextMenuButtonItem>
+                                   buttonItems =
+                                       editableTextState.contextMenuButtonItems;
 
-                                  if (isMonitoring) {
-                                    final pasteIndex = buttonItems.indexWhere(
-                                        (item) => item.type == ContextMenuButtonType.paste);
-                                    if (pasteIndex >= 0) {
-                                      buttonItems[pasteIndex] = ContextMenuButtonItem(
-                                        type: ContextMenuButtonType.paste,
-                                        onPressed: () {
-                                          _handleCheatingEvent('paste_attempt', 'Thực hiện thao tác dán (Paste) nội dung từ nguồn bên ngoài.');
-                                          ContextMenuController.removeAny();
-                                        },
-                                      );
-                                    }
-                                  }
+                                   final state = takeExamBloc.state;
 
-                                  return AdaptiveTextSelectionToolbar.buttonItems(
-                                    anchors: editableTextState.contextMenuAnchors,
-                                    buttonItems: buttonItems,
-                                  );
-                                },
-                                decoration: InputDecoration(
-                                  hintText:
-                                      'Nhập câu trả lời tự luận của bạn...',
-                                  hintStyle: TextStyle(
-                                    color: Colors.grey.shade400,
-                                    fontSize: 13,
-                                  ),
-                                  filled: true,
-                                  fillColor: _isDarkMode
-                                      ? const Color(0xFF334155)
-                                      : const Color(0xFFF8FAFC),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                    borderSide: BorderSide(
-                                      color: _isDarkMode
-                                          ? Colors.transparent
-                                          : const Color(0xFFE2E8F0),
-                                    ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                    borderSide: BorderSide(
-                                      color: _isDarkMode
-                                          ? Colors.transparent
-                                          : const Color(0xFFE2E8F0),
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                    borderSide: const BorderSide(
-                                      color: Color(0xFF2563EB),
-                                    ),
-                                  ),
-                                ),
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: textColor,
-                                ),
-                                onChanged: (val) {
-                                  context.read<TakeExamBloc>().add(
-                                    SaveAnswerEvent(
-                                      submissionId: widget.submissionId,
-                                      questionId: qId,
-                                      answer: val,
-                                    ),
-                                  );
-                                },
-                              ),
+                                   final isMonitoring =
+                                       state.examData?['monitor_screen'] == true;
+
+                                   if (isMonitoring) {
+                                     final pasteIndex = buttonItems.indexWhere(
+                                       (item) =>
+                                           item.type ==
+                                           ContextMenuButtonType.paste,
+                                     );
+                                     if (pasteIndex >= 0) {
+                                       buttonItems[pasteIndex] =
+                                           ContextMenuButtonItem(
+                                             type: ContextMenuButtonType.paste,
+                                             onPressed: () {
+                                               _handleCheatingEvent(
+                                                 'paste_attempt',
+                                                 'Thực hiện thao tác dán (Paste) nội dung từ nguồn bên ngoài.',
+                                               );
+                                               ContextMenuController.removeAny();
+                                             },
+                                           );
+                                     }
+                                   }
+
+                                   return AdaptiveTextSelectionToolbar.buttonItems(
+                                     anchors:
+                                         editableTextState.contextMenuAnchors,
+                                     buttonItems: buttonItems,
+                                   );
+                                 },
+                               ),
                             ],
                           ],
                         ),
@@ -1418,6 +1419,102 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
           ],
         );
       },
+    );
+  }
+}
+
+class EssayAnswerField extends StatefulWidget {
+  final String initialAnswer;
+  final String questionId;
+  final String submissionId;
+  final Function(String) onChanged;
+  final bool isDarkMode;
+  final Color textColor;
+  final Widget Function(BuildContext, EditableTextState)? contextMenuBuilder;
+
+  const EssayAnswerField({
+    super.key,
+    required this.initialAnswer,
+    required this.questionId,
+    required this.submissionId,
+    required this.onChanged,
+    required this.isDarkMode,
+    required this.textColor,
+    this.contextMenuBuilder,
+  });
+
+  @override
+  State<EssayAnswerField> createState() => _EssayAnswerFieldState();
+}
+
+class _EssayAnswerFieldState extends State<EssayAnswerField> {
+  late TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialAnswer);
+  }
+
+  @override
+  void didUpdateWidget(covariant EssayAnswerField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialAnswer != oldWidget.initialAnswer &&
+        widget.initialAnswer != _controller.text) {
+      _controller.text = widget.initialAnswer;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: _controller,
+      maxLines: 4,
+      contextMenuBuilder: widget.contextMenuBuilder,
+      decoration: InputDecoration(
+        hintText: 'Nhập câu trả lời tự luận của bạn...',
+        hintStyle: TextStyle(
+          color: Colors.grey.shade400,
+          fontSize: 13,
+        ),
+        filled: true,
+        fillColor: widget.isDarkMode
+            ? const Color(0xFF334155)
+            : const Color(0xFFF8FAFC),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(
+            color: widget.isDarkMode
+                ? Colors.transparent
+                : const Color(0xFFE2E8F0),
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(
+            color: widget.isDarkMode
+                ? Colors.transparent
+                : const Color(0xFFE2E8F0),
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(
+            color: Color(0xFF2563EB),
+          ),
+        ),
+      ),
+      style: TextStyle(
+        fontSize: 13,
+        color: widget.textColor,
+      ),
+      onChanged: widget.onChanged,
     );
   }
 }

@@ -352,11 +352,9 @@ class _VerifyRoomPageState extends State<VerifyRoomPage> {
                     const SizedBox(height: 8),
                     TextFormField(
                       controller: _roomController,
-                      textCapitalization: TextCapitalization.characters,
+                      textCapitalization: TextCapitalization.none,
+                      keyboardType: TextInputType.text,
                       inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r'[a-zA-Z0-9]'),
-                        ), // Chỉ cho phép chữ và số
                         LengthLimitingTextInputFormatter(12),
                       ],
                       decoration: InputDecoration(
@@ -392,7 +390,6 @@ class _VerifyRoomPageState extends State<VerifyRoomPage> {
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        letterSpacing: 2,
                       ),
                     ),
                     const SizedBox(height: 20),

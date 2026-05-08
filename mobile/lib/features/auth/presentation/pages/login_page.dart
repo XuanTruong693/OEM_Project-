@@ -251,6 +251,7 @@ class _LoginPageState extends State<LoginPage> {
                       TextField(
                         controller: _passwordController,
                         obscureText: !_showPassword,
+                        keyboardType: TextInputType.text,
                         enabled: !isLoading,
                         decoration: InputDecoration(
                           hintText: "Mật khẩu",

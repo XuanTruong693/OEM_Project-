@@ -108,4 +108,35 @@ class AuthRemoteDataSource {
       throw Exception(errorMessage);
     }
   }
+
+  // --- API GỬI OTP ---
+  Future<void> sendOtp(String email) async {
+    try {
+      await dioClient.dio.post(
+        '/auth/send-otp',
+        data: {
+          'email': email,
+        },
+      );
+    } on DioException catch (e) {
+      final errorMessage = e.response?.data['message'] ?? 'Lỗi gửi mã OTP';
+      throw Exception(errorMessage);
+    }
+  }
+
+  // --- API XÁC MINH OTP ---
+  Future<void> verifyOtp({required String email, required String otp}) async {
+    try {
+      await dioClient.dio.post(
+        '/auth/verify-otp',
+        data: {
+          'email': email,
+          'otp': otp,
+        },
+      );
+    } on DioException catch (e) {
+      final errorMessage = e.response?.data['message'] ?? 'Mã OTP không hợp lệ hoặc đã hết hạn';
+      throw Exception(errorMessage);
+    }
+  }
 }

@@ -60,11 +60,10 @@ class DioClient {
 
                 // Nếu thành công, lấy token mới và lưu lại
                 final newAccessToken = response.data['accessToken'];
-                // Giả sử backend trả về cả user info, ta chỉ cần lưu token
+                final newRefreshToken = response.data['refreshToken'] ?? refreshToken;
                 await SecureStorageHelper.saveTokens(
                   accessToken: newAccessToken,
-                  refreshToken:
-                      refreshToken, // backend của bạn đang không cấp lại refresh token mới, nên giữ cái cũ
+                  refreshToken: newRefreshToken,
                 );
 
                 // Gắn token mới vào request vừa bị lỗi (original request)
