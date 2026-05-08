@@ -266,6 +266,9 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
     _lastEventTimes[key] = now;
     _lastAnyEventTime = now;
 
+    // Rung cảnh báo trực tiếp trên máy Sinh viên vi phạm
+    HapticFeedback.vibrate();
+
     final state = context.read<TakeExamBloc>().state;
     final newViolations = state.violations + 1;
 

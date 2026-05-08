@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobile/core/network/dio_client.dart';
 import 'package:mobile/features/student_exam/data/datasources/prepare_exam_remote_data_source.dart';
+import 'package:mobile/core/utils/device_info_helper.dart';
 
 // Import BLoC 1: Dùng để Auto-Join
 import '../bloc/prepare_exam_bloc.dart';
@@ -304,8 +305,9 @@ class _PrepareExamPageState extends State<PrepareExamPage> {
         await storage.write(key: 'student_device_fingerprint', value: fingerprint);
       }
 
+      final deviceName = await DeviceInfoHelper.getDeviceModelName();
       final ds = PrepareExamRemoteDataSourceImpl(dioClient: DioClient(onLogout: () {}));
-      final verifyRes = await ds.verifyDevice(subId, fingerprint, 'App Mobile (Flutter)');
+      final verifyRes = await ds.verifyDevice(subId, fingerprint, deviceName);
       final canEnter = verifyRes['can_enter'] == true;
       final status = (verifyRes['status'] ?? verifyRes['device_change_status'])?.toString();
 
@@ -385,8 +387,9 @@ class _PrepareExamPageState extends State<PrepareExamPage> {
                 return;
               }
               try {
+                final deviceName = await DeviceInfoHelper.getDeviceModelName();
                 final ds = PrepareExamRemoteDataSourceImpl(dioClient: DioClient(onLogout: () {}));
-                await ds.requestDeviceChange(subId, fingerprintId, 'App Mobile (Flutter)', reason);
+                await ds.requestDeviceChange(subId, fingerprintId, deviceName, reason);
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Đã gửi yêu cầu đổi máy. Vui lòng đợi GV phê duyệt.'), backgroundColor: Colors.green),
@@ -413,8 +416,9 @@ class _PrepareExamPageState extends State<PrepareExamPage> {
       await Future.delayed(const Duration(seconds: 4));
       if (!mounted) return false;
       try {
+        final deviceName = await DeviceInfoHelper.getDeviceModelName();
         final ds = PrepareExamRemoteDataSourceImpl(dioClient: DioClient(onLogout: () {}));
-        final verifyRes = await ds.verifyDevice(subId, fingerprintId, 'App Mobile (Flutter)');
+        final verifyRes = await ds.verifyDevice(subId, fingerprintId, deviceName);
         final canEnter = verifyRes['can_enter'] == true;
         final status = (verifyRes['status'] ?? verifyRes['device_change_status'])?.toString();
         if (canEnter || status == 'approved') {
