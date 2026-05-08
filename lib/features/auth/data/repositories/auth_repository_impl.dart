@@ -62,10 +62,14 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<void> setServerRole(String role) async {}
 
   @override
-  Future<void> sendOtp(String email) async {}
+  Future<void> sendOtp(String email) async {
+    return await authRemoteDataSource.sendOtp(email);
+  }
 
   @override
-  Future<void> verifyOtp({required String email, required String otp}) async {}
+  Future<void> verifyOtp({required String email, required String otp}) async {
+    return await authRemoteDataSource.verifyOtp(email: email, otp: otp);
+  }
 
   @override
   Future<Either<Failure, RoomVerificationEntity>> verifyRoom(String roomCode) async {

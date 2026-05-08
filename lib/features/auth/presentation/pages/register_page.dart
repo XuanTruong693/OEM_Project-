@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -27,6 +28,24 @@ class _RegisterPageState extends State<RegisterPage> {
   bool _emailVerified = false;
   bool _showPassword = false;
   bool _showConfirmPassword = false;
+  int _timer = 60;
+  Timer? _countdownTimer;
+
+  void _startTimer() {
+    setState(() {
+      _timer = 60;
+    });
+    _countdownTimer?.cancel();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_timer > 0) {
+        setState(() {
+          _timer--;
+        });
+      } else {
+        _countdownTimer?.cancel();
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -36,6 +55,7 @@ class _RegisterPageState extends State<RegisterPage> {
     _otpController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _countdownTimer?.cancel();
     super.dispose();
   }
 
@@ -57,7 +77,8 @@ class _RegisterPageState extends State<RegisterPage> {
       return;
     }
     final nameRegex = RegExp(
-      r'^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂÂÊÔưăâêô\s]+$',
+      r'^[\p{L}\s]+$',
+      unicode: true,
     );
     if (!nameRegex.hasMatch(lastName) || !nameRegex.hasMatch(firstName)) {
       _showError("Họ tên không được chứa số hoặc ký tự đặc biệt");
@@ -128,6 +149,7 @@ class _RegisterPageState extends State<RegisterPage> {
               listener: (context, state) async {
                 if (state is AuthOtpSentSuccess) {
                   setState(() => _otpStep = true);
+                  _startTimer();
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text("Đã gửi mã OTP!"),
@@ -260,6 +282,7 @@ class _RegisterPageState extends State<RegisterPage> {
                           Expanded(
                             child: TextField(
                               controller: _lastNameController,
+                              keyboardType: TextInputType.text,
                               enabled: !isLoading && !_otpStep,
                               decoration: InputDecoration(
                                 hintText: "Họ",
@@ -273,6 +296,7 @@ class _RegisterPageState extends State<RegisterPage> {
                           Expanded(
                             child: TextField(
                               controller: _firstNameController,
+                              keyboardType: TextInputType.text,
                               enabled: !isLoading && !_otpStep,
                               decoration: InputDecoration(
                                 hintText: "Tên",
@@ -384,12 +408,29 @@ class _RegisterPageState extends State<RegisterPage> {
                                   ),
                                 ],
                               ),
-                              TextButton(
-                                onPressed: () => setState(() {
-                                  _otpStep = false;
-                                  _otpController.clear();
-                                }),
-                                child: const Text("Quay lại nhập email"),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  TextButton(
+                                    onPressed: () => setState(() {
+                                      _otpStep = false;
+                                      _otpController.clear();
+                                    }),
+                                    child: const Text("Quay lại nhập email"),
+                                  ),
+                                  TextButton(
+                                    onPressed: (isLoading || _timer > 0)
+                                        ? null
+                                        : _handleSendOTP,
+                                    child: Text(
+                                      _timer > 0 ? "Gửi lại mã ($_timer s)" : "Gửi lại mã",
+                                      style: TextStyle(
+                                        color: _timer > 0 ? Colors.grey : Colors.green,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -401,6 +442,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       TextField(
                         controller: _passwordController,
                         obscureText: !_showPassword,
+                        keyboardType: TextInputType.text,
                         enabled: !isLoading && !_otpStep,
                         decoration: InputDecoration(
                           hintText: "Mật khẩu",
@@ -423,6 +465,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       TextField(
                         controller: _confirmPasswordController,
                         obscureText: !_showConfirmPassword,
+                        keyboardType: TextInputType.text,
                         enabled: !isLoading && !_otpStep,
                         decoration: InputDecoration(
                           hintText: "Xác nhận mật khẩu",
