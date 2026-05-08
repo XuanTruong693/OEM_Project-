@@ -36,6 +36,10 @@ class SocketClient {
       io.OptionBuilder()
           .setTransports(['websocket', 'polling'])
           .disableAutoConnect()
+          .enableReconnection()
+          .setReconnectionDelay(1000)
+          .setReconnectionDelayMax(5000)
+          .setReconnectionAttempts(99999)
           .setExtraHeaders({
             'Authorization': 'Bearer $token',
           })

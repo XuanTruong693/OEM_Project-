@@ -13,6 +13,7 @@ class NotificationHelper {
       requestAlertPermission: true,
       requestBadgePermission: true,
       requestSoundPermission: true,
+      requestCriticalPermission: true,
     );
 
     const InitializationSettings initializationSettings = InitializationSettings(
@@ -23,6 +24,12 @@ class NotificationHelper {
     await _notificationsPlugin.initialize(
       initializationSettings,
     );
+
+    // Request permission for Android 13+
+    await _notificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestNotificationsPermission();
   }
 
   static Future<void> showNotification({
@@ -36,7 +43,11 @@ class NotificationHelper {
       'Cảnh báo Gian lận',
       channelDescription: 'Thông báo gian lận của sinh viên thời gian thực',
       importance: Importance.max,
-      priority: Priority.high,
+      priority: Priority.max,
+      fullScreenIntent: true,
+      visibility: NotificationVisibility.public,
+      category: AndroidNotificationCategory.alarm,
+      audioAttributesUsage: AudioAttributesUsage.alarm,
       ticker: 'ticker',
       playSound: true,
     );
@@ -47,6 +58,7 @@ class NotificationHelper {
         presentAlert: true,
         presentBadge: true,
         presentSound: true,
+        interruptionLevel: InterruptionLevel.critical,
       ),
     );
 
