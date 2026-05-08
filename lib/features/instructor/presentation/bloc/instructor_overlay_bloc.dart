@@ -60,25 +60,44 @@ class InstructorOverlayBloc
             );
           } else {
             String eventDesc = 'Hành vi bất thường';
-            switch (violation.eventType) {
-              case 'blur_event':
-                eventDesc = 'Chuyển tab / Rời màn hình';
-                break;
-              case 'paste_attempt':
-                eventDesc = 'Thao tác dán nội dung';
-                break;
-              case 'full_screen_exit':
-                eventDesc = 'Thoát chế độ toàn màn hình';
-                break;
-              case 'multiple_faces':
-                eventDesc = 'Phát hiện nhiều khuôn mặt';
-                break;
-              case 'no_face':
-                eventDesc = 'Không phát hiện khuôn mặt';
-                break;
-              default:
-                eventDesc = violation.reason.isNotEmpty ? violation.reason : 'Vi phạm quy chế thi';
-            }
+            final Map<String, String> eventDict = {
+              'alt_tab': "Chuyển ứng dụng (Alt+Tab)",
+              'visibility_hidden': "Ẩn hoặc đổi tab bài thi",
+              'window_blur': "Rời khỏi vùng làm bài (Mất Focus)",
+              'fullscreen_lost': "Thoát chế độ toàn màn hình",
+              'split_screen': "Sử dụng chia đôi màn hình",
+              'multi_monitor_attempt': "Sử dụng nhiều màn hình",
+              'screenshot_attempt': "Cố tình chụp màn hình",
+              'screen_record_attempt': "Cố tình quay video màn hình",
+              'screen_share_attempt': "Cố tình chia sẻ màn hình",
+              'minimize_app': "Thoát ứng dụng về màn hình Home",
+              'idle_timeout': "Treo máy không tương tác quá 1 phút",
+              'blocked_key': "Sử dụng phím tắt bị cấm",
+              'inactivity': "Không hoạt động trong thời gian dài",
+              'blur_event': "Chuyển tab / Rời màn hình",
+              'paste_attempt': "Thao tác dán nội dung",
+              'copy_attempt': "Thao tác sao chép nội dung",
+              'drag_drop_in': "Kéo thả tài liệu từ ngoài vào",
+              'drag_drop_attempt': "Kéo thả tài liệu",
+              'tab_switch': "Liên tục đổi tab bài thi",
+              'multiple_faces': "Phát hiện có người lạ trong camera",
+              'no_face': "Không thấy thí sinh trước camera",
+              'no_face_detected': "Không phát hiện khuôn mặt",
+              'ai_detected_cheating': "Tổng hợp hành vi đáng ngờ (AI phân tích)",
+              'devtools_attempt': "Mở công cụ phát triển (DevTools)",
+              'mouse_outside': "Chuột rời khỏi vùng làm bài",
+              'typing_speed_violation': "Tốc độ gõ phím bất thường (Dùng Tool)",
+              'screen_share_stopped': "Ngắt chia sẻ màn hình giám sát",
+              'prolonged_away': "Vắng mặt quá lâu (>15 giây)",
+              'Chia sẻ màn hình': "Cố tình chia sẻ màn hình",
+              'Quay màn hình': "Cố tình quay video màn hình",
+              'Chụp màn hình': "Cố tình chụp màn hình",
+              'Thoát về Home': "Thoát ứng dụng về màn hình Home",
+              'Mất tiêu điểm': "Rời khỏi vùng làm bài (Mất Focus)",
+            };
+            
+            eventDesc = eventDict[violation.eventType] ?? 
+                        (violation.reason.isNotEmpty ? (eventDict[violation.reason] ?? violation.reason) : 'Vi phạm quy chế thi');
 
             NotificationHelper.showNotification(
               id: DateTime.now().millisecondsSinceEpoch ~/ 1000,

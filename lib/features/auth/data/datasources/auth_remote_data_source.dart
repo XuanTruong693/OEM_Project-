@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import '../../../../core/network/dio_client.dart';
 import '../models/user_model.dart';
 import '../models/room_verification_model.dart';
+import '../../../../core/storage/secure_storage_helper.dart';
 
 class AuthRemoteDataSource {
   final DioClient dioClient;
@@ -17,6 +18,7 @@ class AuthRemoteDataSource {
     String? roomId, // roomId có thể null nếu role là instructor
   }) async {
     try {
+      final fcmToken = await SecureStorageHelper.getFcmToken();
       final response = await dioClient.dio.post(
         '/auth/login', // Không cần gõ http://10.0.2.2... nữa
         data: {
@@ -24,6 +26,7 @@ class AuthRemoteDataSource {
           'password': password,
           'role': role,
           if (role == 'student' && roomId != null) 'roomId': roomId,
+          if (fcmToken != null) 'fcmToken': fcmToken,
         },
       );
 
@@ -76,12 +79,14 @@ class AuthRemoteDataSource {
     String? roomId,
   }) async {
     try {
+      final fcmToken = await SecureStorageHelper.getFcmToken();
       final response = await dioClient.dio.post(
         '/auth/google',
         data: {
           'idToken': idToken,
           'role': role,
           if (role == 'student' && roomId != null) 'roomId': roomId,
+          if (fcmToken != null) 'fcmToken': fcmToken,
         },
       );
 

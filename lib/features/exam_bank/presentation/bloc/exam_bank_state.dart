@@ -16,6 +16,11 @@ class ExamBankLoaded extends ExamBankState {
   final String? toastMessage;
   final String? toastType; // 'success' hoặc 'error'
 
+  // Trạng thái phân trang
+  final int currentPage;
+  final bool hasReachedMax;
+  final bool isLoadingMore;
+
   ExamBankLoaded({
     required this.allExams,
     this.searchQuery = '',
@@ -23,6 +28,9 @@ class ExamBankLoaded extends ExamBankState {
     this.isDeleting = false,
     this.toastMessage,
     this.toastType,
+    this.currentPage = 1,
+    this.hasReachedMax = false,
+    this.isLoadingMore = false,
   });
 
   // 👉 BẢN SAO HOÀN HẢO CỦA useMemo VÀ .filter() BÊN REACT
@@ -49,6 +57,9 @@ class ExamBankLoaded extends ExamBankState {
     String? toastMessage,
     String? toastType,
     bool clearToast = false, // Cờ đặc biệt để reset toast về null
+    int? currentPage,
+    bool? hasReachedMax,
+    bool? isLoadingMore,
   }) {
     return ExamBankLoaded(
       allExams: allExams ?? this.allExams,
@@ -57,6 +68,9 @@ class ExamBankLoaded extends ExamBankState {
       isDeleting: isDeleting ?? this.isDeleting,
       toastMessage: clearToast ? null : (toastMessage ?? this.toastMessage),
       toastType: clearToast ? null : (toastType ?? this.toastType),
+      currentPage: currentPage ?? this.currentPage,
+      hasReachedMax: hasReachedMax ?? this.hasReachedMax,
+      isLoadingMore: isLoadingMore ?? this.isLoadingMore,
     );
   }
 }

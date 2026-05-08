@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:dio/dio.dart';
 import '../../../../core/storage/secure_storage_helper.dart';
 
 class SplashPage extends StatefulWidget {
@@ -40,9 +41,34 @@ class _SplashPageState extends State<SplashPage> with SingleTickerProviderStateM
 
     final token = await SecureStorageHelper.getAccessToken();
     final role = await SecureStorageHelper.getSelectedRole();
+    final userId = await SecureStorageHelper.getUserId();
+    final fcmToken = await SecureStorageHelper.getFcmToken();
     
     debugPrint("📦 [Splash] Stored Token: ${token != null ? 'EXISTS' : 'NULL'}");
     debugPrint("📦 [Splash] Stored Role: $role");
+    debugPrint("📦 [Splash] Stored UserId: $userId");
+    debugPrint("📦 [Splash] Stored FcmToken: ${fcmToken != null ? 'EXISTS' : 'NULL'}");
+
+    if (token != null && userId != null && fcmToken != null) {
+      try {
+        final dio = Dio();
+        await dio.post(
+          'https://api.oes.io.vn/api/auth/update-fcm',
+          data: {
+            'userId': int.tryParse(userId),
+            'fcmToken': fcmToken,
+          },
+          options: Options(
+            headers: {
+              'Authorization': 'Bearer $token',
+            },
+          ),
+        );
+        debugPrint("✅ [FCM Sync] Auto-synchronized fcmToken on startup!");
+      } catch (e) {
+        debugPrint("⚠️ [FCM Sync] Startup sync skipped or failed: $e");
+      }
+    }
 
     if (mounted) {
       if (token != null && role != null) {

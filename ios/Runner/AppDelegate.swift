@@ -11,6 +11,10 @@ import UIKit
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
 
+    if #available(iOS 10.0, *) {
+      UNUserNotificationCenter.current().delegate = self as? UNUserNotificationCenterDelegate
+    }
+
     if let controller = window?.rootViewController as? FlutterViewController {
       let securityChannel = FlutterMethodChannel(name: "com.example.mobile/security",
                                                 binaryMessenger: controller.binaryMessenger)

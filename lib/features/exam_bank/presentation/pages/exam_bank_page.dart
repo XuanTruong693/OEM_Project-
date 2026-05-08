@@ -15,18 +15,28 @@ class ExamBankPage extends StatefulWidget {
 
 class _ExamBankPageState extends State<ExamBankPage> {
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   String _currentFilter = 'all';
 
   @override
   void initState() {
     super.initState();
     context.read<ExamBankBloc>().add(LoadExamsEvent());
+    _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      context.read<ExamBankBloc>().add(LoadMoreExamsEvent());
+    }
   }
 
   void _showDeleteDialog(String examId) {
@@ -180,9 +190,22 @@ class _ExamBankPageState extends State<ExamBankPage> {
       }
 
       return ListView.builder(
+        controller: _scrollController,
         padding: const EdgeInsets.all(16),
-        itemCount: exams.length,
+        itemCount: exams.length + (state.isLoadingMore ? 1 : 0),
         itemBuilder: (context, index) {
+          if (index == exams.length) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            );
+          }
           final exam = exams[index];
           return ExamBankCard(
             exam: exam,
