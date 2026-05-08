@@ -57,7 +57,10 @@ class _InstructorDashboardPageState extends State<InstructorDashboardPage> {
                           children: [
                             const Text(
                               "Xin chào,",
-                              style: TextStyle(color: Colors.grey, fontSize: 12),
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 12,
+                              ),
                             ),
                             Text(
                               state.fullName,
@@ -72,8 +75,13 @@ class _InstructorDashboardPageState extends State<InstructorDashboardPage> {
                         const SizedBox(width: 10),
                         CircleAvatar(
                           backgroundImage: state.avatar.isNotEmpty
-                              ? NetworkImage(ImageUtils.getFullImageUrl(state.avatar))
-                              : const AssetImage('assets/images/default-avatar.png') as ImageProvider,
+                              ? NetworkImage(
+                                  ImageUtils.getFullImageUrl(state.avatar),
+                                )
+                              : const AssetImage(
+                                      'assets/images/default-avatar.png',
+                                    )
+                                    as ImageProvider,
                           radius: 18,
                         ),
                       ],
@@ -98,109 +106,109 @@ class _InstructorDashboardPageState extends State<InstructorDashboardPage> {
         child: BlocBuilder<InstructorDashboardBloc, InstructorDashboardState>(
           builder: (context, state) {
             if (state is DashboardLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
+              return const Center(child: CircularProgressIndicator());
+            }
 
-          if (state is DashboardError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    "Lỗi: ${state.message}",
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                  ElevatedButton(
-                    onPressed: () => context
-                        .read<InstructorDashboardBloc>()
-                        .add(LoadDashboardDataEvent()),
-                    child: const Text("Thử lại"),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          if (state is DashboardLoaded) {
-            return RefreshIndicator(
-              onRefresh: () async {
-                context.read<InstructorDashboardBloc>().add(
-                  LoadDashboardDataEvent(),
-                );
-              },
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16),
+            if (state is DashboardError) {
+              return Center(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    SummaryCard(
-                      title: "Tổng số đề đã tạo",
-                      value: state.stats.totalExamsCreated.toString(),
-                      iconBackgroundColor: Colors.green,
-                      iconPath: 'assets/images/report.png',
-                      linkText: "Xem",
-                      onTap: () {
-                        context.push('/instructor-dashboard/exams');
-                      },
+                    Text(
+                      "Lỗi: ${state.message}",
+                      style: const TextStyle(color: Colors.red),
                     ),
-                    const SizedBox(height: 16),
-                    SummaryCard(
-                      title: "Tổng số bài kiểm tra",
-                      value: state.stats.totalTestsSubmitted.toString(),
-                      iconBackgroundColor: Colors.red,
-                      iconPath: 'assets/images/totalExam.png',
-                      linkText: "Xem",
-                      onTap: () {
-                        context.push('/instructor-dashboard/submissions');
-                      },
+                    ElevatedButton(
+                      onPressed: () => context
+                          .read<InstructorDashboardBloc>()
+                          .add(LoadDashboardDataEvent()),
+                      child: const Text("Thử lại"),
                     ),
-                    const SizedBox(height: 16),
-                    SummaryCard(
-                      title: "Tổng số thí sinh đã thi",
-                      value: state.stats.totalStudentsParticipated.toString(),
-                      iconBackgroundColor: Colors.purple,
-                      iconPath: 'assets/images/studentGroup.png',
-                      linkText: "Xem",
-                      onTap: () {
-                        context.push('/instructor-dashboard/students');
-                      },
-                    ),
-                    const SizedBox(height: 30),
-                    const Text(
-                      "Thống kê theo tháng",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    InstructorChart(
-                      title: "Tổng số đề (Total Exams)",
-                      data: state.monthlyData,
-                      lineColor: Colors.blueAccent,
-                      fillColor: Colors.blue,
-                      isExams: true,
-                    ),
-                    const SizedBox(height: 20),
-                    InstructorChart(
-                      title: "Tổng số thí sinh (Total Students)",
-                      data: state.monthlyData,
-                      lineColor: Colors.pinkAccent,
-                      fillColor: Colors.pink,
-                      isExams: false,
-                    ),
-                    const SizedBox(height: 30),
                   ],
                 ),
-              ),
-            );
-          }
-          return const SizedBox.shrink();
-        },
+              );
+            }
+
+            if (state is DashboardLoaded) {
+              return RefreshIndicator(
+                onRefresh: () async {
+                  context.read<InstructorDashboardBloc>().add(
+                    LoadDashboardDataEvent(),
+                  );
+                },
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SummaryCard(
+                        title: "Tổng số đề đã tạo",
+                        value: state.stats.totalExamsCreated.toString(),
+                        iconBackgroundColor: Colors.green,
+                        iconPath: 'assets/images/report.png',
+                        linkText: "Xem",
+                        onTap: () {
+                          context.push('/instructor-dashboard/exams');
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      SummaryCard(
+                        title: "Tổng số bài kiểm tra",
+                        value: state.stats.totalTestsSubmitted.toString(),
+                        iconBackgroundColor: Colors.red,
+                        iconPath: 'assets/images/totalExam.png',
+                        linkText: "Xem",
+                        onTap: () {
+                          context.push('/instructor-dashboard/submissions');
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      SummaryCard(
+                        title: "Tổng số thí sinh đã thi",
+                        value: state.stats.totalStudentsParticipated.toString(),
+                        iconBackgroundColor: Colors.purple,
+                        iconPath: 'assets/images/studentGroup.png',
+                        linkText: "Xem",
+                        onTap: () {
+                          context.push('/instructor-dashboard/students');
+                        },
+                      ),
+                      const SizedBox(height: 30),
+                      const Text(
+                        "Thống kê theo tháng",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      InstructorChart(
+                        title: "Tổng số đề (Total Exams)",
+                        data: state.monthlyData,
+                        lineColor: Colors.blueAccent,
+                        fillColor: Colors.blue,
+                        isExams: true,
+                      ),
+                      const SizedBox(height: 20),
+                      InstructorChart(
+                        title: "Tổng số thí sinh (Total Students)",
+                        data: state.monthlyData,
+                        lineColor: Colors.pinkAccent,
+                        fillColor: Colors.pink,
+                        isExams: false,
+                      ),
+                      const SizedBox(height: 30),
+                    ],
+                  ),
+                ),
+              );
+            }
+            return const SizedBox.shrink();
+          },
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 }

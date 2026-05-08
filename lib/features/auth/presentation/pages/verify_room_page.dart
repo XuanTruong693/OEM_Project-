@@ -70,7 +70,9 @@ class _VerifyRoomPageState extends State<VerifyRoomPage> {
               await SecureStorageHelper.saveRoomToken(entity.roomToken!);
             }
             if (entity.examId != null) {
-              await SecureStorageHelper.savePendingExamId(entity.examId!.toString());
+              await SecureStorageHelper.savePendingExamId(
+                entity.examId!.toString(),
+              );
             }
 
             await SecureStorageHelper.saveExamFlags(
@@ -96,7 +98,9 @@ class _VerifyRoomPageState extends State<VerifyRoomPage> {
                   final roomToken = await SecureStorageHelper.getRoomToken();
 
                   if (token != null && examId != null && roomToken != null) {
-                    context.go('/prepare-exam?examId=$examId&roomToken=$roomToken');
+                    context.go(
+                      '/prepare-exam?examId=$examId&roomToken=$roomToken',
+                    );
                   } else {
                     context.go('/login');
                   }

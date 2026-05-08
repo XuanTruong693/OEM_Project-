@@ -76,15 +76,33 @@ class SecureStorageHelper {
     required bool requireStudentCard,
     required bool monitorScreen,
   }) async {
-    await _storage.write(key: 'exam_flag_face', value: requireFaceCheck.toString());
-    await _storage.write(key: 'exam_flag_card', value: requireStudentCard.toString());
-    await _storage.write(key: 'exam_flag_monitor', value: monitorScreen.toString());
+    await _storage.write(
+      key: 'exam_flag_face',
+      value: requireFaceCheck.toString(),
+    );
+    await _storage.write(
+      key: 'exam_flag_card',
+      value: requireStudentCard.toString(),
+    );
+    await _storage.write(
+      key: 'exam_flag_monitor',
+      value: monitorScreen.toString(),
+    );
   }
 
   static Future<void> saveExamFlagsFromJson(Map<String, dynamic> json) async {
-    await _storage.write(key: 'exam_flag_face', value: (json['requireFaceCheck'] ?? false).toString());
-    await _storage.write(key: 'exam_flag_card', value: (json['requireStudentCard'] ?? false).toString());
-    await _storage.write(key: 'exam_flag_monitor', value: (json['monitorScreen'] ?? false).toString());
+    await _storage.write(
+      key: 'exam_flag_face',
+      value: (json['requireFaceCheck'] ?? false).toString(),
+    );
+    await _storage.write(
+      key: 'exam_flag_card',
+      value: (json['requireStudentCard'] ?? false).toString(),
+    );
+    await _storage.write(
+      key: 'exam_flag_monitor',
+      value: (json['monitorScreen'] ?? false).toString(),
+    );
   }
 
   static Future<void> saveExamTime({
