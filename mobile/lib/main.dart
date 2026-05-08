@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'package:mobile/core/network/dio_client.dart';
 import 'package:mobile/core/utils/excel_parser_service.dart';
@@ -143,9 +145,53 @@ import 'features/student_helping/domain/usecases/get_my_results_usecase.dart';
 import 'features/student_helping/domain/usecases/get_result_detail_usecase.dart';
 import 'features/student_helping/domain/usecases/filter_results_usecase.dart';
 
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  await NotificationHelper.init();
+  debugPrint("📩 Nhận thông báo chạy ngầm: ${message.notification?.title}");
+  if (message.notification != null) {
+    await NotificationHelper.showNotification(
+      id: DateTime.now().millisecondsSinceEpoch % 100000,
+      title: message.notification!.title ?? '',
+      body: message.notification!.body ?? '',
+    );
+  }
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await NotificationHelper.init();
+
+  try {
+    await Firebase.initializeApp();
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+    final messaging = FirebaseMessaging.instance;
+    await messaging.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    final token = await messaging.getToken();
+    if (token != null) {
+      debugPrint("🔑 FCM Token: $token");
+      await SecureStorageHelper.saveFcmToken(token);
+    }
+
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      if (message.notification != null) {
+        NotificationHelper.showNotification(
+          id: DateTime.now().millisecondsSinceEpoch % 100000,
+          title: message.notification!.title ?? '',
+          body: message.notification!.body ?? '',
+        );
+      }
+    });
+  } catch (e) {
+    debugPrint("⚠️ Firebase Init error: $e");
+  }
 
   // 👉 1.1 Khai báo biến nullable
   GoRouter? router;

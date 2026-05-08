@@ -128,4 +128,12 @@ class SecureStorageHelper {
   static Future<String?> getFullName() async {
     return await _storage.read(key: 'full_name');
   }
+
+  static Future<void> saveFcmToken(String token) async {
+    await _storage.write(key: 'fcm_token', value: token);
+  }
+
+  static Future<String?> getFcmToken() async {
+    return await _storage.read(key: 'fcm_token');
+  }
 }

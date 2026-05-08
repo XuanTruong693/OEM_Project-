@@ -25,6 +25,25 @@ class NotificationHelper {
       initializationSettings,
     );
 
+    try {
+      const AndroidNotificationChannel channel = AndroidNotificationChannel(
+        'cheating_alerts',
+        'Cảnh báo Gian lận',
+        description: 'Thông báo gian lận của sinh viên thời gian thực',
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+      );
+
+      await _notificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(channel);
+      print("🔔 Registered Android high-importance channel successfully.");
+    } catch (e) {
+      print("⚠️ Error creating notification channel: $e");
+    }
+
     // Request permission for Android 13+
     await _notificationsPlugin
         .resolvePlatformSpecificImplementation<
@@ -37,6 +56,8 @@ class NotificationHelper {
     required String title,
     required String body,
   }) async {
+    final int safeId = DateTime.now().millisecondsSinceEpoch % 100000;
+    
     const AndroidNotificationDetails androidNotificationDetails =
         AndroidNotificationDetails(
       'cheating_alerts',
@@ -62,11 +83,16 @@ class NotificationHelper {
       ),
     );
 
-    await _notificationsPlugin.show(
-      id,
-      title,
-      body,
-      notificationDetails,
-    );
+    try {
+      await _notificationsPlugin.show(
+        safeId,
+        title,
+        body,
+        notificationDetails,
+      );
+      print("🔔 Local notification triggered successfully: $title - $body");
+    } catch (e) {
+      print("❌ Error displaying local notification: $e");
+    }
   }
 }

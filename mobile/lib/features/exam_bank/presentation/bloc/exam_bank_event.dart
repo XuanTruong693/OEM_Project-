@@ -3,6 +3,9 @@ abstract class ExamBankEvent {}
 // Tải danh sách đề thi (gọi API)
 class LoadExamsEvent extends ExamBankEvent {}
 
+// Tải thêm danh sách đề thi khi cuộn trang
+class LoadMoreExamsEvent extends ExamBankEvent {}
+
 // Thay đổi từ khóa tìm kiếm
 class SearchExamEvent extends ExamBankEvent {
   final String query;

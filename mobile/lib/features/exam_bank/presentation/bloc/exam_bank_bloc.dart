@@ -13,52 +13,125 @@ class ExamBankBloc extends Bloc<ExamBankEvent, ExamBankState> {
     required this.deleteBankExamUseCase,
   }) : super(ExamBankInitial()) {
     on<LoadExamsEvent>(_onLoadExams);
+    on<LoadMoreExamsEvent>(_onLoadMoreExams);
     on<SearchExamEvent>(_onSearchExam);
     on<FilterStatusChangedEvent>(_onFilterStatusChanged);
     on<DeleteExamEvent>(_onDeleteExam);
     on<ClearToastEvent>(_onClearToast);
   }
 
-  // 1. GỌI API LẤY DANH SÁCH ĐỀ THI
+  // 1. GỌI API LẤY DANH SÁCH ĐỀ THI (Trang 1)
   Future<void> _onLoadExams(
     LoadExamsEvent event,
     Emitter<ExamBankState> emit,
   ) async {
-    // Nếu đang có data cũ, giữ nguyên trạng thái Loaded để không chớp giật màn hình
-    // Chỉ emit Loading nếu là lần đầu tiên vào trang (Initial) hoặc bị Error
+    String searchQuery = '';
+    String filterStatus = 'all';
+
+    if (state is ExamBankLoaded) {
+      final currentState = state as ExamBankLoaded;
+      searchQuery = currentState.searchQuery;
+      filterStatus = currentState.filterStatus;
+    }
+
     if (state is! ExamBankLoaded) {
       emit(ExamBankLoading());
     }
 
-    final result =
-        await getBankExamsUseCase(); // Lấy tất cả (để BLoC tự filter ở máy khách)
+    final result = await getBankExamsUseCase(
+      page: 1,
+      limit: 10,
+      search: searchQuery.isNotEmpty ? searchQuery : null,
+      status: filterStatus != 'all' ? filterStatus : null,
+    );
 
-    result.fold((failure) => emit(ExamBankError(failure.message)), (exams) {
-      if (state is ExamBankLoaded) {
-        // Cập nhật lại danh sách mới nhưng giữ nguyên từ khóa tìm kiếm & filter hiện tại
-        emit((state as ExamBankLoaded).copyWith(allExams: exams));
-      } else {
-        // Lần đầu tải thành công
-        emit(ExamBankLoaded(allExams: exams));
-      }
-    });
+    result.fold(
+      (failure) => emit(ExamBankError(failure.message)),
+      (exams) {
+        emit(ExamBankLoaded(
+          allExams: exams,
+          searchQuery: searchQuery,
+          filterStatus: filterStatus,
+          currentPage: 1,
+          hasReachedMax: exams.length < 10,
+          isLoadingMore: false,
+        ));
+      },
+    );
   }
 
-  // 2. CẬP NHẬT TỪ KHÓA TÌM KIẾM
-  void _onSearchExam(SearchExamEvent event, Emitter<ExamBankState> emit) {
-    if (state is ExamBankLoaded) {
-      emit((state as ExamBankLoaded).copyWith(searchQuery: event.query));
-    }
+  // 1b. GỌI API TẢI THÊM ĐỀ THI (Trang tiếp theo)
+  Future<void> _onLoadMoreExams(
+    LoadMoreExamsEvent event,
+    Emitter<ExamBankState> emit,
+  ) async {
+    if (state is! ExamBankLoaded) return;
+    final currentState = state as ExamBankLoaded;
+
+    if (currentState.hasReachedMax || currentState.isLoadingMore) return;
+
+    emit(currentState.copyWith(isLoadingMore: true));
+
+    final nextPage = currentState.currentPage + 1;
+    final result = await getBankExamsUseCase(
+      page: nextPage,
+      limit: 10,
+      search: currentState.searchQuery.isNotEmpty ? currentState.searchQuery : null,
+      status: currentState.filterStatus != 'all' ? currentState.filterStatus : null,
+    );
+
+    result.fold(
+      (failure) {
+        emit(currentState.copyWith(isLoadingMore: false));
+      },
+      (newExams) {
+        if (newExams.isEmpty) {
+          emit(currentState.copyWith(
+            isLoadingMore: false,
+            hasReachedMax: true,
+          ));
+        } else {
+          final existingIds = currentState.allExams.map((e) => e.id).toSet();
+          final uniqueNewExams = newExams.where((e) => !existingIds.contains(e.id)).toList();
+
+          emit(currentState.copyWith(
+            allExams: [...currentState.allExams, ...uniqueNewExams],
+            currentPage: nextPage,
+            isLoadingMore: false,
+            hasReachedMax: newExams.length < 10,
+          ));
+        }
+      },
+    );
   }
 
-  // 3. CẬP NHẬT BỘ LỌC TRẠNG THÁI
-  void _onFilterStatusChanged(
+  // 2. CẬP NHẬT TỪ KHÓA TÌM KIẾM VÀ TẢI LẠI TRANG 1
+  Future<void> _onSearchExam(SearchExamEvent event, Emitter<ExamBankState> emit) async {
+    if (state is! ExamBankLoaded) return;
+    final currentState = state as ExamBankLoaded;
+
+    emit(currentState.copyWith(
+      searchQuery: event.query,
+      isLoadingMore: false,
+    ));
+
+    add(LoadExamsEvent());
+  }
+
+  // 3. CẬP NHẬT BỘ LỌC TRẠNG THÁI VÀ TẢI LẠI TRANG 1
+  Future<void> _onFilterStatusChanged(
     FilterStatusChangedEvent event,
     Emitter<ExamBankState> emit,
-  ) {
-    if (state is ExamBankLoaded) {
-      emit((state as ExamBankLoaded).copyWith(filterStatus: event.status));
-    }
+  ) async {
+    if (state is! ExamBankLoaded) return;
+    final currentState = state as ExamBankLoaded;
+
+    emit(currentState.copyWith(
+      filterStatus: event.status,
+      isLoadingMore: false,
+    ));
+
+    add(LoadExamsEvent());
   }
 
   // 4. XÓA ĐỀ THI
