@@ -6,6 +6,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:mobile/core/network/dio_client.dart';
 import 'package:mobile/core/utils/excel_parser_service.dart';
 import 'package:mobile/core/storage/secure_storage_helper.dart';
+import 'package:mobile/core/utils/notification_helper.dart';
 
 // --- IMPORT MÀN HÌNH AUTH ---
 import 'package:mobile/features/auth/data/datasources/auth_remote_data_source.dart';
@@ -144,6 +145,7 @@ import 'features/student_helping/domain/usecases/filter_results_usecase.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await NotificationHelper.init();
 
   // 👉 1.1 Khai báo biến nullable
   GoRouter? router;
