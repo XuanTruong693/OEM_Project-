@@ -34,7 +34,7 @@ class SocketClient {
     socket = io.io(
       socketUrl,
       io.OptionBuilder()
-          .setTransports(['websocket'])
+          .setTransports(['websocket', 'polling'])
           .disableAutoConnect()
           .setExtraHeaders({
             'Authorization': 'Bearer $token',
