@@ -34,19 +34,24 @@ class _ProfilePageState extends State<ProfilePage> {
       final res = await dio.dio.post('/profile/2fa/toggle');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(res.data['message'] ?? 'Thao tác 2FA thành công!'), backgroundColor: Colors.green),
+          SnackBar(
+            content: Text(res.data['message'] ?? 'Thao tác 2FA thành công!'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isTwoFactorEnabled = !value);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Không thể thay đổi trạng thái 2FA: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Không thể thay đổi trạng thái 2FA: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
   }
-
 
   @override
   void initState() {
@@ -59,7 +64,6 @@ class _ProfilePageState extends State<ProfilePage> {
     context.read<ProfileBloc>().add(LoadProfileEvent());
   }
 
-
   @override
   void dispose() {
     _firstNameController.dispose();
@@ -70,13 +74,14 @@ class _ProfilePageState extends State<ProfilePage> {
     super.dispose();
   }
 
-
   void _fillFormData(dynamic profile) {
     // Logic tách tên tương tự Web
     final nameParts = (profile.fullName ?? '').split(' ');
     if (nameParts.length > 1) {
       _firstNameController.text = nameParts.last;
-      _lastNameController.text = nameParts.sublist(0, nameParts.length - 1).join(' ');
+      _lastNameController.text = nameParts
+          .sublist(0, nameParts.length - 1)
+          .join(' ');
     } else {
       _firstNameController.text = profile.fullName ?? '';
       _lastNameController.text = '';
@@ -85,7 +90,7 @@ class _ProfilePageState extends State<ProfilePage> {
     _phoneController.text = profile.phoneNumber ?? '';
     _addressController.text = profile.address ?? '';
     _emailController.text = profile.email ?? '';
-    
+
     final genderMap = {'male': 'Nam', 'female': 'Nữ', 'other': 'Khác'};
     _selectedGender = genderMap[profile.gender] ?? profile.gender;
     _isTwoFactorEnabled ??= profile.isTwoFactorEnabled;
@@ -104,8 +109,9 @@ class _ProfilePageState extends State<ProfilePage> {
   void _saveProfile() {
     if (_formKey.currentState!.validate()) {
       final genderMapBack = {'Nam': 'male', 'Nữ': 'female', 'Khác': 'other'};
-      final fullName = '${_lastNameController.text} ${_firstNameController.text}'.trim();
-      
+      final fullName =
+          '${_lastNameController.text} ${_firstNameController.text}'.trim();
+
       final updatedProfile = UserProfileModel(
         id: 0, // Sẽ lấy từ state hoặc BE tự biết
         fullName: fullName,
@@ -147,10 +153,13 @@ class _ProfilePageState extends State<ProfilePage> {
             );
           } else if (state is ProfileError) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Lỗi: ${state.message}'), backgroundColor: Colors.red),
+              SnackBar(
+                content: Text('Lỗi: ${state.message}'),
+                backgroundColor: Colors.red,
+              ),
             );
           } else if (state is AvatarUploaded) {
-             ScaffoldMessenger.of(context).showSnackBar(
+            ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Cập nhật ảnh đại diện thành công')),
             );
           }
@@ -174,7 +183,8 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
-                    onPressed: () => context.read<ProfileBloc>().add(LoadProfileEvent()),
+                    onPressed: () =>
+                        context.read<ProfileBloc>().add(LoadProfileEvent()),
                     child: const Text('Thử lại'),
                   ),
                 ],
@@ -194,7 +204,11 @@ class _ProfilePageState extends State<ProfilePage> {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Color(0xFFE0E7FF), Color(0xFFF1F5F9), Color(0xFFF5F3FF)],
+                colors: [
+                  Color(0xFFE0E7FF),
+                  Color(0xFFF1F5F9),
+                  Color(0xFFF5F3FF),
+                ],
               ),
             ),
             child: SafeArea(
@@ -224,9 +238,16 @@ class _ProfilePageState extends State<ProfilePage> {
                           child: CircleAvatar(
                             radius: 65,
                             backgroundColor: Colors.white,
-                            backgroundImage: profile?.avatar != null && profile.avatar.isNotEmpty
-                                ? NetworkImage(ImageUtils.getFullImageUrl(profile.avatar))
-                                : const AssetImage('assets/images/default-avatar.png') as ImageProvider,
+                            backgroundImage:
+                                profile?.avatar != null &&
+                                    profile.avatar.isNotEmpty
+                                ? NetworkImage(
+                                    ImageUtils.getFullImageUrl(profile.avatar),
+                                  )
+                                : const AssetImage(
+                                        'assets/images/default-avatar.png',
+                                      )
+                                      as ImageProvider,
                           ),
                         ),
                         GestureDetector(
@@ -238,12 +259,20 @@ class _ProfilePageState extends State<ProfilePage> {
                               shape: BoxShape.circle,
                               border: Border.all(color: Colors.white, width: 3),
                             ),
-                            child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                            child: const Icon(
+                              Icons.camera_alt,
+                              color: Colors.white,
+                              size: 20,
+                            ),
                           ),
                         ),
                         if (state is AvatarUploading)
                           const Positioned.fill(
-                            child: Center(child: CircularProgressIndicator(color: Colors.white)),
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                              ),
+                            ),
                           ),
                       ],
                     ),
@@ -255,7 +284,9 @@ class _ProfilePageState extends State<ProfilePage> {
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.8),
                         borderRadius: BorderRadius.circular(30),
-                        border: Border.all(color: Colors.white.withOpacity(0.5)),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.5),
+                        ),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withOpacity(0.05),
@@ -323,20 +354,31 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                             const SizedBox(height: 24),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.indigo.withOpacity(0.05),
                                 borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: Colors.indigo.withOpacity(0.1)),
+                                border: Border.all(
+                                  color: Colors.indigo.withOpacity(0.1),
+                                ),
                               ),
                               child: SwitchListTile(
                                 title: const Text(
                                   "Xác thực hai yếu tố (2FA)",
-                                  style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF1E293B),
+                                  ),
                                 ),
                                 subtitle: const Text(
                                   "Bật để tăng cường bảo mật cho tài khoản của bạn.",
-                                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                  ),
                                 ),
                                 value: _isTwoFactorEnabled ?? false,
                                 activeColor: Colors.indigo,
@@ -348,7 +390,9 @@ class _ProfilePageState extends State<ProfilePage> {
                               width: double.infinity,
                               height: 60,
                               child: ElevatedButton(
-                                onPressed: state is ProfileUpdating ? null : _saveProfile,
+                                onPressed: state is ProfileUpdating
+                                    ? null
+                                    : _saveProfile,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xFF4F46E5),
                                   foregroundColor: Colors.white,
@@ -360,15 +404,21 @@ class _ProfilePageState extends State<ProfilePage> {
                                   shadowColor: Colors.indigo.withOpacity(0.5),
                                 ),
                                 child: state is ProfileUpdating
-                                    ? const CircularProgressIndicator(color: Colors.white)
+                                    ? const CircularProgressIndicator(
+                                        color: Colors.white,
+                                      )
                                     : const Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
                                         children: [
                                           Icon(Icons.save),
                                           SizedBox(width: 8),
                                           Text(
                                             'Lưu hồ sơ',
-                                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -419,7 +469,10 @@ class _ProfilePageState extends State<ProfilePage> {
             prefixIcon: Icon(icon, color: Colors.indigo[400]),
             filled: true,
             fillColor: enabled ? Colors.white : Colors.grey[100],
-            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 16,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: BorderSide(color: Colors.grey[200]!),
@@ -473,4 +526,3 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 }
-

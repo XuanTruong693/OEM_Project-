@@ -84,15 +84,23 @@ class _LoginPageState extends State<LoginPage> {
                     if (actualRole == 'instructor' || actualRole == 'admin') {
                       context.go('/instructor-dashboard');
                     } else {
-                      final examId = await SecureStorageHelper.getPendingExamId();
-                      final roomToken = await SecureStorageHelper.getRoomToken();
-                      print('🔍 [Student Login Debug] Pending Exam ID: $examId, Room Token: $roomToken');
+                      final examId =
+                          await SecureStorageHelper.getPendingExamId();
+                      final roomToken =
+                          await SecureStorageHelper.getRoomToken();
+                      print(
+                        '🔍 [Student Login Debug] Pending Exam ID: $examId, Room Token: $roomToken',
+                      );
 
                       if (examId != null && roomToken != null) {
                         print('🚀 [Student Login Redirect] To Prepare Exam');
-                        context.go('/prepare-exam?examId=$examId&roomToken=$roomToken');
+                        context.go(
+                          '/prepare-exam?examId=$examId&roomToken=$roomToken',
+                        );
                       } else {
-                        print('⚠️ [Student Login Redirect] Missing examId/roomToken, returning to Verify Room');
+                        print(
+                          '⚠️ [Student Login Redirect] Missing examId/roomToken, returning to Verify Room',
+                        );
                         context.go('/verify-room');
                       }
                     }
@@ -393,7 +401,10 @@ class _LoginPageState extends State<LoginPage> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text(
           "Xác thực 2FA",
-          style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF1E293B),
+          ),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -410,7 +421,9 @@ class _LoginPageState extends State<LoginPage> {
               decoration: InputDecoration(
                 labelText: "Mã OTP 2FA",
                 hintText: "VD: 123456",
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
           ],
@@ -425,13 +438,19 @@ class _LoginPageState extends State<LoginPage> {
               final otp = otpCtrl.text.trim();
               if (otp.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Vui lòng nhập mã OTP.'), backgroundColor: Colors.orange),
+                  const SnackBar(
+                    content: Text('Vui lòng nhập mã OTP.'),
+                    backgroundColor: Colors.orange,
+                  ),
                 );
                 return;
               }
               try {
                 final dio = DioClient(onLogout: () {});
-                final res = await dio.dio.post('/auth/verify-2fa', data: {'email': email, 'otp': otp});
+                final res = await dio.dio.post(
+                  '/auth/verify-2fa',
+                  data: {'email': email, 'otp': otp},
+                );
                 final token = res.data['token'];
                 final refreshToken = res.data['refreshToken'];
                 final userData = res.data['user'];
@@ -441,22 +460,33 @@ class _LoginPageState extends State<LoginPage> {
                     accessToken: token,
                     refreshToken: refreshToken ?? '',
                   );
-                  await SecureStorageHelper.saveSelectedRole(userData['role'] ?? '');
+                  await SecureStorageHelper.saveSelectedRole(
+                    userData['role'] ?? '',
+                  );
 
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Đăng nhập thành công!"), backgroundColor: Colors.green),
+                      const SnackBar(
+                        content: Text("Đăng nhập thành công!"),
+                        backgroundColor: Colors.green,
+                      ),
                     );
                     Navigator.of(ctx).pop();
 
-                    final actualRole = userData['role']?.toString().toLowerCase();
+                    final actualRole = userData['role']
+                        ?.toString()
+                        .toLowerCase();
                     if (actualRole == 'instructor' || actualRole == 'admin') {
                       context.go('/instructor-dashboard');
                     } else {
-                      final examId = await SecureStorageHelper.getPendingExamId();
-                      final roomToken = await SecureStorageHelper.getRoomToken();
+                      final examId =
+                          await SecureStorageHelper.getPendingExamId();
+                      final roomToken =
+                          await SecureStorageHelper.getRoomToken();
                       if (examId != null && roomToken != null) {
-                        context.go('/prepare-exam?examId=$examId&roomToken=$roomToken');
+                        context.go(
+                          '/prepare-exam?examId=$examId&roomToken=$roomToken',
+                        );
                       } else {
                         context.go('/verify-room');
                       }
@@ -464,17 +494,28 @@ class _LoginPageState extends State<LoginPage> {
                   }
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(res.data['message'] ?? 'Lỗi xác thực'), backgroundColor: Colors.red),
+                    SnackBar(
+                      content: Text(res.data['message'] ?? 'Lỗi xác thực'),
+                      backgroundColor: Colors.red,
+                    ),
                   );
                 }
               } catch (e) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Xác thực thất bại: $e'), backgroundColor: Colors.red),
+                  SnackBar(
+                    content: Text('Xác thực thất bại: $e'),
+                    backgroundColor: Colors.red,
+                  ),
                 );
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2563EB)),
-            child: const Text("Xác thực", style: TextStyle(color: Colors.white)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2563EB),
+            ),
+            child: const Text(
+              "Xác thực",
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),

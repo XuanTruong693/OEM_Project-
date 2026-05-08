@@ -53,8 +53,8 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
 
     // Initial load of the exam questions
     context.read<TakeExamBloc>().add(
-          LoadExamQuestionsEvent(submissionId: widget.submissionId),
-        );
+      LoadExamQuestionsEvent(submissionId: widget.submissionId),
+    );
 
     // Secure the UI using ScreenProtector
     _enableScreenSecurity();
@@ -79,15 +79,21 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('CẢNH BÁO: Bạn đã treo màn hình 30 giây không tương tác! Vui lòng tập trung làm bài.'),
+            content: Text(
+              'CẢNH BÁO: Bạn đã treo màn hình 30 giây không tương tác! Vui lòng tập trung làm bài.',
+            ),
             backgroundColor: Colors.orange,
             duration: Duration(seconds: 4),
           ),
         );
       } else if (_inactiveSeconds >= 60) {
         // Increment cheating violation due to idle timeout
-        _handleCheatingEvent('idle_timeout', 'Học viên đã treo màn hình quá 1 phút không tương tác');
-        _inactiveSeconds = 0; // Reset after penalty to allow next interval check
+        _handleCheatingEvent(
+          'idle_timeout',
+          'Học viên đã treo màn hình quá 1 phút không tương tác',
+        );
+        _inactiveSeconds =
+            0; // Reset after penalty to allow next interval check
       }
     });
   }
@@ -109,15 +115,24 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
       }
 
       // Listen for screenshots or recordings
-      ScreenProtector.addListener(() {
-        if (mounted) {
-          _handleCheatingEvent('screenshot_attempt', 'Thí sinh đã chụp màn hình (Screenshot Attempt)');
-        }
-      }, (screenshotPath) {
-        if (mounted) {
-          _handleCheatingEvent('screenshot_attempt', 'Thí sinh đã chụp màn hình (Screenshot Attempt)');
-        }
-      });
+      ScreenProtector.addListener(
+        () {
+          if (mounted) {
+            _handleCheatingEvent(
+              'screen_record_attempt',
+              'Thí sinh đang quay màn hình bài thi (Screen Record Attempt)',
+            );
+          }
+        },
+        (screenshotPath) {
+          if (mounted) {
+            _handleCheatingEvent(
+              'screenshot_attempt',
+              'Thí sinh đã chụp màn hình bài thi (Screenshot Attempt)',
+            );
+          }
+        },
+      );
 
       // Periodically check for screen capture (recording or sharing)
       Timer.periodic(const Duration(seconds: 3), (timer) async {
@@ -126,15 +141,23 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
           return;
         }
         try {
-          final Map? status = await _securityChannel.invokeMethod<Map>('checkScreenStatus');
+          final Map? status = await _securityChannel.invokeMethod<Map>(
+            'checkScreenStatus',
+          );
           if (status != null) {
             final bool isRecording = status['isRecording'] == true;
             final bool isSharing = status['isSharing'] == true;
             if (isRecording) {
-              _handleCheatingEvent('screen_record_attempt', 'Học viên đang quay màn hình bài thi');
+              _handleCheatingEvent(
+                'screen_record_attempt',
+                'Học viên đang quay màn hình bài thi',
+              );
             }
             if (isSharing) {
-              _handleCheatingEvent('screen_share_attempt', 'Học viên đang chia sẻ màn hình bài thi');
+              _handleCheatingEvent(
+                'screen_share_attempt',
+                'Học viên đang chia sẻ màn hình bài thi',
+              );
             }
           }
         } catch (e) {
@@ -187,20 +210,27 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
         _countdownTimer?.cancel();
         // Auto submit when time runs out
         context.read<TakeExamBloc>().add(
-              SubmitExamEvent(submissionId: widget.submissionId),
-            );
+          SubmitExamEvent(submissionId: widget.submissionId),
+        );
       }
     });
   }
 
   final Map<String, DateTime> _lastEventTimes = {};
 
+  DateTime? _lastAnyEventTime;
+
   void _handleCheatingEvent(String key, String description) {
     if (!mounted) return;
 
     final now = DateTime.now();
-    if (now.difference(_pageInitTime).inSeconds < 10) {
-      return; // Ignore any initial glitches within first 10s
+    if (now.difference(_pageInitTime).inSeconds < 2) {
+      return; // Ignore any initial glitches within first 2s
+    }
+
+    // Global debounce: Prevent any two cheating events from firing within 2 seconds
+    if (_lastAnyEventTime != null && now.difference(_lastAnyEventTime!).inSeconds < 2) {
+      return;
     }
 
     if (_lastEventTimes.containsKey(key)) {
@@ -210,6 +240,7 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
       }
     }
     _lastEventTimes[key] = now;
+    _lastAnyEventTime = now;
 
     final state = context.read<TakeExamBloc>().state;
     final newViolations = state.violations + 1;
@@ -217,28 +248,29 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
     // Check if total violations exceed 10 times
     if (newViolations >= 10) {
       context.read<TakeExamBloc>().add(
-            CheatEvent(
-              submissionId: widget.submissionId,
-              key: key,
-              description: '$description - Đã vi phạm quy chế $newViolations lần (QUÁ 10 LẦN). Hệ thống tự động nộp bài.',
-            ),
-          );
+        CheatEvent(
+          submissionId: widget.submissionId,
+          key: key,
+          description:
+              '$description - Đã vi phạm quy chế $newViolations lần (QUÁ 10 LẦN). Hệ thống tự động nộp bài.',
+        ),
+      );
 
       Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted) {
           context.read<TakeExamBloc>().add(
-                SubmitExamEvent(submissionId: widget.submissionId),
-              );
+            SubmitExamEvent(submissionId: widget.submissionId),
+          );
         }
       });
     } else {
       context.read<TakeExamBloc>().add(
-            CheatEvent(
-              submissionId: widget.submissionId,
-              key: key,
-              description: description,
-            ),
-          );
+        CheatEvent(
+          submissionId: widget.submissionId,
+          key: key,
+          description: description,
+        ),
+      );
     }
   }
 
@@ -257,10 +289,15 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
 
     // Ignore inactive state completely (triggered when pulling notification/status bars)
     if (state == AppLifecycleState.paused) {
-      if (!_isExited || _lastLifecycleMinimize == null || now.difference(_lastLifecycleMinimize!).inSeconds >= 10) {
+      if (!_isExited ||
+          _lastLifecycleMinimize == null ||
+          now.difference(_lastLifecycleMinimize!).inSeconds >= 10) {
         _lastLifecycleMinimize = now;
         _isExited = true;
-        _handleCheatingEvent('minimize_app', 'Học viên thoát ứng dụng về màn hình Home');
+        _handleCheatingEvent(
+          'minimize_app',
+          'Học viên thoát ứng dụng về màn hình Home',
+        );
       }
       setState(() {
         _showBlurOverlay = true;
@@ -285,7 +322,9 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
         return BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
           child: AlertDialog(
-            backgroundColor: _isDarkMode ? const Color(0xFF1E293B) : Colors.white,
+            backgroundColor: _isDarkMode
+                ? const Color(0xFF1E293B)
+                : Colors.white,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(24),
             ),
@@ -296,44 +335,67 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: state.isKicked ? const Color(0xFFFEE2E2) : const Color(0xFFDCFCE7),
+                    color: state.isKicked
+                        ? const Color(0xFFFEE2E2)
+                        : const Color(0xFFDCFCE7),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Icon(
-                    state.isKicked ? Icons.gavel_rounded : Icons.check_circle_outline_rounded,
-                    color: state.isKicked ? const Color(0xFFDC2626) : const Color(0xFF16A34A),
+                    state.isKicked
+                        ? Icons.gavel_rounded
+                        : Icons.check_circle_outline_rounded,
+                    color: state.isKicked
+                        ? const Color(0xFFDC2626)
+                        : const Color(0xFF16A34A),
                     size: 48,
                   ),
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  state.isKicked ? 'Bị mời khỏi bài thi!' : 'Nộp bài thành công!',
+                  state.isKicked
+                      ? 'Bị mời khỏi bài thi!'
+                      : 'Nộp bài thành công!',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w900,
-                    color: state.isKicked ? const Color(0xFFDC2626) : (_isDarkMode ? Colors.white : const Color(0xFF1E293B)),
+                    color: state.isKicked
+                        ? const Color(0xFFDC2626)
+                        : (_isDarkMode
+                              ? Colors.white
+                              : const Color(0xFF1E293B)),
                     letterSpacing: -0.5,
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  state.isKicked 
-                    ? 'Bạn đã bị giảng viên mời ra khỏi phòng thi. Hệ thống đã tự động nộp các câu hỏi bạn đã làm.'
-                    : 'Bài thi trắc nghiệm của bạn đã được hệ thống chấm điểm ngay lập tức.',
+                  state.isKicked
+                      ? 'Bạn đã bị giảng viên mời ra khỏi phòng thi. Hệ thống đã tự động nộp các câu hỏi bạn đã làm.'
+                      : 'Bài thi trắc nghiệm của bạn đã được hệ thống chấm điểm ngay lập tức.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 13,
-                    color: _isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600,
+                    color: _isDarkMode
+                        ? Colors.grey.shade400
+                        : Colors.grey.shade600,
                   ),
                 ),
                 const SizedBox(height: 20),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
-                    color: _isDarkMode ? const Color(0xFF334155) : const Color(0xFFF8FAFC),
+                    color: _isDarkMode
+                        ? const Color(0xFF334155)
+                        : const Color(0xFFF8FAFC),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: _isDarkMode ? Colors.transparent : const Color(0xFFE2E8F0)),
+                    border: Border.all(
+                      color: _isDarkMode
+                          ? Colors.transparent
+                          : const Color(0xFFE2E8F0),
+                    ),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -343,7 +405,9 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
-                          color: _isDarkMode ? Colors.grey.shade300 : const Color(0xFF64748B),
+                          color: _isDarkMode
+                              ? Colors.grey.shade300
+                              : const Color(0xFF64748B),
                         ),
                       ),
                       Text(
@@ -366,7 +430,11 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                   ),
                   child: const Row(
                     children: [
-                      Icon(Icons.info_outline, color: Color(0xFF2563EB), size: 16),
+                      Icon(
+                        Icons.info_outline,
+                        color: Color(0xFF2563EB),
+                        size: 16,
+                      ),
                       SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -477,7 +545,7 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                   fontSize: 14,
                 ),
               ),
-            ]
+            ],
           ],
         ),
         actions: [
@@ -497,8 +565,8 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
             onPressed: () {
               Navigator.pop(dialogContext);
               context.read<TakeExamBloc>().add(
-                    SubmitExamEvent(submissionId: widget.submissionId),
-                  );
+                SubmitExamEvent(submissionId: widget.submissionId),
+              );
             },
             child: const Text(
               "Xác nhận nộp",
@@ -524,10 +592,20 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
             child: Container(
               width: MediaQuery.of(context).size.width * 0.7,
               height: double.infinity,
-              padding: EdgeInsets.fromLTRB(20, MediaQuery.of(context).padding.top + 20, 20, 20),
+              padding: EdgeInsets.fromLTRB(
+                20,
+                MediaQuery.of(context).padding.top + 20,
+                20,
+                20,
+              ),
               decoration: BoxDecoration(
                 color: _isDarkMode ? const Color(0xFF1E293B) : Colors.white,
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 15)],
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 15,
+                  ),
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -537,23 +615,34 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                     children: [
                       Text(
                         "Danh sách câu hỏi",
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: _isDarkMode ? Colors.white : Colors.black),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: _isDarkMode ? Colors.white : Colors.black,
+                        ),
                       ),
                       CupertinoButton(
                         padding: EdgeInsets.zero,
                         onPressed: () => Navigator.pop(context),
-                        child: Icon(CupertinoIcons.xmark, size: 20, color: _isDarkMode ? Colors.grey.shade400 : CupertinoColors.systemGrey),
+                        child: Icon(
+                          CupertinoIcons.xmark,
+                          size: 20,
+                          color: _isDarkMode
+                              ? Colors.grey.shade400
+                              : CupertinoColors.systemGrey,
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 20),
                   Expanded(
                     child: GridView.builder(
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 4,
-                        mainAxisSpacing: 8,
-                        crossAxisSpacing: 8,
-                      ),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 4,
+                            mainAxisSpacing: 8,
+                            crossAxisSpacing: 8,
+                          ),
                       itemCount: state.questions.length,
                       itemBuilder: (context, index) {
                         int qNum = index + 1;
@@ -564,7 +653,8 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                         return GestureDetector(
                           onTap: () {
                             Navigator.pop(context);
-                            if (index < _keys.length && _keys[index].currentContext != null) {
+                            if (index < _keys.length &&
+                                _keys[index].currentContext != null) {
                               Scrollable.ensureVisible(
                                 _keys[index].currentContext!,
                                 duration: const Duration(milliseconds: 500),
@@ -576,10 +666,14 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                             decoration: BoxDecoration(
                               color: isDone
                                   ? const Color(0xFFD1FAE5)
-                                  : (_isDarkMode ? const Color(0xFF334155) : const Color(0xFFF3F4F6)),
+                                  : (_isDarkMode
+                                        ? const Color(0xFF334155)
+                                        : const Color(0xFFF3F4F6)),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: isDone ? const Color(0xFF10B981) : Colors.transparent,
+                                color: isDone
+                                    ? const Color(0xFF10B981)
+                                    : Colors.transparent,
                                 width: 0.5,
                               ),
                             ),
@@ -587,7 +681,11 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                               child: Text(
                                 "$qNum",
                                 style: TextStyle(
-                                  color: isDone ? const Color(0xFF065F46) : (_isDarkMode ? Colors.grey.shade300 : Colors.black54),
+                                  color: isDone
+                                      ? const Color(0xFF065F46)
+                                      : (_isDarkMode
+                                            ? Colors.grey.shade300
+                                            : Colors.black54),
                                   fontWeight: FontWeight.bold,
                                   fontSize: 14,
                                 ),
@@ -606,10 +704,10 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
       },
       transitionBuilder: (context, animation, secondaryAnimation, child) {
         return SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(-1, 0),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutQuad)),
+          position: Tween<Offset>(begin: const Offset(-1, 0), end: Offset.zero)
+              .animate(
+                CurvedAnimation(parent: animation, curve: Curves.easeOutQuad),
+              ),
           child: child,
         );
       },
@@ -618,13 +716,21 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
 
   @override
   Widget build(BuildContext context) {
-    final Color bgColor = _isDarkMode ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
-    final Color cardColor = _isDarkMode ? const Color(0xFF1E293B) : Colors.white;
-    final Color textColor = _isDarkMode ? Colors.white : const Color(0xFF1E293B);
+    final Color bgColor = _isDarkMode
+        ? const Color(0xFF0F172A)
+        : const Color(0xFFF8FAFC);
+    final Color cardColor = _isDarkMode
+        ? const Color(0xFF1E293B)
+        : Colors.white;
+    final Color textColor = _isDarkMode
+        ? Colors.white
+        : const Color(0xFF1E293B);
 
     return BlocConsumer<TakeExamBloc, TakeExamState>(
       listener: (context, state) {
-        if (state.errorMessage != null && state.errorMessage != _lastShownError && !state.isKicked) {
+        if (state.errorMessage != null &&
+            state.errorMessage != _lastShownError &&
+            !state.isKicked) {
           _lastShownError = state.errorMessage;
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(
@@ -656,10 +762,13 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
             final startedAtStr = examData['started_at'];
             final durationMinutes = examData['duration_minutes'] ?? 60;
 
-            DateTime startTime = DateTime.tryParse(startedAtStr ?? '') ?? DateTime.now();
+            DateTime startTime =
+                DateTime.tryParse(startedAtStr ?? '') ?? DateTime.now();
 
             // AUTHORITATIVE RECALCULATION: New Duration - (CurrentTimeServer - StartTime)
-            DateTime nowServer = DateTime.now().add(Duration(milliseconds: state.timeOffsetMs));
+            DateTime nowServer = DateTime.now().add(
+              Duration(milliseconds: state.timeOffsetMs),
+            );
             int elapsedSeconds = nowServer.difference(startTime).inSeconds;
             int calculatedRemaining = (durationMinutes * 60) - elapsedSeconds;
 
@@ -675,7 +784,11 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                     children: [
                       Icon(Icons.sync_alt, color: Colors.white),
                       SizedBox(width: 12),
-                      Expanded(child: Text("Cấu hình bài thi đã được cập nhật từ giảng viên.")),
+                      Expanded(
+                        child: Text(
+                          "Cấu hình bài thi đã được cập nhật từ giảng viên.",
+                        ),
+                      ),
                     ],
                   ),
                   backgroundColor: Colors.blueAccent,
@@ -726,10 +839,7 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                   Text(
                     'Bạn đã vi phạm quy định thi. Vui lòng không tái phạm.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.grey.shade400,
-                      fontSize: 13,
-                    ),
+                    style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
                   ),
                 ],
               ),
@@ -770,12 +880,21 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                   leading: Row(
                     children: [
                       const SizedBox(width: 12),
-                      Image.asset('assets/images/Logo.png', width: 22, height: 22, fit: BoxFit.contain),
+                      Image.asset(
+                        'assets/images/Logo.png',
+                        width: 22,
+                        height: 22,
+                        fit: BoxFit.contain,
+                      ),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
                           examTitle,
-                          style: TextStyle(color: textColor, fontSize: 13, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            color: textColor,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -817,13 +936,20 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                     CupertinoButton(
                       padding: EdgeInsets.zero,
                       onPressed: () => _showQuestionMenu(state),
-                      child: Icon(CupertinoIcons.list_bullet, size: 16, color: _isDarkMode ? Colors.white : Colors.black87),
+                      child: Icon(
+                        CupertinoIcons.list_bullet,
+                        size: 16,
+                        color: _isDarkMode ? Colors.white : Colors.black87,
+                      ),
                     ),
                     CupertinoButton(
                       padding: EdgeInsets.zero,
-                      onPressed: () => setState(() => _isDarkMode = !_isDarkMode),
+                      onPressed: () =>
+                          setState(() => _isDarkMode = !_isDarkMode),
                       child: Icon(
-                        _isDarkMode ? CupertinoIcons.sun_max_fill : CupertinoIcons.moon_fill,
+                        _isDarkMode
+                            ? CupertinoIcons.sun_max_fill
+                            : CupertinoIcons.moon_fill,
                         size: 16,
                         color: _isDarkMode ? Colors.amber : Colors.black87,
                       ),
@@ -834,14 +960,21 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                           ? null
                           : () => _confirmSubmission(context, state),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 5,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFF10B981),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: const Text(
                           "Nộp bài",
-                          style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ),
@@ -852,9 +985,15 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                   onTap: () => FocusScope.of(context).unfocus(),
                   child: ListView.builder(
                     cacheExtent: 9999,
-                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                    itemCount: totalQuestions == 0 ? 1 : (totalQuestions + (state.violations > 0 ? 2 : 1)),
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 16,
+                    ),
+                    itemCount: totalQuestions == 0
+                        ? 1
+                        : (totalQuestions + (state.violations > 0 ? 2 : 1)),
                     itemBuilder: (context, idx) {
                       if (idx == 0) {
                         // Progress Bar
@@ -866,9 +1005,16 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(4),
                                   child: LinearProgressIndicator(
-                                    value: totalQuestions > 0 ? answeredQuestions / totalQuestions : 0,
-                                    backgroundColor: _isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
-                                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF2563EB)),
+                                    value: totalQuestions > 0
+                                        ? answeredQuestions / totalQuestions
+                                        : 0,
+                                    backgroundColor: _isDarkMode
+                                        ? const Color(0xFF334155)
+                                        : const Color(0xFFE2E8F0),
+                                    valueColor:
+                                        const AlwaysStoppedAnimation<Color>(
+                                          Color(0xFF2563EB),
+                                        ),
                                     minHeight: 4,
                                   ),
                                 ),
@@ -876,7 +1022,13 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                               const SizedBox(width: 12),
                               Text(
                                 "$answeredQuestions/$totalQuestions đã làm",
-                                style: TextStyle(color: _isDarkMode ? Colors.grey : const Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.bold),
+                                style: TextStyle(
+                                  color: _isDarkMode
+                                      ? Colors.grey
+                                      : const Color(0xFF64748B),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ],
                           ),
@@ -895,12 +1047,20 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626), size: 18),
+                              const Icon(
+                                Icons.warning_amber_rounded,
+                                color: Color(0xFFDC2626),
+                                size: 18,
+                              ),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   'Bạn đã vi phạm quy chế ${state.violations}/10 lần. Quá 10 lần bài thi sẽ tự động nộp.',
-                                  style: const TextStyle(color: Color(0xFF991B1B), fontSize: 13, fontWeight: FontWeight.bold),
+                                  style: const TextStyle(
+                                    color: Color(0xFF991B1B),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
                             ],
@@ -940,10 +1100,17 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                           color: cardColor,
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
-                            BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10),
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.01),
+                              blurRadius: 10,
+                            ),
                           ],
                           border: Border.all(
-                            color: isAnswered ? const Color(0xFFDBEAFE) : (_isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+                            color: isAnswered
+                                ? const Color(0xFFDBEAFE)
+                                : (_isDarkMode
+                                      ? const Color(0xFF334155)
+                                      : const Color(0xFFE2E8F0)),
                             width: 1.5,
                           ),
                         ),
@@ -953,44 +1120,77 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                             Row(
                               children: [
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: const Color(0xFF2563EB),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Text(
                                     "${qIdx + 1}",
-                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
                                   "CÂU HỎI ${qIdx + 1}",
-                                  style: const TextStyle(color: Color(0xFF2563EB), fontSize: 11, fontWeight: FontWeight.bold),
+                                  style: const TextStyle(
+                                    color: Color(0xFF2563EB),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                                 const SizedBox(width: 8),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: _isDarkMode ? const Color(0xFF334155) : const Color(0xFFF1F5F9),
+                                    color: _isDarkMode
+                                        ? const Color(0xFF334155)
+                                        : const Color(0xFFF1F5F9),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: Text(
                                     qType == 'MCQ' ? 'TRẮC NGHIỆM' : 'TỰ LUẬN',
-                                    style: TextStyle(color: _isDarkMode ? Colors.grey.shade300 : const Color(0xFF64748B), fontSize: 9, fontWeight: FontWeight.bold),
+                                    style: TextStyle(
+                                      color: _isDarkMode
+                                          ? Colors.grey.shade300
+                                          : const Color(0xFF64748B),
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
                                 const Spacer(),
                                 Text(
                                   "$points Điểm",
-                                  style: TextStyle(color: _isDarkMode ? Colors.grey.shade400 : const Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.bold),
+                                  style: TextStyle(
+                                    color: _isDarkMode
+                                        ? Colors.grey.shade400
+                                        : const Color(0xFF64748B),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 12),
                             Text(
                               qText,
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor, height: 1.4),
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: textColor,
+                                height: 1.4,
+                              ),
                             ),
                             const SizedBox(height: 16),
 
@@ -1000,7 +1200,9 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                                 final opt = optEntry.value;
                                 final optId = opt['option_id'];
                                 final optText = opt['option_text'] ?? '';
-                                String letter = String.fromCharCode(65 + optIdx); // A, B, C, D
+                                String letter = String.fromCharCode(
+                                  65 + optIdx,
+                                ); // A, B, C, D
                                 bool isSelected = currentAnswer == optId;
 
                                 return Container(
@@ -1009,20 +1211,28 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                                     padding: EdgeInsets.zero,
                                     onPressed: () {
                                       context.read<TakeExamBloc>().add(
-                                            SaveAnswerEvent(
-                                              submissionId: widget.submissionId,
-                                              questionId: qId,
-                                              answer: optId,
-                                            ),
-                                          );
+                                        SaveAnswerEvent(
+                                          submissionId: widget.submissionId,
+                                          questionId: qId,
+                                          answer: optId,
+                                        ),
+                                      );
                                     },
                                     child: Container(
                                       padding: const EdgeInsets.all(12),
                                       decoration: BoxDecoration(
-                                        color: isSelected ? const Color(0xFF2563EB).withOpacity(0.05) : cardColor,
+                                        color: isSelected
+                                            ? const Color(
+                                                0xFF2563EB,
+                                              ).withOpacity(0.05)
+                                            : cardColor,
                                         borderRadius: BorderRadius.circular(10),
                                         border: Border.all(
-                                          color: isSelected ? const Color(0xFF2563EB) : (_isDarkMode ? const Color(0xFF475569) : const Color(0xFFE2E8F0)),
+                                          color: isSelected
+                                              ? const Color(0xFF2563EB)
+                                              : (_isDarkMode
+                                                    ? const Color(0xFF475569)
+                                                    : const Color(0xFFE2E8F0)),
                                           width: isSelected ? 1.5 : 1,
                                         ),
                                       ),
@@ -1032,14 +1242,29 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                                             width: 24,
                                             height: 24,
                                             decoration: BoxDecoration(
-                                              color: isSelected ? const Color(0xFF2563EB) : (_isDarkMode ? const Color(0xFF334155) : const Color(0xFFF1F5F9)),
-                                              borderRadius: BorderRadius.circular(6),
+                                              color: isSelected
+                                                  ? const Color(0xFF2563EB)
+                                                  : (_isDarkMode
+                                                        ? const Color(
+                                                            0xFF334155,
+                                                          )
+                                                        : const Color(
+                                                            0xFFF1F5F9,
+                                                          )),
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
                                             ),
                                             child: Center(
                                               child: Text(
                                                 letter,
                                                 style: TextStyle(
-                                                  color: isSelected ? Colors.white : (_isDarkMode ? Colors.grey.shade300 : Colors.black54),
+                                                  color: isSelected
+                                                      ? Colors.white
+                                                      : (_isDarkMode
+                                                            ? Colors
+                                                                  .grey
+                                                                  .shade300
+                                                            : Colors.black54),
                                                   fontSize: 11,
                                                   fontWeight: FontWeight.bold,
                                                 ),
@@ -1051,8 +1276,12 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                                             child: Text(
                                               optText,
                                               style: TextStyle(
-                                                color: isSelected ? const Color(0xFF2563EB) : textColor,
-                                                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                                                color: isSelected
+                                                    ? const Color(0xFF2563EB)
+                                                    : textColor,
+                                                fontWeight: isSelected
+                                                    ? FontWeight.w600
+                                                    : FontWeight.w500,
                                                 fontSize: 14,
                                               ),
                                             ),
@@ -1067,33 +1296,78 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                               TextFormField(
                                 initialValue: currentAnswer ?? '',
                                 maxLines: 4,
+                                contextMenuBuilder: (context, editableTextState) {
+                                  final List<ContextMenuButtonItem> buttonItems =
+                                      editableTextState.contextMenuButtonItems;
+                                  
+                                  final state = context.read<TakeExamBloc>().state;
+                                  final isMonitoring = state.examData?['monitor_screen'] == true;
+
+                                  if (isMonitoring) {
+                                    final pasteIndex = buttonItems.indexWhere(
+                                        (item) => item.type == ContextMenuButtonType.paste);
+                                    if (pasteIndex >= 0) {
+                                      buttonItems[pasteIndex] = ContextMenuButtonItem(
+                                        type: ContextMenuButtonType.paste,
+                                        onPressed: () {
+                                          _handleCheatingEvent('paste_attempt', 'Thực hiện thao tác dán (Paste) nội dung từ nguồn bên ngoài.');
+                                          ContextMenuController.removeAny();
+                                        },
+                                      );
+                                    }
+                                  }
+
+                                  return AdaptiveTextSelectionToolbar.buttonItems(
+                                    anchors: editableTextState.contextMenuAnchors,
+                                    buttonItems: buttonItems,
+                                  );
+                                },
                                 decoration: InputDecoration(
-                                  hintText: 'Nhập câu trả lời tự luận của bạn...',
-                                  hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                                  hintText:
+                                      'Nhập câu trả lời tự luận của bạn...',
+                                  hintStyle: TextStyle(
+                                    color: Colors.grey.shade400,
+                                    fontSize: 13,
+                                  ),
                                   filled: true,
-                                  fillColor: _isDarkMode ? const Color(0xFF334155) : const Color(0xFFF8FAFC),
+                                  fillColor: _isDarkMode
+                                      ? const Color(0xFF334155)
+                                      : const Color(0xFFF8FAFC),
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(8),
-                                    borderSide: BorderSide(color: _isDarkMode ? Colors.transparent : const Color(0xFFE2E8F0)),
+                                    borderSide: BorderSide(
+                                      color: _isDarkMode
+                                          ? Colors.transparent
+                                          : const Color(0xFFE2E8F0),
+                                    ),
                                   ),
                                   enabledBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(8),
-                                    borderSide: BorderSide(color: _isDarkMode ? Colors.transparent : const Color(0xFFE2E8F0)),
+                                    borderSide: BorderSide(
+                                      color: _isDarkMode
+                                          ? Colors.transparent
+                                          : const Color(0xFFE2E8F0),
+                                    ),
                                   ),
                                   focusedBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(8),
-                                    borderSide: const BorderSide(color: Color(0xFF2563EB)),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFF2563EB),
+                                    ),
                                   ),
                                 ),
-                                style: TextStyle(fontSize: 13, color: textColor),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: textColor,
+                                ),
                                 onChanged: (val) {
                                   context.read<TakeExamBloc>().add(
-                                        SaveAnswerEvent(
-                                          submissionId: widget.submissionId,
-                                          questionId: qId,
-                                          answer: val,
-                                        ),
-                                      );
+                                    SaveAnswerEvent(
+                                      submissionId: widget.submissionId,
+                                      questionId: qId,
+                                      answer: val,
+                                    ),
+                                  );
                                 },
                               ),
                             ],

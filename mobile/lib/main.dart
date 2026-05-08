@@ -38,7 +38,6 @@ import 'package:mobile/features/student_exam/presentation/bloc/prepare_exam_bloc
 import 'package:mobile/features/student_exam/presentation/bloc/verify_exam_bloc.dart';
 import 'package:mobile/features/student_exam/presentation/pages/prepare_exam_page.dart';
 
-
 // --- IMPORT INSTRUCTOR DASHBOARD ---
 import 'features/instructor/data/datasources/instructor_remote_data_source.dart';
 import 'features/instructor/data/repositories/instructor_repository_impl.dart';
@@ -240,14 +239,24 @@ Future<void> main() async {
   final commitExamUseCase = CommitExamUseCase(assignExamRepo);
 
   // 9. KHỞI TẠO STUDENT EXAM
-  final prepareExamRemoteDataSource = PrepareExamRemoteDataSourceImpl(dioClient: dioClient);
-  final prepareExamRepository = PrepareExamRepositoryImpl(remoteDataSource: prepareExamRemoteDataSource);
+  final prepareExamRemoteDataSource = PrepareExamRemoteDataSourceImpl(
+    dioClient: dioClient,
+  );
+  final prepareExamRepository = PrepareExamRepositoryImpl(
+    remoteDataSource: prepareExamRemoteDataSource,
+  );
   final joinExamUseCase = JoinExamUseCase(prepareExamRepository);
-  final getExamPublicInfoUseCase = GetExamPublicInfoUseCase(prepareExamRepository);
-  final verifyStudentCodeUseCase = VerifyStudentCodeUseCase(prepareExamRepository);
+  final getExamPublicInfoUseCase = GetExamPublicInfoUseCase(
+    prepareExamRepository,
+  );
+  final verifyStudentCodeUseCase = VerifyStudentCodeUseCase(
+    prepareExamRepository,
+  );
   final verifyFaceUseCase = VerifyFaceUseCase(prepareExamRepository);
   final compareFacesUseCase = CompareFacesUseCase(prepareExamRepository);
-  final uploadVerifiedImagesUseCase = UploadVerifiedImagesUseCase(prepareExamRepository);
+  final uploadVerifiedImagesUseCase = UploadVerifiedImagesUseCase(
+    prepareExamRepository,
+  );
 
   // GÁN GIÁ TRỊ THẬT CHO ROUTER
   router = GoRouter(
@@ -257,14 +266,14 @@ Future<void> main() async {
       GoRoute(
         path: '/prepare-exam',
         builder: (context, state) {
-          final examId = int.tryParse(state.uri.queryParameters['examId'] ?? '0') ?? 0;
+          final examId =
+              int.tryParse(state.uri.queryParameters['examId'] ?? '0') ?? 0;
           final roomToken = state.uri.queryParameters['roomToken'] ?? '';
           return MultiBlocProvider(
             providers: [
               BlocProvider<PrepareExamBloc>(
-                create: (context) => PrepareExamBloc(
-                  joinExamUseCase: joinExamUseCase,
-                ),
+                create: (context) =>
+                    PrepareExamBloc(joinExamUseCase: joinExamUseCase),
               ),
               BlocProvider<VerifyExamBloc>(
                 create: (context) => VerifyExamBloc(
@@ -286,7 +295,10 @@ Future<void> main() async {
       ),
       GoRoute(path: '/role', builder: (context, state) => const RolePage()),
       GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
-      GoRoute(path: '/forgot-password', builder: (context, state) => const ForgotPasswordPage()),
+      GoRoute(
+        path: '/forgot-password',
+        builder: (context, state) => const ForgotPasswordPage(),
+      ),
       GoRoute(
         path: '/verify-room',
         builder: (context, state) => const VerifyRoomPage(),
@@ -497,7 +509,10 @@ Future<void> main() async {
           final submissionId = state.uri.queryParameters['submission_id'] ?? '';
           return BlocProvider(
             create: (context) => TakeExamBloc(dioClient: dioClient),
-            child: MobileTakeExamPage(examId: examId, submissionId: submissionId),
+            child: MobileTakeExamPage(
+              examId: examId,
+              submissionId: submissionId,
+            ),
           );
         },
       ),
@@ -611,7 +626,9 @@ class MyApp extends StatelessWidget {
               final role = await SecureStorageHelper.getSelectedRole();
               print("🔍 [MyApp Overlay] Current user role: $role");
               if (role == 'student') {
-                print("ℹ️ [MyApp Overlay] User is a student, not showing overlay");
+                print(
+                  "ℹ️ [MyApp Overlay] User is a student, not showing overlay",
+                );
                 return;
               }
               print(
@@ -986,7 +1003,9 @@ class MyApp extends StatelessWidget {
                     _buildSectionTitle("LÝ DO XIN ĐỔI MÁY"),
                     const SizedBox(height: 4),
                     Text(
-                      violation.reason.isEmpty ? "Không có lý do cụ thể" : violation.reason,
+                      violation.reason.isEmpty
+                          ? "Không có lý do cụ thể"
+                          : violation.reason,
                       style: const TextStyle(
                         color: Colors.red,
                         fontWeight: FontWeight.bold,
@@ -1026,16 +1045,29 @@ class MyApp extends StatelessWidget {
                             final subId = violation.submissionId;
                             try {
                               final dio = DioClient(onLogout: () {});
-                              await dio.dio.post('/instructor/rooms/students/$subId/device-approval', data: {'action': 'approved'});
+                              await dio.dio.post(
+                                '/instructor/rooms/students/$subId/device-approval',
+                                data: {'action': 'approved'},
+                              );
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Phê duyệt đổi máy thành công!'), backgroundColor: Colors.green),
+                                const SnackBar(
+                                  content: Text(
+                                    'Phê duyệt đổi máy thành công!',
+                                  ),
+                                  backgroundColor: Colors.green,
+                                ),
                               );
                             } catch (e) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Phê duyệt thất bại: $e'), backgroundColor: Colors.red),
+                                SnackBar(
+                                  content: Text('Phê duyệt thất bại: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
                               );
                             }
-                            context.read<InstructorOverlayBloc>().add(DismissOverlayEvent());
+                            context.read<InstructorOverlayBloc>().add(
+                              DismissOverlayEvent(),
+                            );
                             Navigator.of(ctx).pop();
                           },
                           style: ElevatedButton.styleFrom(
@@ -1046,7 +1078,10 @@ class MyApp extends StatelessWidget {
                           ),
                           child: const Text(
                             "Duyệt đổi máy",
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ),
@@ -1060,16 +1095,27 @@ class MyApp extends StatelessWidget {
                             final subId = violation.submissionId;
                             try {
                               final dio = DioClient(onLogout: () {});
-                              await dio.dio.post('/instructor/rooms/students/$subId/device-approval', data: {'action': 'rejected'});
+                              await dio.dio.post(
+                                '/instructor/rooms/students/$subId/device-approval',
+                                data: {'action': 'rejected'},
+                              );
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Đã từ chối yêu cầu đổi máy.'), backgroundColor: Colors.orange),
+                                const SnackBar(
+                                  content: Text('Đã từ chối yêu cầu đổi máy.'),
+                                  backgroundColor: Colors.orange,
+                                ),
                               );
                             } catch (e) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Từ chối thất bại: $e'), backgroundColor: Colors.red),
+                                SnackBar(
+                                  content: Text('Từ chối thất bại: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
                               );
                             }
-                            context.read<InstructorOverlayBloc>().add(DismissOverlayEvent());
+                            context.read<InstructorOverlayBloc>().add(
+                              DismissOverlayEvent(),
+                            );
                             Navigator.of(ctx).pop();
                           },
                           style: OutlinedButton.styleFrom(
@@ -1080,7 +1126,10 @@ class MyApp extends StatelessWidget {
                           ),
                           child: const Text(
                             "Từ chối",
-                            style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              color: Colors.red,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ),
