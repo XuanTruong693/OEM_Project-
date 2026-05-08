@@ -30,12 +30,7 @@ class InstructorOverlayBloc
         if (data != null &&
             (data['submissionId'] != null || data['submission_id'] != null || data['deviceChange'] == true)) {
           final examId = (data['examId'] ?? data['exam_id'] ?? data['eventDetails']?['examId'])?.toString();
-          print("🔍 [OverlayBloc] Checking examId: $examId against joined exams: $_currentExamIds");
-
-          if (examId == null || _currentExamIds.isEmpty || !_currentExamIds.contains(examId)) {
-            print("ℹ️ [OverlayBloc] Skipping alert. ExamId $examId not matching current instructor's joined exams.");
-            return;
-          }
+          print("🔍 [OverlayBloc] Processing cheating event for examId: $examId");
 
           // Rung dồn dập 3 nhịp kiểu Messenger/Zalo để giảng viên nhận biết khi đút túi quần / tắt màn hình
           Future.wait([
@@ -105,7 +100,9 @@ class InstructorOverlayBloc
         print(
           "🔄 [OverlayBloc] Socket reconnected, auto joining rooms: $_currentExamIds",
         );
-        _socketClient.emit('instructor:join-exam', _currentExamIds);
+        for (final id in _currentExamIds) {
+          _socketClient.emit('instructor:join-exam', id);
+        }
       }
     });
   }
@@ -123,8 +120,9 @@ class InstructorOverlayBloc
     _currentExamIds = event.examIds;
     print("📡 [OverlayBloc] Joining exam rooms: $_currentExamIds");
 
-    _socketClient.emit('instructor:join-exam', _currentExamIds);
-    _socketClient.socket?.emit('instructor:join-exam', _currentExamIds);
+    for (final id in _currentExamIds) {
+      _socketClient.emit('instructor:join-exam', id);
+    }
   }
 
   void _onCheatingDetected(
