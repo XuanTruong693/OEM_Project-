@@ -71,6 +71,21 @@ class SecureStorageHelper {
     return await _storage.read(key: 'submission_id');
   }
 
+  static Future<bool> getRequireFaceCheck() async {
+    final val = await _storage.read(key: 'exam_flag_face');
+    return val == 'true';
+  }
+
+  static Future<bool> getRequireStudentCard() async {
+    final val = await _storage.read(key: 'exam_flag_card');
+    return val == 'true';
+  }
+
+  static Future<bool> getMonitorScreen() async {
+    final val = await _storage.read(key: 'exam_flag_monitor');
+    return val == 'true';
+  }
+
   static Future<void> saveExamFlags({
     required bool requireFaceCheck,
     required bool requireStudentCard,

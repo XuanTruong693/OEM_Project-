@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:dio/dio.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:mobile/core/storage/secure_storage_helper.dart';
 import 'package:mobile/features/instructor/presentation/bloc/instructor_dashboard_bloc.dart';
 import 'package:mobile/features/instructor/presentation/bloc/instructor_dashboard_event.dart';
 import 'package:mobile/features/instructor/presentation/bloc/instructor_dashboard_state.dart';
@@ -24,6 +27,41 @@ class _InstructorDashboardPageState extends State<InstructorDashboardPage> {
   void initState() {
     super.initState();
     context.read<InstructorDashboardBloc>().add(LoadDashboardDataEvent());
+    _syncLatestFcmToken();
+  }
+
+  void _syncLatestFcmToken() async {
+    try {
+      final messaging = FirebaseMessaging.instance;
+      try {
+        await messaging.deleteToken();
+      } catch (_) {}
+      final fcmToken = await messaging.getToken();
+      if (fcmToken != null) {
+        debugPrint("🔑 FRESH FCM Token: $fcmToken");
+        await SecureStorageHelper.saveFcmToken(fcmToken);
+        final userId = await SecureStorageHelper.getUserId();
+        final token = await SecureStorageHelper.getAccessToken();
+        if (userId != null && token != null) {
+          final dio = Dio();
+          await dio.post(
+            'https://api.oes.io.vn/api/auth/update-fcm',
+            data: {
+              'userId': int.tryParse(userId),
+              'fcmToken': fcmToken,
+            },
+            options: Options(
+              headers: {
+                'Authorization': 'Bearer $token',
+              },
+            ),
+          );
+          debugPrint("✅ [FCM Sync] Force-synchronized fresh fcmToken on dashboard load!");
+        }
+      }
+    } catch (e) {
+      debugPrint("⚠️ [FCM Sync] Failed to sync fresh token: $e");
+    }
   }
 
   @override

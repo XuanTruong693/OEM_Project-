@@ -32,7 +32,7 @@ class InstructorOverlayBloc
           final examId = (data['examId'] ?? data['exam_id'] ?? data['eventDetails']?['examId'])?.toString();
           print("🔍 [OverlayBloc] Processing cheating event for examId: $examId");
 
-          // Rung dồn dập 3 nhịp kiểu Messenger/Zalo để giảng viên nhận biết khi đút túi quần / tắt màn hình
+          // Rung dồn dập 3 nhịp kiểu Messenger/Zalo
           Future.wait([
             HapticFeedback.vibrate(),
             Future.delayed(const Duration(milliseconds: 300), () => HapticFeedback.vibrate()),
@@ -43,21 +43,15 @@ class InstructorOverlayBloc
 
           // Thêm sự kiện vào hàng đợi thông minh
           if (violation.deviceChange) {
-            // Đưa xin đổi thiết bị lên đầu danh sách ưu tiên hiển thị số 1
             _pendingViolations.insert(0, violation);
           } else {
             _pendingViolations.add(violation);
           }
 
-          // Hiển thị thông báo dạng Push Notification ngay trên màn hình điện thoại
+          // Hiển thị thông báo dạng Push Notification
           if (violation.deviceChange) {
-            final m1 = violation.firstDeviceName.isEmpty ? "Không rõ" : violation.firstDeviceName;
-            final m2 = violation.secondDeviceName.isEmpty ? "Không rõ" : violation.secondDeviceName;
-            NotificationHelper.showNotification(
-              id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-              title: '🚨 XIN ĐỔI THIẾT BỊ - ${violation.studentName}',
-              body: '🔴 Máy 1: $m1 ➡️ Máy 2: $m2',
-            );
+            // Đã có thông báo đẩy FCM toàn cục xử lý khi chạy ngầm / ở Home, 
+            // bỏ thông báo Local tại đây để tránh lặp (double notification) khi đang ở trong app.
           } else {
             String eventDesc = 'Hành vi bất thường';
             final Map<String, String> eventDict = {
@@ -89,6 +83,9 @@ class InstructorOverlayBloc
               'typing_speed_violation': "Tốc độ gõ phím bất thường (Dùng Tool)",
               'screen_share_stopped': "Ngắt chia sẻ màn hình giám sát",
               'prolonged_away': "Vắng mặt quá lâu (>15 giây)",
+              'win_d_attempt': "Sử dụng Win+D ẩn màn hình nhanh",
+              'win_d': "Sử dụng Win+D ẩn màn hình nhanh",
+              'multi_monitor': "Sử dụng nhiều màn hình",
               'Chia sẻ màn hình': "Cố tình chia sẻ màn hình",
               'Quay màn hình': "Cố tình quay video màn hình",
               'Chụp màn hình': "Cố tình chụp màn hình",
@@ -99,11 +96,8 @@ class InstructorOverlayBloc
             eventDesc = eventDict[violation.eventType] ?? 
                         (violation.reason.isNotEmpty ? (eventDict[violation.reason] ?? violation.reason) : 'Vi phạm quy chế thi');
 
-            NotificationHelper.showNotification(
-              id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-              title: '🚨 GIAN LẬN - ${violation.studentName}',
-              body: '🔴 $eventDesc',
-            );
+            // Đã có thông báo đẩy FCM toàn cục xử lý khi chạy ngầm / ở Home, 
+            // bỏ thông báo Local tại đây để tránh lặp (double notification) khi đang ở trong app.
           }
 
           add(OverlayCheatingDetectedEvent(violation));
@@ -115,10 +109,9 @@ class InstructorOverlayBloc
 
     // 2. Tự động RE-JOIN khi socket kết nối lại (Quan trọng!)
     _socketClient.onEvent('connect', (_) {
+      print("🔗 [OverlayBloc] Socket connected/reconnected event fired");
       if (_currentExamIds.isNotEmpty) {
-        print(
-          "🔄 [OverlayBloc] Socket reconnected, auto joining rooms: $_currentExamIds",
-        );
+        print("🔄 [OverlayBloc] Auto re-joining rooms: $_currentExamIds");
         for (final id in _currentExamIds) {
           _socketClient.emit('instructor:join-exam', id);
         }
@@ -132,15 +125,22 @@ class InstructorOverlayBloc
     return super.close();
   }
 
-  void _onJoinExams(
+  /// Đợi socket connected rồi mới join rooms - giải quyết hoàn toàn race condition
+  Future<void> _onJoinExams(
     JoinInstructorExamsEvent event,
     Emitter<InstructorOverlayState> emit,
-  ) {
+  ) async {
     _currentExamIds = event.examIds;
-    print("📡 [OverlayBloc] Joining exam rooms: $_currentExamIds");
+    print("📡 [OverlayBloc] Will join exam rooms: $_currentExamIds");
+    print("📡 [OverlayBloc] Socket connected? ${_socketClient.isConnected}");
 
+    // ĐỢI SOCKET KẾT NỐI THÀNH CÔNG trước khi join rooms
+    await _socketClient.waitForConnection();
+
+    print("📡 [OverlayBloc] Socket ready, now joining ${_currentExamIds.length} rooms...");
     for (final id in _currentExamIds) {
       _socketClient.emit('instructor:join-exam', id);
+      print("📡 [OverlayBloc] Joined room exam:$id");
     }
   }
 
