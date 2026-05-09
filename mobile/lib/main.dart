@@ -150,13 +150,8 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   await NotificationHelper.init();
   debugPrint("📩 Nhận thông báo chạy ngầm: ${message.notification?.title}");
-  if (message.notification != null) {
-    await NotificationHelper.showNotification(
-      id: DateTime.now().millisecondsSinceEpoch % 100000,
-      title: message.notification!.title ?? '',
-      body: message.notification!.body ?? '',
-    );
-  }
+  // Hệ điều hành đã tự động hiển thị thông báo đẩy FCM từ Server một cách tự nhiên khi app ở chế độ chạy nền / Home.
+  // Không gọi NotificationHelper.showNotification ở đây để tránh bị lặp (double notification).
 }
 
 Future<void> main() async {
@@ -181,13 +176,8 @@ Future<void> main() async {
     }
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      if (message.notification != null) {
-        NotificationHelper.showNotification(
-          id: DateTime.now().millisecondsSinceEpoch % 100000,
-          title: message.notification!.title ?? '',
-          body: message.notification!.body ?? '',
-        );
-      }
+      // Khi đang mở app, giao diện trong ứng dụng (In-app overlay) sẽ hiển thị trực tiếp.
+      // Không cần hiển thị thêm Banner thông báo cục bộ ở đây để tránh lặp.
     });
   } catch (e) {
     debugPrint("⚠️ Firebase Init error: $e");

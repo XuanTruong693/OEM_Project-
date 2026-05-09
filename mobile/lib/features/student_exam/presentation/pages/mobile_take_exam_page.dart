@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:screen_protector/screen_protector.dart';
+import 'package:mobile/core/storage/secure_storage_helper.dart';
 import '../bloc/take_exam_bloc.dart';
 import '../bloc/take_exam_event.dart';
 import '../bloc/take_exam_state.dart';
@@ -128,6 +129,11 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
   }
 
   void _enableScreenSecurity() async {
+    final monitorScreen = await SecureStorageHelper.getMonitorScreen();
+    if (!monitorScreen) {
+      debugPrint("Screen monitoring is disabled by instructor. Skipping secure screen mode.");
+      return;
+    }
     try {
       await _securityChannel.invokeMethod('enableSecureMode');
     } catch (e) {

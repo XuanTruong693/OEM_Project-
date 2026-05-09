@@ -57,7 +57,8 @@ class InstructorRoomDetailBloc extends Bloc<InstructorRoomDetailEvent, Instructo
         }
       }
       
-      _socketClient.emit('instructor:join-exam', event.id);
+      // Đợi socket connected rồi mới join room
+      await _socketClient.emitWhenReady('instructor:join-exam', event.id);
       
       _socketUnsubscribers.add(_socketClient.onEvent('student:registered', (data) {
         if (data != null) {
