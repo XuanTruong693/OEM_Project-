@@ -655,6 +655,8 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  bool _isOverlayOpen = false;
+
   @override
   void initState() {
     super.initState();
@@ -697,6 +699,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 );
                 return;
               }
+              
+              if (_isOverlayOpen) {
+                // Đóng dialog hiện tại (nếu có) trước khi hiển thị dialog mới (ưu tiên)
+                final navContext = widget.router.configuration.navigatorKey.currentContext;
+                if (navContext != null) {
+                  Navigator.of(navContext).pop('interrupt');
+                }
+              }
+
+              _isOverlayOpen = true;
               print(
                 "🚨 [MyApp] Displaying global cheating dialog for student: ${state.violation.studentName}",
               );
@@ -711,7 +723,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   void _showGlobalCheatingDialog(BuildContext context, dynamic violation) {
     if (violation != null && violation.deviceChange == true) {
-      _showDeviceChangeDialog(context, violation);
+      _showDeviceChangeDialog(context, violation).then((_) {
+        _isOverlayOpen = false;
+      });
       return;
     }
     showDialog(
@@ -952,7 +966,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           ),
         ),
       ),
-    );
+    ).then((_) {
+      _isOverlayOpen = false;
+    });
   }
 
   Widget _buildSectionTitle(String title) {
@@ -1011,8 +1027,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     return "${now.hour}:${now.minute}:${now.second}  ${now.day}/${now.month}/${now.year}";
   }
 
-  void _showDeviceChangeDialog(BuildContext context, dynamic violation) {
-    showDialog(
+  Future<void> _showDeviceChangeDialog(BuildContext context, dynamic violation) {
+    return showDialog(
       context: widget.router.configuration.navigatorKey.currentContext ?? context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
