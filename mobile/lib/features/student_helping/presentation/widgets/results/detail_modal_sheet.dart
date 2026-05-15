@@ -99,7 +99,7 @@ void showDetailModalBottomSheet(BuildContext context, String submissionId) {
                         padding: const EdgeInsets.all(20),
                         physics: const BouncingScrollPhysics(),
                         itemCount: data.questions.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 16),
+                        separatorBuilder: (_, _) => const SizedBox(height: 16),
                         itemBuilder: (context, index) {
                           final q = data.questions[index];
                           // Tìm câu trả lời tương ứng với câu hỏi
@@ -463,7 +463,7 @@ Widget _buildQuestionBlock(
                               size: 14,
                               color: Colors.orange,
                             ),
-                            const SizedBox(width: 4),
+                            SizedBox(width: 4),
                             Text(
                               'PHẢN HỒI TỪ GIẢNG VIÊN',
                               style: TextStyle(

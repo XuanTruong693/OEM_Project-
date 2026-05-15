@@ -26,7 +26,7 @@ class AuthRemoteDataSource {
           'password': password,
           'role': role,
           if (role == 'student' && roomId != null) 'roomId': roomId,
-          if (fcmToken != null) 'fcmToken': fcmToken,
+          'fcmToken': ?fcmToken,
         },
       );
 
@@ -86,7 +86,7 @@ class AuthRemoteDataSource {
           'idToken': idToken,
           'role': role,
           if (role == 'student' && roomId != null) 'roomId': roomId,
-          if (fcmToken != null) 'fcmToken': fcmToken,
+          'fcmToken': ?fcmToken,
         },
       );
 
@@ -102,9 +102,7 @@ class AuthRemoteDataSource {
     try {
       final response = await dioClient.dio.post(
         '/exams/verify-room',
-        data: {
-          'room_code': roomCode,
-        },
+        data: {'room_code': roomCode},
       );
 
       return RoomVerificationModel.fromJson(response.data);
@@ -117,12 +115,7 @@ class AuthRemoteDataSource {
   // --- API GỬI OTP ---
   Future<void> sendOtp(String email) async {
     try {
-      await dioClient.dio.post(
-        '/auth/send-otp',
-        data: {
-          'email': email,
-        },
-      );
+      await dioClient.dio.post('/auth/send-otp', data: {'email': email});
     } on DioException catch (e) {
       final errorMessage = e.response?.data['message'] ?? 'Lỗi gửi mã OTP';
       throw Exception(errorMessage);
@@ -134,13 +127,11 @@ class AuthRemoteDataSource {
     try {
       await dioClient.dio.post(
         '/auth/verify-otp',
-        data: {
-          'email': email,
-          'otp': otp,
-        },
+        data: {'email': email, 'otp': otp},
       );
     } on DioException catch (e) {
-      final errorMessage = e.response?.data['message'] ?? 'Mã OTP không hợp lệ hoặc đã hết hạn';
+      final errorMessage =
+          e.response?.data['message'] ?? 'Mã OTP không hợp lệ hoặc đã hết hạn';
       throw Exception(errorMessage);
     }
   }

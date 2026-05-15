@@ -14,14 +14,15 @@ class ResultCardWidget extends StatelessWidget {
 
   // Tương đương hàm getScoreBadge bên React
   Map<String, dynamic> _getScoreBadge(double? score) {
-    if (score == null)
+    if (score == null) {
       return {
         'label': '-',
         'color': Colors.grey,
         'bgColor': Colors.grey.shade100,
         'icon': '○',
       };
-    if (score >= 8)
+    }
+    if (score >= 8) {
       return {
         'label': score.toStringAsFixed(1),
         'color': Colors.teal.shade600,
@@ -29,7 +30,8 @@ class ResultCardWidget extends StatelessWidget {
         'icon': '🏆',
         'grade': 'Xuất sắc',
       };
-    if (score >= 5)
+    }
+    if (score >= 5) {
       return {
         'label': score.toStringAsFixed(1),
         'color': Colors.orange.shade600,
@@ -37,6 +39,7 @@ class ResultCardWidget extends StatelessWidget {
         'icon': '⭐',
         'grade': 'Đạt',
       };
+    }
     return {
       'label': score.toStringAsFixed(1),
       'color': Colors.red.shade600,

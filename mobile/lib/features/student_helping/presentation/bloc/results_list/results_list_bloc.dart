@@ -104,8 +104,9 @@ class ResultsListBloc extends Bloc<ResultsListEvent, ResultsListState> {
             allowViewAnswers == 1 || allowViewAnswers == true;
 
         final updatedRaw = currentState.rawResults.map((r) {
-          if (r.examId == examId)
+          if (r.examId == examId) {
             return r.copyWith(allowViewAnswers: isAllowed);
+          }
           return r;
         }).toList();
 
