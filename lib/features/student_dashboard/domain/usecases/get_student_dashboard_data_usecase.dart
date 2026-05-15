@@ -20,10 +20,12 @@ class GetStudentDashboardDataUseCase {
     final profileResponse = await profileFuture;
 
     // Nếu lỗi API, trả về Failure ngay lập tức
-    if (resultsResponse.isLeft())
+    if (resultsResponse.isLeft()) {
       return Left(resultsResponse.fold((l) => l, (r) => throw Exception()));
-    if (profileResponse.isLeft())
+    }
+    if (profileResponse.isLeft()) {
       return Left(profileResponse.fold((l) => l, (r) => throw Exception()));
+    }
 
     // Lấy dữ liệu thô
     final allResults = resultsResponse.getOrElse(() => []);

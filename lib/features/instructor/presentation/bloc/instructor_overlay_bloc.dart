@@ -2,7 +2,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:mobile/core/network/socket_client.dart';
 import 'package:mobile/features/instructor_rooms/domain/entities/cheating_event_entity.dart';
-import 'package:mobile/core/utils/notification_helper.dart';
 import 'instructor_overlay_event.dart';
 import 'instructor_overlay_state.dart';
 
@@ -24,19 +23,35 @@ class InstructorOverlayBloc
       try {
         print("📡 [OverlayBloc] Global cheating detected: $data");
         if (data != null && data['deviceChangeApproval'] == true) {
-          print("ℹ️ [OverlayBloc] Skipping own device change approval event on mobile");
+          print(
+            "ℹ️ [OverlayBloc] Skipping own device change approval event on mobile",
+          );
           return;
         }
         if (data != null &&
-            (data['submissionId'] != null || data['submission_id'] != null || data['deviceChange'] == true)) {
-          final examId = (data['examId'] ?? data['exam_id'] ?? data['eventDetails']?['examId'])?.toString();
-          print("🔍 [OverlayBloc] Processing cheating event for examId: $examId");
+            (data['submissionId'] != null ||
+                data['submission_id'] != null ||
+                data['deviceChange'] == true)) {
+          final examId =
+              (data['examId'] ??
+                      data['exam_id'] ??
+                      data['eventDetails']?['examId'])
+                  ?.toString();
+          print(
+            "🔍 [OverlayBloc] Processing cheating event for examId: $examId",
+          );
 
           // Rung dồn dập 3 nhịp kiểu Messenger/Zalo
           Future.wait([
             HapticFeedback.vibrate(),
-            Future.delayed(const Duration(milliseconds: 300), () => HapticFeedback.vibrate()),
-            Future.delayed(const Duration(milliseconds: 600), () => HapticFeedback.vibrate()),
+            Future.delayed(
+              const Duration(milliseconds: 300),
+              () => HapticFeedback.vibrate(),
+            ),
+            Future.delayed(
+              const Duration(milliseconds: 600),
+              () => HapticFeedback.vibrate(),
+            ),
           ]);
 
           final violation = CheatingEventEntity.fromJson(data);
@@ -50,7 +65,7 @@ class InstructorOverlayBloc
 
           // Hiển thị thông báo dạng Push Notification
           if (violation.deviceChange) {
-            // Đã có thông báo đẩy FCM toàn cục xử lý khi chạy ngầm / ở Home, 
+            // Đã có thông báo đẩy FCM toàn cục xử lý khi chạy ngầm / ở Home,
             // bỏ thông báo Local tại đây để tránh lặp (double notification) khi đang ở trong app.
           } else {
             String eventDesc = 'Hành vi bất thường';
@@ -77,7 +92,8 @@ class InstructorOverlayBloc
               'multiple_faces': "Phát hiện có người lạ trong camera",
               'no_face': "Không thấy thí sinh trước camera",
               'no_face_detected': "Không phát hiện khuôn mặt",
-              'ai_detected_cheating': "Tổng hợp hành vi đáng ngờ (AI phân tích)",
+              'ai_detected_cheating':
+                  "Tổng hợp hành vi đáng ngờ (AI phân tích)",
               'devtools_attempt': "Mở công cụ phát triển (DevTools)",
               'mouse_outside': "Chuột rời khỏi vùng làm bài",
               'typing_speed_violation': "Tốc độ gõ phím bất thường (Dùng Tool)",
@@ -92,11 +108,14 @@ class InstructorOverlayBloc
               'Thoát về Home': "Thoát ứng dụng về màn hình Home",
               'Mất tiêu điểm': "Rời khỏi vùng làm bài (Mất Focus)",
             };
-            
-            eventDesc = eventDict[violation.eventType] ?? 
-                        (violation.reason.isNotEmpty ? (eventDict[violation.reason] ?? violation.reason) : 'Vi phạm quy chế thi');
 
-            // Đã có thông báo đẩy FCM toàn cục xử lý khi chạy ngầm / ở Home, 
+            eventDesc =
+                eventDict[violation.eventType] ??
+                (violation.reason.isNotEmpty
+                    ? (eventDict[violation.reason] ?? violation.reason)
+                    : 'Vi phạm quy chế thi');
+
+            // Đã có thông báo đẩy FCM toàn cục xử lý khi chạy ngầm / ở Home,
             // bỏ thông báo Local tại đây để tránh lặp (double notification) khi đang ở trong app.
           }
 
@@ -137,7 +156,9 @@ class InstructorOverlayBloc
     // ĐỢI SOCKET KẾT NỐI THÀNH CÔNG trước khi join rooms
     await _socketClient.waitForConnection();
 
-    print("📡 [OverlayBloc] Socket ready, now joining ${_currentExamIds.length} rooms...");
+    print(
+      "📡 [OverlayBloc] Socket ready, now joining ${_currentExamIds.length} rooms...",
+    );
     for (final id in _currentExamIds) {
       _socketClient.emit('instructor:join-exam', id);
       print("📡 [OverlayBloc] Joined room exam:$id");

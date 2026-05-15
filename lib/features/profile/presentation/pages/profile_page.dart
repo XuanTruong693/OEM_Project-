@@ -381,7 +381,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                   ),
                                 ),
                                 value: _isTwoFactorEnabled ?? false,
-                                activeColor: Colors.indigo,
+                                activeThumbColor: Colors.indigo,
                                 onChanged: _toggleTwoFactor,
                               ),
                             ),
