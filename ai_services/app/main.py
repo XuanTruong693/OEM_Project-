@@ -1,9 +1,21 @@
+
+import sys
+import asyncio
+
+# FORCE Windows Proactor Event Loop to support 1000s of connections (removes the 512 FD select limit)
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+# pyrefly: ignore [missing-import]
 from fastapi import FastAPI, HTTPException
+# pyrefly: ignore [missing-import]
 from fastapi.middleware.cors import CORSMiddleware
+# pyrefly: ignore [missing-import]
 from pydantic import BaseModel
 from app.schemas import GradeRequest, GradeResponse
 from app.nlp import calculate_score, get_model
 from app.security import SecurityMiddleware, load_blacklist
+# pyrefly: ignore [missing-import]
 import uvicorn
 import os
 import json
@@ -13,6 +25,7 @@ import logging
 import traceback
 from typing import List, Optional
 from datetime import datetime
+# pyrefly: ignore [missing-import]
 from fastapi.responses import Response
 
 # Import learning module

@@ -95,7 +95,10 @@ const UserManagement = () => {
     const handleSaveEdit = async () => {
         try {
             setSaving(true);
-            const response = await axiosClient.put(`/admin/users/${selectedUser.id}`, editForm);
+            const dataToSend = { ...editForm };
+            if (dataToSend.gender === '') dataToSend.gender = null;
+
+            const response = await axiosClient.put(`/admin/users/${selectedUser.id}`, dataToSend);
 
             if (response.data.success) {
                 setMessage({ type: 'success', text: 'Cập nhật thành công!' });

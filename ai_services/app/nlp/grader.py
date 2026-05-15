@@ -21,7 +21,7 @@ import re
 import ast
 from difflib import SequenceMatcher
 from typing import Dict, Any, List, Set, Tuple, Optional
-from sentence_transformers import util
+from sentence_transformers import util  # type: ignore[import-untyped]
 
 from .config import GradingConfig
 from .model import get_ai_model
@@ -69,9 +69,15 @@ class UniversityGrader:
             "cần xem xét": ["không cần xem xét", "bỏ qua xem xét", "xác nhận ngay"],
             "thống trị": ["bị trị", "nhân dân lao động", "người lao động", "quần chúng"],
             "khách quan": ["chủ quan"],
-            "vật chất": ["ý thức", "tinh thần"],
             "tư bản": ["vô sản", "công nhân"],
-            "kế thừa": ["độc lập", "tạo mới"]
+            "kế thừa": ["độc lập", "tạo mới"],
+            "inner join": ["left join", "right join", "outer join", "full join", "cross join"],
+            "left join": ["inner join", "right join", "cross join"],
+            "right join": ["inner join", "left join", "cross join"],
+            "public": ["private", "protected", "internal"],
+            "private": ["public", "protected", "internal"],
+            "true": ["false"],
+            "false": ["true"]
         }
         
         self.technical_synonyms = {
@@ -282,13 +288,25 @@ class UniversityGrader:
         m_words = model_text.lower().split()
         if len(s_words) < 4 or len(m_words) < 4: return False
         
+        # Nếu dính mâu thuẫn trái nghĩa hoặc đảo chiều khuôn mẫu -> không phải Word Salad (mà là lỗi logic)
+        if self._check_template_reversal(student_text, model_text):
+            return False
+        if self._check_antonym_contradiction(student_text, model_text):
+            return False
+        
         s_kws = self._extract_keywords(student_text)
         m_kws = self._extract_keywords(model_text)
         if not m_kws: return False
         
         kw_overlap = len(s_kws & m_kws) / len(m_kws)
         seq_ratio = SequenceMatcher(None, s_words, m_words).ratio()
-        if kw_overlap > 0.65 and seq_ratio < 0.50:
+        
+        # Nếu câu trả lời quá dài (do copy đề bài hoặc giải thích dài dòng), seq_ratio tự động giảm.
+        # Nới lỏng seq_ratio threshold nếu câu trả lời dài.
+        length_ratio = len(s_words) / len(m_words)
+        dynamic_seq_threshold = 0.50 if length_ratio <= 1.5 else 0.30
+        
+        if kw_overlap > 0.65 and seq_ratio < dynamic_seq_threshold:
             # Nếu phát hiện cấu trúc bị động, nới lỏng yêu cầu seq_ratio
             # Vì câu bị động đảo lộn hoàn toàn cấu trúc câu nhưng vẫn giữ đúng nghĩa.
             if self._contains_passive_markers(student_text) and seq_ratio >= 0.10:
@@ -298,12 +316,16 @@ class UniversityGrader:
 
     def _check_directional_logic(self, student_text: str, model_text: str) -> Tuple[bool, str]:
         """
-        [V27] Robust Directional Logic Check.
+        Robust Directional Logic Check.
         Detects if the relationship direction A -> B is flipped to B -> A.
         Handles both explicit verbs (quyết định, tạo ra) and implicit roles (khuôn mẫu).
         """
         m_lower, s_lower = model_text.lower(), student_text.lower()
         
+        # 0. Đảo ngược khuôn mẫu sinh học (Template Reversal - mARN vs ADN)
+        if self._check_template_reversal(student_text, model_text):
+            return True, "LỖI CHI MẠNG: Đảo ngược khuôn mẫu sinh học tổng hợp (A làm khuôn mẫu tổng hợp B thành B làm khuôn tổng hợp A)"
+            
         # 1. Quan hệ Cha - Con (Special case)
         if "cha" in m_lower and "con" in m_lower and "cha" in s_lower and "con" in s_lower:
             m_cha, m_con = m_lower.find("cha"), m_lower.find("con")
@@ -320,6 +342,18 @@ class UniversityGrader:
             ("cơ sở hạ tầng", "kiến trúc thượng tầng"),
             ("tồn tại xã hội", "ý thức xã hội")
         ]
+        
+        # 2.5 Đảo ngược chủ thể (Subject-Object Swap) - Xảy ra trên toàn câu
+        general_reversal_pairs = [
+            ("front-end", "back-end"), ("client", "server"),
+            ("model", "view"), ("view", "controller"), ("model", "controller"),
+            ("tcp", "udp"), ("hộp đen", "hộp trắng"), ("white-box", "black-box")
+        ]
+        for a, b in general_reversal_pairs:
+            if a in m_lower and b in m_lower and a in s_lower and b in s_lower:
+                if (m_lower.find(a) < m_lower.find(b) and s_lower.find(a) > s_lower.find(b)) or \
+                   (m_lower.find(a) > m_lower.find(b) and s_lower.find(a) < s_lower.find(b)):
+                    return True, f"Đảo ngược vai trò/chủ thể giữa '{a}' và '{b}'"
 
         best_error = ""
         for verb in self.directional_verbs:
@@ -417,13 +451,37 @@ class UniversityGrader:
         s_lower, m_lower = student_text.lower(), model_text.lower()
         all_antonyms = {**ANTONYM_PAIRS, **self.custom_antonyms}
         for word, antonyms in all_antonyms.items():
-            if word in m_lower:
+            if word in ["có", "không"]:
+                continue
+            word_pat = rf"\b{re.escape(word)}\b"
+            if re.search(word_pat, m_lower):
                 for ant in antonyms:
-                    if ant in s_lower:
-                        if ant in m_lower and word in s_lower:
+                    if ant in ["có", "không"]:
+                        continue
+                    ant_pat = rf"\b{re.escape(ant)}\b"
+                    if re.search(ant_pat, s_lower):
+                        if re.search(ant_pat, m_lower) and re.search(word_pat, s_lower):
                             continue
                         return True
         return False
+
+    def _get_antonym_contradiction_detail(self, student_text: str, model_text: str) -> Optional[str]:
+        s_lower, m_lower = student_text.lower(), model_text.lower()
+        all_antonyms = {**ANTONYM_PAIRS, **self.custom_antonyms}
+        for word, antonyms in all_antonyms.items():
+            if word in ["có", "không"]:
+                continue
+            word_pat = rf"\b{re.escape(word)}\b"
+            if re.search(word_pat, m_lower):
+                for ant in antonyms:
+                    if ant in ["có", "không"]:
+                        continue
+                    ant_pat = rf"\b{re.escape(ant)}\b"
+                    if re.search(ant_pat, s_lower):
+                        if re.search(ant_pat, m_lower) and re.search(word_pat, s_lower):
+                            continue
+                        return f"phát hiện từ trái nghĩa ('{ant}' trong bài làm mâu thuẫn trực tiếp với '{word}' trong đáp án mẫu)"
+        return None
 
     # =========================================================================
     # MODEL 1: ĐẠI CƯƠNG (GENERAL PIPELINE)
@@ -455,7 +513,6 @@ class UniversityGrader:
                         penalty = trap_penalties.get(word_key, 0.95)
                         global_penalty_mult = min(global_penalty_mult, penalty)
                         
-                        # [V26] Nâng cấp AI Reasoning chi tiết
                         explanation_map = {
                             "không công bố ngay": "Cảnh báo bẫy logic: Hệ thống OEM Mini KHÔNG cho phép hiển thị điểm tự luận ngay lập tức. Câu trả lời của bạn mâu thuẫn với quy trình bảo mật điểm số.",
                             "không được công bố": "Lỗi quy trình: Điểm tự luận chỉ được công bố sau khi giảng viên duyệt. Việc khẳng định hiển thị ngay là sai bản chất hệ thống.",
@@ -472,14 +529,23 @@ class UniversityGrader:
             global_penalty_mult = min(global_penalty_mult, 0.90)
             global_feedback.append("Nội dung tổng thể có dấu hiệu mâu thuẫn logic cao.")
 
+        is_contradiction = (
+            self._check_antonym_contradiction(student_text, model_text) or 
+            self._check_antonym_contradiction(s_norm, m_norm)
+        )
+        antonym_detail = self._get_antonym_contradiction_detail(student_text, model_text) or self._get_antonym_contradiction_detail(s_norm, m_norm)
+        contradiction_msg = f"Mâu thuẫn logic: {antonym_detail}." if antonym_detail else "Mâu thuẫn logic: phát hiện từ trái nghĩa hoặc mâu thuẫn ý kiến toàn phần."
+
         length_ratio = len(s_clean) / len(model_text) if len(model_text) > 0 else 0
         if is_long_answer and length_ratio < 0.4:
             return self._build_result(max_points * 0.30, f"Câu trả lời quá ngắn ({int(length_ratio*100)}% so với đáp án). Thiếu nhiều ý chính, chỉ chấm tối đa 30%.", "Partial")
 
         lev_ratio = SequenceMatcher(None, s_norm, m_norm).ratio()
         if lev_ratio >= 0.95: 
+            if is_contradiction:
+                return self._build_result(0.0, contradiction_msg, "Contradiction")
             res = self._build_result(max_points * global_penalty_mult, "Khớp hoàn toàn.", "Typo")
-            if global_penalty_mult < 1.0: res['reasoning'] = " | ".join(global_feedback) + " || " + res['reasoning']
+            if global_penalty_mult < 1.0: res['explanation'] = " | ".join(global_feedback) + " || " + res['explanation']
             return res
 
         # [AI Fast-Track (V3)] - Đặt sau Guardrails để không bị lừa bởi câu có từ vựng giống nhưng sai logic
@@ -488,12 +554,15 @@ class UniversityGrader:
                 emb_model = self.ai.finetuned_encoder.encode(m_norm, convert_to_tensor=True)
                 emb_student = self.ai.finetuned_encoder.encode(s_norm, convert_to_tensor=True)
                 sim_score = util.cos_sim(emb_model, emb_student).item()
-                if sim_score >= 0.93: return self._build_result(max_points, f"Khớp ý chính hoàn toàn (AI V3: {int(sim_score*100)}%).", "AI Fast-Track (V3)")
-                if sim_score < 0.10: 
+                if sim_score >= 0.93: 
+                    if is_contradiction:
+                        return self._build_result(0.0, contradiction_msg, "Contradiction")
+                    return self._build_result(max_points, f"Khớp ý chính hoàn toàn (AI V3: {int(sim_score*100)}%).", "AI Fast-Track (V3)")
+                if sim_score < 0.10 or is_contradiction: 
                     # V24: Total contradiction should get near-zero or very low score (10-20% max)
                     # This satisfies the "Total contradiction should be low/0" requirement
-                    reason = f"Lỗi nghiêm trọng: Câu trả lời có xu hướng phủ định hoặc mâu thuẫn hoàn toàn với đáp án mẫu (Độ tương đồng AI V3: {int(sim_score*100)}%)."
-                    return self._build_result(max_points * 0.15 * global_penalty_mult, reason, "Contradiction")
+                    reason = f"Lỗi nghiêm trọng: {contradiction_msg} (Độ tương đồng AI V3: {int(sim_score*100)}%)."
+                    return self._build_result(0.0, reason, "Contradiction")
         except: pass
 
         model_ideas = self._analyze_core_ideas(m_norm, mode="general")
@@ -549,7 +618,9 @@ class UniversityGrader:
                 # Nếu là mâu thuẫn cứng (Keyword thấp + NLI cao) -> 0 điểm
                 if logic_label == 'contradiction' and logic_conf >= self.config.hard_contradiction_threshold and chunk_kws_cov < self.config.keyword_shield_threshold:
                     feedback_details.append(f"Ý {i+1} ({core_tag}): SAI BẢN CHẤT — Mâu thuẫn logic hoàn toàn (NLI={int(logic_conf*100)}%).")
-                    logger.info(f"[Hard-Contradiction] Ý {i+1}: logic=contradiction, conf={logic_conf:.2f} -> Score 0")
+                    logger.info(f"[Hard-Contradiction] Ý {i+1}: logic=contradiction, conf={logic_conf:.2f} -> Applying 50% partial rescue")
+                    penalty_score = best_sim_bi * 0.50  # Vớt điểm bán phần 50% cho các diễn đạt học thuật có giá trị ngữ nghĩa cao
+                    total_score += chunk_max_points * penalty_score
                     continue
                 
                 # Áp dụng mức phạt linh hoạt
@@ -691,14 +762,16 @@ class UniversityGrader:
         m_no_diac = remove_vietnamese_diacritics(model_text).lower()
 
         if s_no_diac == m_no_diac:
-             # [V11] Áp dụng hình phạt toàn cục ngay cả khi khớp chính xác không dấu
+             # Áp dụng hình phạt toàn cục ngay cả khi khớp chính xác không dấu
              penalized_score = max_points * global_penalty_mult
              explanation = "Khớp chính xác (Bao gồm đồng bộ dấu Tiếng Việt)."
              if global_penalty_mult < 1.0:
                  explanation = " | ".join(global_feedback) + " || " + explanation
              return self._build_result(penalized_score, explanation, "Exact Match")
 
-        if diac_ratio >= 0.85 and (final_score / max_points) < 0.85 and final_score > 0:
+        if diac_ratio >= 0.85 and max_points > 0 and (final_score / max_points) < 0.85 and final_score > 0:
+            if is_contradiction:
+                return self._build_result(0.0, "Mâu thuẫn logic: phát hiện từ trái nghĩa hoặc mâu thuẫn ý kiến toàn phần.", "Contradiction")
             final_score = max(final_score, max_points * 0.75)
             # Không quên nhân penalty ở đây nếu cần (thường typo ko dính logic nặng)
             final_score *= global_penalty_mult 
@@ -723,7 +796,7 @@ class UniversityGrader:
     # =========================================================================
     def _grade_technical_model(self, student_text: str, model_text: str, s_clean: str, m_syn: str, s_norm: str, m_norm: str, max_points: float, is_long_answer: bool) -> Dict[str, Any]:
         strong_code = r"(def\s+__init__|\bclass\s+\w+|public\s+class|\bvoid\s+\w+|#include|<iostream>|std::)"
-        generic_code = r"([{}();]|\breturn\b|=>|->|//|/\*.*\*/)"
+        generic_code = r"([{};]|\breturn\b|=>|->|//|/\*.*\*/)"
         
         is_model_code = bool(re.search(strong_code, model_text)) or len(re.findall(generic_code, model_text)) >= 2
         
@@ -820,7 +893,7 @@ class UniversityGrader:
         lev_ratio = SequenceMatcher(None, s_norm, m_norm).ratio()
         if lev_ratio >= 0.95: 
             res = self._build_result(max_points * global_penalty_mult, "Khớp hoàn toàn.", "Typo")
-            if global_penalty_mult < 1.0: res['reasoning'] = " | ".join(global_feedback) + " || " + res['reasoning']
+            if global_penalty_mult < 1.0: res['explanation'] = " | ".join(global_feedback) + " || " + res['explanation']
             return res
 
         model_ideas = self._analyze_core_ideas(m_norm, mode="technical")
@@ -1005,10 +1078,10 @@ class UniversityGrader:
              # Neutralizing diacritic penalty
              res = self._build_result(max_points, "Khớp chính xác (Bao gồm đồng bộ dấu Tiếng Việt).", "Exact Match")
              res['score'] *= global_penalty_mult
-             if global_penalty_mult < 1.0: res['reasoning'] = " | ".join(global_feedback) + " || " + res['reasoning']
+             if global_penalty_mult < 1.0: res['explanation'] = " | ".join(global_feedback) + " || " + res['explanation']
              return res
 
-        if diac_ratio >= 0.85 and (final_score / max_points) < 0.85 and final_score > 0:
+        if diac_ratio >= 0.85 and max_points > 0 and (final_score / max_points) < 0.85 and final_score > 0:
             final_score = max(final_score, max_points * 0.75)
             final_score *= global_penalty_mult
             return self._build_result(final_score, "Đúng ý nhưng sai lỗi chính tả.", "Typo")
@@ -1019,8 +1092,12 @@ class UniversityGrader:
     # =========================================================================
     # ROUTER ĐIỀU HƯỚNG TỪ API 
     # =========================================================================
-    def grade(self, student_text: str, model_text: str, max_points: float, grading_mode: str = "general", question_text: str = None) -> Dict[str, Any]:
+    def grade(self, student_text: str, model_text: str, max_points: float, grading_mode: str = "general", question_text: Optional[str] = None) -> Dict[str, Any]:
         if not student_text or not model_text: return self._build_result(0.0, "Missing input text.", "None")
+        
+        # === STEP -1.5: GIBBERISH NOISE FILTERING ===
+        from .faker_detector import smart_strip_gibberish_noise
+        student_text = smart_strip_gibberish_noise(student_text)
         
         # === STEP -1: PLACEHOLDER / KHÔNG TRẢ LỜI ===
         from .faker_detector import NO_ANSWER_PLACEHOLDERS, is_meaningless_answer, is_copy_of_question
@@ -1047,7 +1124,14 @@ class UniversityGrader:
                 logger.info(f"[Faker Bypass] Technical candidate detected ({faker_reason}), bypassing faker block: '{student_text[:50]}'")
             else:
                 logger.info(f"[Faker Block] Score=0.0 | Reason: {faker_reason} | Text: '{student_text[:50]}'")
-                return self._build_result(0.0, f"Reasoning: {faker_reason}. Không chấm điểm cho câu trả lời đối phó.", "Đối phó")
+                explanation = (
+                    f"Lỗi đối phó học thuật: {faker_reason}. Câu trả lời không chứa nội dung "
+                    "kiến thức thực tế hoặc có cấu trúc bất thường (như gõ phím ngẫu nhiên hoặc "
+                    "nhồi nhét từ lặp) nhằm mục đích đối phó với hệ thống chấm điểm tự động. "
+                    "Để đảm bảo tính công bằng và trung thực trong học thuật, AI đánh giá câu "
+                    "trả lời này không hợp lệ và chấm 0 điểm."
+                )
+                return self._build_result(0.0, explanation, "Đối phó")
 
         # === SUPPORT ALTERNATIVE MODEL ANSWERS (;) ===
         m_type = self.code_analyzer.detect_answer_type(model_text)
@@ -1062,15 +1146,22 @@ class UniversityGrader:
                 res = self._grade_single_option(student_text, opt, max_points, grading_mode, question_text)
                 if best_result is None or res['score'] > best_result['score']:
                     best_result = res
-            return best_result
+            return best_result  # type: ignore[return-value]
         
         return self._grade_single_option(student_text, model_text, max_points, grading_mode, question_text)
 
-    def _grade_single_option(self, student_text: str, model_text: str, max_points: float, grading_mode: str, question_text: str = None) -> Dict[str, Any]:
+    def _grade_single_option(self, student_text: str, model_text: str, max_points: float, grading_mode: str, question_text: Optional[str] = None) -> Dict[str, Any]:
         # === 1. FAKER DETECTION (With model context) ===
         is_faker, reason = is_meaningless_answer(student_text, model_text, question_text)
         if is_faker:
-            return self._build_result(0, f"Reasoning: {reason}. Không chấm điểm cho câu trả lời đối phó.", "Faker")
+            explanation = (
+                f"Lỗi đối phó học thuật: {reason}. Câu trả lời không chứa nội dung "
+                "kiến thức thực tế hoặc có cấu trúc bất thường (như gõ phím ngẫu nhiên hoặc "
+                "nhồi nhét từ lặp) nhằm mục đích đối phó với hệ thống chấm điểm tự động. "
+                "Để đảm bảo tính công bằng và trung thực trong học thuật, AI đánh giá câu "
+                "trả lời này không hợp lệ và chấm 0 điểm."
+            )
+            return self._build_result(0.0, explanation, "Faker")
 
         # AUTO-SWITCH LOGIC: Respect instructor mode, but switch for specific content mismatch
         is_actually_tech = self.code_analyzer.is_technical_answer(student_text) or self.code_analyzer.is_technical_answer(model_text)
@@ -1129,12 +1220,12 @@ class UniversityGrader:
 
         # 6. Branching based on Grading Mode (Mandatory Isolation)
         if grading_mode == "technical":
-            res = self._grade_technical_pipeline(s_ai, m_ai, s_clean, m_syn, s_norm, m_norm, max_points, is_long_answer)
+            res = self._grade_technical_pipeline(s_ai, m_ai, s_clean, m_syn, s_norm, m_norm, max_points, is_long_answer, raw_student=student_text, raw_model=model_text)
         else:
             res = self._grade_general_pipeline(s_ai, m_ai, s_clean, m_syn, s_norm, m_norm, max_points, is_long_answer)
         return res
 
-    def _grade_technical_pipeline(self, student_text: str, model_text: str, s_clean: str, m_syn: str, s_norm: str, m_norm: str, max_points: float, is_long_answer: bool):
+    def _grade_technical_pipeline(self, student_text: str, model_text: str, s_clean: str, m_syn: str, s_norm: str, m_norm: str, max_points: float, is_long_answer: bool, raw_student: Optional[str] = None, raw_model: Optional[str] = None):
         # (Faker detection already handled in _grade_single_option)
 
         s_words = student_text.strip().lower().split()
@@ -1159,12 +1250,30 @@ class UniversityGrader:
         except: pass
 
         # B. Code / Math / SQL Analyzer (Direct Structural/Logic Analysis)
+        # Sử dụng raw text gốc (chưa qua deep_clean_text) để code_analyzer nhận diện đúng cú pháp
         if self.code_analyzer:
-            analyzer_result = self.code_analyzer.grade(model_text, student_text, max_points)
+            code_model = raw_model if raw_model else model_text
+            code_student = raw_student if raw_student else student_text
+            analyzer_result = self.code_analyzer.grade(code_model, code_student, max_points)
             if analyzer_result:
+                # Áp dụng bẫy từ trái nghĩa đặc thù ngay cả khi CodeAnalyzer xử lý
+                is_antonym_trap = False
+                for word, ants in self.custom_antonyms.items():
+                    if word in code_model.lower():
+                        if any(ant in code_student.lower() for ant in ants):
+                            is_antonym_trap = True
+                            break
+                    if is_antonym_trap: break
+                
+                final_analyzer_score = analyzer_result["score"]
+                explanation = analyzer_result["explanation"]
+                if is_antonym_trap:
+                    final_analyzer_score = min(final_analyzer_score, 0.0) # Đánh 0 điểm cho lỗi SQL chí mạng
+                    explanation = "Dùng sai thuật ngữ cấu trúc/từ khóa kỹ thuật cốt lõi (Trái nghĩa). || " + explanation
+                
                 return self._build_result(
-                    analyzer_result["score"], 
-                    analyzer_result["explanation"], 
+                    final_analyzer_score, 
+                    explanation, 
                     analyzer_result.get("type", "Code/Technical Analysis")
                 )
 
@@ -1173,11 +1282,9 @@ class UniversityGrader:
         
         # [V27] Apply Zero Tolerance Cap for Technical Reversals
         is_rev, verb = self._check_directional_logic(student_text, model_text)
-        if is_rev and "LỖI CHI MẠNG" in verb:
-            max_allowed = max_points * self.config.zero_tolerance_cap
-            if res["score"] > max_allowed:
-                res["score"] = max_allowed
-                res["explanation"] = f"LỖI CHI MẠNG: {verb}. " + res["explanation"]
+        if is_rev:
+            res["score"] = 0.0
+            res["explanation"] = f"LỖI CHI MẠNG: {verb}. " + res["explanation"]
         
         return res
 
@@ -1222,17 +1329,15 @@ class UniversityGrader:
         
         # [V27] Apply Zero Tolerance Cap for General Reversals (Philosophy/Science)
         is_rev, verb = self._check_directional_logic(student_text, model_text)
-        if is_rev and "LỖI CHI MẠNG" in verb:
-            max_allowed = max_points * self.config.zero_tolerance_cap
-            if res["score"] > max_allowed:
-                res["score"] = max_allowed
-                res["explanation"] = f"LỖI CHI MẠNG: {verb}. " + res["explanation"]
+        if is_rev:
+            res["score"] = 0.0
+            res["explanation"] = f"LỖI CHI MẠNG: {verb}. " + res["explanation"]
         
         return res
 
 _GLOBAL_GRADER = None
 
-def calculate_score(student_text: str, model_text: str, max_points: float, grading_mode: str = "general", question_text: str = None) -> Dict[str, Any]:
+def calculate_score(student_text: str, model_text: str, max_points: float, grading_mode: str = "general", question_text: Optional[str] = None) -> Dict[str, Any]:
     global _GLOBAL_GRADER
     if _GLOBAL_GRADER is None: _GLOBAL_GRADER = UniversityGrader()
     return _GLOBAL_GRADER.grade(student_text, model_text, max_points, grading_mode, question_text)

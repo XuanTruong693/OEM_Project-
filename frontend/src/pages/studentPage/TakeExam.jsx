@@ -229,7 +229,30 @@ export default function TakeExam() {
       cleanupListenersRef.current = null;
     }
 
+    const flushPendingAnswers = async () => {
+      const queueKey = `pending_answers_${submissionId}`;
+      try {
+        const queue = JSON.parse(localStorage.getItem(queueKey) || "[]");
+        if (queue.length === 0) return true;
+
+        console.log(`🔄 [Flush] Syncing ${queue.length} pending answers...`);
+        for (const item of [...queue]) {
+          await axiosClient.post(`/submissions/${submissionId}/answer`, item);
+          const current = JSON.parse(localStorage.getItem(queueKey) || "[]");
+          const remaining = current.filter(q => q.question_id !== item.question_id);
+          localStorage.setItem(queueKey, JSON.stringify(remaining));
+        }
+        return true;
+      } catch (e) {
+        console.warn("⚠️ [Flush] Failed to sync pending answers:", e.message);
+        return false;
+      }
+    };
+
     try {
+      // ── [NEW] FLUSH PENDING ANSWERS FIRST ──
+      await flushPendingAnswers();
+
       const res = await axiosClient.post(`/submissions/${submissionId}/submit`);
       const beMcq =
         typeof res.data?.total_score === "number" ? res.data.total_score : null;
@@ -299,10 +322,45 @@ export default function TakeExam() {
 
         try {
           await new Promise(r => setTimeout(r, 5000)); // Thử lại cố định mỗi 5 giây
+
+          // ── [NEW] RETRY FLUSHING PENDING ANSWERS FIRST ──
+          await flushPendingAnswers();
+
           const res = await axiosClient.post(`/submissions/${submissionId}/submit`);
 
-          // Success! Handle as normal
+          // Success! Handle as normal and update scores
+          const beMcq =
+            typeof res.data?.total_score === "number" ? res.data.total_score : null;
+          const beAi = res.data?.ai_score ?? null;
+          const beSum = res.data?.suggested_total_score ?? null;
+          if (beMcq != null) setMcqScore(beMcq);
+          if (beAi != null) setAiScore(beAi);
+          if (beSum != null) setTotalScore(beSum);
+          if (beMcq == null) {
+            const mcq = questions.reduce((acc, q) => {
+              if (q.type !== "MCQ") return acc;
+              const chosen = q.__selected;
+              const ok = (q.options || []).some(
+                (o) =>
+                  (o.is_correct || o.correct) &&
+                  (o.option_id === chosen || o.id === chosen)
+              );
+              return acc + (ok ? q.points || 1 : 0);
+            }, 0);
+            setMcqScore(mcq);
+            setTotalScore(mcq + (beAi || 0));
+          }
+
           setShowModal(true);
+
+          sessionStorage.removeItem("pending_exam_duration");
+          sessionStorage.removeItem("exam_flags");
+          sessionStorage.removeItem(`exam_${examId}_started`);
+          localStorage.removeItem("examTheme");
+          localStorage.removeItem(`violations_${submissionId}`);
+          localStorage.removeItem(`answers_backup_${submissionId}`);
+          localStorage.removeItem(`pending_answers_${submissionId}`);
+
           console.log("✅ [Retry] Submission successful on retry!");
         } catch (e) {
           retrySubmit();
@@ -858,7 +916,7 @@ export default function TakeExam() {
 
       // Check activeElement typing to ignore window blur or resize/split screen when on mobile
       const ae = document.activeElement;
-      if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA")) {
+      if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA") && ["window_blur", "split_screen"].includes(evt) && !window.__awaitingFullscreenReturn) {
         console.log("⏳ [TakeExam] Violation ignored - user is actively typing:", evt);
         return;
       }
@@ -1015,7 +1073,8 @@ export default function TakeExam() {
       if (submittedRef.current) return;
 
       const now = Date.now();
-      const isHard = HARD_VIOLATIONS.includes(evt) || HARD_VIOLATIONS.includes(contextKey);
+
+      const isHard = HARD_VIOLATIONS.includes(evt) || HARD_VIOLATIONS.includes(contextKey) || evt === "paste_attempt" || evt === "copy_attempt";
 
       // Nếu là vi phạm tổng hợp mà vừa mới bị phạt trong 15s -> Bỏ qua
       if (!isHard && isViolation && (now - lastStrikeTimestampRef.current < 15000)) {
@@ -1158,10 +1217,19 @@ export default function TakeExam() {
       } else if (isCurrentlyFs) {
         // Returned to FS
         setShowFullscreenOverlay(false);
+        window.__awaitingFullscreenReturn = false;
       }
     };
     const onVis = () => {
       if (document.hidden) {
+        // Nếu đang theo dõi sau khi thoát Fullscreen mà cố tình chuyển tab
+        if (window.__awaitingFullscreenReturn) {
+          window.__awaitingFullscreenReturn = false; // Reset
+          const msg = "Cố tình chuyển tab/ẩn trình duyệt sau khi thoát chế độ toàn cảnh (F11/Escape).";
+          penalize("visibility_hidden", msg, null, true, false);
+          return;
+        }
+
         // Triệt tiêu hiệu ứng phụ: Nếu vừa bấm phím cứng HOÀN vừa thoát fullscreen
         const now = Date.now();
         const recentBlockKey = window.__lastBlockKeyTimestamp && (now - window.__lastBlockKeyTimestamp < 2000);
@@ -1210,6 +1278,17 @@ export default function TakeExam() {
 
       // Nếu fullscreen không active, blur là hệ quả của thoát FS -> để onFs xử lý ===
       if (!document.fullscreenElement && !isMobileDevice) {
+        // Nếu đang theo dõi sau khi thoát Fullscreen mà cố tình click ứng dụng khác
+        if (window.__awaitingFullscreenReturn) {
+          const now = Date.now();
+          const recentFsExit = window.__lastFsExitTimestamp && (now - window.__lastFsExitTimestamp < 200);
+          if (!recentFsExit) {
+            window.__awaitingFullscreenReturn = false; // Reset
+            const msg = "Cố tình click/chuyển ứng dụng khác sau khi thoát chế độ toàn cảnh (F11/Escape).";
+            penalize("window_blur", msg, null, true, false);
+            return;
+          }
+        }
         console.log("ℹ️ [TakeExam] onBlur: Fullscreen không active, bỏ qua (onFs sẽ xử lý).");
         return;
       }
@@ -1513,15 +1592,22 @@ export default function TakeExam() {
         }
 
         // [Force Restore for 1st press]
-        if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => { });
+        if (["Escape", "F11"].includes(keyId)) {
+          if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => { });
+          window.__awaitingFullscreenReturn = true;
+          
+          const reason = getDynamicViolationReason("blocked_key", keyId, `Cảnh báo nhấn phím ${keyId} lần đầu.`);
+          penalize("blocked_key", reason, keyId, false, true); // isViolation = false, isWarningOnly = true
+          flash(`⚠️ Cảnh báo: Bạn vừa nhấn phím ${keyId} để thoát toàn màn hình. Vui lòng quay lại ngay lập tức!`, "warning", 4000);
+        } else {
+          // [New Authority] onKey reports all events to AI. Decision is delegated.
+          const fallbackReason = isFastRepeat
+            ? `Cố tình nhấn phím ${keyId} liên tục để can thiệp hệ thống`
+            : `Sử dụng phím bị chặn: ${keyId}`;
+          const reason = getDynamicViolationReason("blocked_key", keyId, fallbackReason);
 
-        // [New Authority] onKey reports all events to AI. Decision is delegated.
-        const fallbackReason = isFastRepeat
-          ? `Cố tình nhấn phím ${keyId} liên tục để can thiệp hệ thống`
-          : `Sử dụng phím bị chặn: ${keyId}`;
-        const reason = getDynamicViolationReason("blocked_key", keyId, fallbackReason);
-
-        penalize("blocked_key", reason, keyId, true, false);
+          penalize("blocked_key", reason, keyId, true, false);
+        }
 
         // Screenshot keys that might trigger onKey
         if (keyId === "PrintScreen") {
@@ -1622,7 +1708,6 @@ export default function TakeExam() {
 
       const reason = getDynamicViolationReason("paste_attempt", null, "Thực hiện thao tác dán (Paste) nội dung từ nguồn bên ngoài.");
       penalize("paste_attempt", reason, "Ctrl+V", true, false, { is_internal: false });
-      flash(`🚨 VI PHẠM! ${reason}`, "danger", 5000);
     };
 
     const onDrop = (e) => {
@@ -1786,7 +1871,7 @@ export default function TakeExam() {
         const nowServer = Date.now() + timeOffsetRef.current;
         const elapsedSeconds = Math.floor((nowServer - startedAtRef.current) / 1000);
         const newRemaining = Math.max(0, (newDur * 60) - elapsedSeconds);
-        
+
         console.log(`⏱️ [Sync] Duration updated to ${newDur}m. Elapsed: ${elapsedSeconds}s. New remaining: ${newRemaining}s`);
         setRemaining(newRemaining);
       }
@@ -2829,7 +2914,7 @@ export default function TakeExam() {
             </button>
 
             <p className="text-slate-500 text-xs mt-4">
-              Số vi phạm hiện tại: {violations}/50
+              Số vi phạm hiện tại: {violations}/10
             </p>
           </div>
         </div>

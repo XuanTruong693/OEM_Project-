@@ -423,7 +423,7 @@ const ResultsManagement = () => {
             {/* Edit Score Modal (Large Split View) */}
             {showEditModal && selectedResult && (
                 <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-gray-900 [.light-theme_&]:bg-white border border-gray-700 [.light-theme_&]:border-gray-200 rounded-2xl w-full max-w-6xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden transition-colors">
+                    <div className="bg-gray-900 [.light-theme_&]:bg-white border border-gray-700 [.light-theme_&]:border-gray-200 rounded-2xl w-full md:w-[70vw] max-w-none max-h-[90vh] flex flex-col shadow-2xl overflow-hidden transition-colors">
                         {/* Header */}
                         <div className="flex justify-between items-center p-6 border-b border-gray-700 [.light-theme_&]:border-gray-200 bg-gray-800/50 [.light-theme_&]:bg-gray-50/50 transition-colors">
                             <div className="flex items-center gap-3">

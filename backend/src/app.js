@@ -5,6 +5,8 @@ const sequelize = require("./config/db");
 const path = require("path");
 const http = require("http");
 const { initializeSocket, addServerLog } = require("./services/socketService");
+// Khởi tạo dịch vụ gửi thông báo đẩy Firebase ngay khi chạy server
+require("./services/fcmService");
 
 // ===== Override console để capture logs cho admin panel =====
 const originalConsoleLog = console.log;
@@ -101,6 +103,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // Benchmark & Stress Test Routes (No DB persistence) - Corrected Position
 const benchmarkController = require("./controllers/benchmarkController");
 app.post("/api/benchmark/ai-stress", benchmarkController.stressTestAI);
+app.post("/api/benchmark/verify-stress", benchmarkController.stressTestVerify);
 
 // Middleware to handle timeout (Disabled)
 

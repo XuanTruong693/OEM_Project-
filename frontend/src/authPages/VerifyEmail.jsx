@@ -123,12 +123,12 @@ const VerifyEmail = () => {
 
         <p
           onClick={handleResend}
-          className={`text-sm ${timer > 0
-            ? "text-gray-400"
+          className={`text-sm font-semibold ${timer > 0
+            ? "text-gray-400 cursor-not-allowed"
             : "text-indigo-600 cursor-pointer hover:underline"
             } mb-4`}
         >
-          {timer > 0 ? `You can resend code in ${timer}s` : "Resend code"}
+          {timer > 0 ? `Gửi lại mã (${timer}s)` : "Gửi lại mã"}
         </p>
 
         <button

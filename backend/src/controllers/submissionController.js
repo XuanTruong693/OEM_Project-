@@ -209,7 +209,67 @@ exports.postProctorEvent = async (req, res) => {
         cheatingCount: currentCount,
       });
 
+      // 1.5 Send FCM push notification to the instructor of this exam if they are registered with fcm_token
+      try {
+        const [examRows] = await pool.query(
+          `SELECT e.instructor_id, u.fcm_token 
+           FROM exams e
+           LEFT JOIN users u ON u.id = e.instructor_id
+           WHERE e.id = ? LIMIT 1`,
+          [examId]
+        );
+        if (examRows && examRows[0] && examRows[0].fcm_token) {
+          const { sendPushNotification } = require("../services/fcmService");
+          const eventDict = {
+            'alt_tab': "Chuyển ứng dụng (Alt+Tab)",
+            'visibility_hidden': "Ẩn hoặc đổi tab bài thi",
+            'window_blur': "Rời khỏi vùng làm bài (Mất Focus)",
+            'fullscreen_lost': "Thoát chế độ toàn màn hình",
+            'split_screen': "Sử dụng chia đôi màn hình",
+            'multi_monitor_attempt': "Sử dụng nhiều màn hình",
+            'screenshot_attempt': "Cố tình chụp màn hình",
+            'screen_record_attempt': "Cố tình quay video màn hình",
+            'screen_share_attempt': "Cố tình chia sẻ màn hình",
+            'minimize_app': "Thoát ứng dụng về màn hình Home",
+            'idle_timeout': "Treo máy không tương tác quá 1 phút",
+            'blocked_key': "Sử dụng phím tắt bị cấm",
+            'inactivity': "Không hoạt động trong thời gian dài",
+            'blur_event': "Chuyển tab / Rời màn hình",
+            'paste_attempt': "Thao tác dán nội dung",
+            'copy_attempt': "Thao tác sao chép nội dung",
+            'drag_drop_in': "Kéo thả tài liệu từ ngoài vào",
+            'drag_drop_attempt': "Kéo thả tài liệu",
+            'tab_switch': "Liên tục đổi tab bài thi",
+            'multiple_faces': "Phát hiện có người lạ trong camera",
+            'no_face': "Không thấy thí sinh trước camera",
+            'no_face_detected': "Không phát hiện khuôn mặt",
+            'ai_detected_cheating': "Tổng hợp hành vi đáng ngờ (AI phân tích)",
+            'devtools_attempt': "Mở công cụ phát triển (DevTools)",
+            'mouse_outside': "Chuột rời khỏi vùng làm bài",
+            'typing_speed_violation': "Tốc độ gõ phím bất thường (Dùng Tool)",
+            'screen_share_stopped': "Ngắt chia sẻ màn hình giám sát",
+            'prolonged_away': "Vắng mặt quá lâu (>15 giây)",
+            'win_d_attempt': "Sử dụng Win+D ẩn màn hình nhanh",
+            'win_d': "Sử dụng Win+D ẩn màn hình nhanh",
+            'multi_monitor': "Sử dụng nhiều màn hình",
+          };
+          const readableEvent = eventDict[event_type] || event_type || "Hành vi đáng ngờ";
+          sendPushNotification(
+            examRows[0].fcm_token,
+            `🚨 GIAN LẬN - ${studentName}`,
+            `🔴 ${readableEvent}`,
+            {
+              submissionId: String(submissionId),
+              examId: String(examId)
+            }
+          ).catch(err => console.error("⚠️ [FCM] Error pushing notification:", err.message));
+        }
+      } catch (fcmErr) {
+        console.error("⚠️ [FCM] Error checking instructor fcm_token:", fcmErr.message);
+      }
+
       // 2. IMMEDIATE PERSISTENCE: Insert directly into DB for instant teacher access
+      let actualCount = currentCount;
       if (isCheating) {
         await pool.query(
           `INSERT INTO cheating_logs 
@@ -224,11 +284,22 @@ exports.postProctorEvent = async (req, res) => {
             severity || "low"
           ]
         );
+
+        // Force sync cheating_count with actual count in cheating_logs
+        const [cntRows] = await pool.query(
+          "SELECT COUNT(*) as cnt FROM cheating_logs WHERE submission_id = ? AND event_type != 'admin_bypass'",
+          [submissionId]
+        );
+        actualCount = cntRows[0]?.cnt || 0;
+        await pool.query(
+          "UPDATE submissions SET cheating_count = ? WHERE id = ?",
+          [actualCount, submissionId]
+        );
       }
 
       // ── AUTO SUBMIT EXAM ON BACKEND IF >= 10 VIOLATIONS ──
-      if (currentCount >= 10) {
-        console.log(`⚠️ [Proctor] Auto submitting exam because count is ${currentCount}/10`);
+      if (actualCount >= 10) {
+        console.log(`⚠️ [Proctor] Auto submitting exam because count is ${actualCount}/10`);
         
         const [mcqRows] = await pool.query(
           `SELECT q.id AS question_id, q.points,
@@ -279,10 +350,22 @@ exports.postProctorEvent = async (req, res) => {
       }
     }
 
+    // Query actual updated cheating_count from DB after trigger fires
+    let finalCheatingCount = reqCheatingCount !== undefined ? parseInt(reqCheatingCount) : 0;
+    if (reqCheatingCount === undefined && isCheating) {
+      const [updatedSubRows] = await pool.query(
+        `SELECT cheating_count FROM submissions WHERE id = ? LIMIT 1`,
+        [submissionId]
+      );
+      finalCheatingCount = updatedSubRows[0]?.cheating_count || 0;
+    } else if (reqCheatingCount === undefined) {
+      finalCheatingCount = subRows[0]?.cheating_count || 0;
+    }
+
     res.status(200).json({
       success: true,
       is_cheating: isCheating,
-      cheating_count: reqCheatingCount !== undefined ? parseInt(reqCheatingCount) : (subRows[0]?.cheating_count || 0),
+      cheating_count: finalCheatingCount,
       message: `Event processed (Buffered Persistence)`
     });
   } catch (err) {

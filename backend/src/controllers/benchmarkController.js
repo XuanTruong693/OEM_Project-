@@ -68,4 +68,30 @@ async function stressTestAI(req, res) {
     }
 }
 
-module.exports = { stressTestAI };
+async function stressTestVerify(req, res) {
+    const { face_image_base64 } = req.body;
+    
+    if (!face_image_base64) {
+        return res.status(400).json({ message: "face_image_base64 is required" });
+    }
+
+    try {
+        const { verifyFaceLiveness } = require("../services/verificationService");
+        const buffer = Buffer.from(face_image_base64, 'base64');
+        
+        const startTime = Date.now();
+        const result = await verifyFaceLiveness(buffer);
+        const duration = Date.now() - startTime;
+
+        return res.json({
+            status: "success",
+            duration_ms: duration,
+            result: result
+        });
+    } catch (err) {
+        console.error("Verification Stress Test Error:", err);
+        return res.status(500).json({ message: "Verification failed", error: err.message });
+    }
+}
+
+module.exports = { stressTestAI, stressTestVerify };

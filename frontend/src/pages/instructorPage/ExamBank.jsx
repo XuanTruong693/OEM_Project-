@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { FiSearch, FiEdit, FiTrash2, FiHash, FiFileText } from "react-icons/fi";
 import axios from "axios";
 import axiosClient from "../../api/axiosClient";
@@ -25,15 +25,22 @@ const ExamBank = () => {
   // Confirm modal state
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: '', examId: null });
 
-  const fetchExams = async () => {
+  const [loadingMore, setLoadingMore] = useState(false);
+  const observerRef = useRef(null);
+
+  const fetchExams = async (pageToFetch = 1, append = false) => {
     try {
-      setLoading(true);
+      if (pageToFetch === 1) {
+        setLoading(true);
+      } else {
+        setLoadingMore(true);
+      }
       setError("");
       const response = await axiosClient.get(
         `/assign-bank/exams`,
         {
           params: {
-            page: currentPage,
+            page: pageToFetch,
             limit: 10,
             search: searchTerm || undefined,
             status: filterStatus === "all" ? undefined : filterStatus,
@@ -41,7 +48,15 @@ const ExamBank = () => {
         }
       );
       const { data, pagination } = response.data;
-      setExams(data);
+      if (append) {
+        setExams((prev) => {
+          const existingIds = new Set(prev.map((e) => e.id));
+          const uniqueNewExams = data.filter((e) => !existingIds.has(e.id));
+          return [...prev, ...uniqueNewExams];
+        });
+      } else {
+        setExams(data);
+      }
       setTotalPages(pagination.totalPages || 1);
     } catch (err) {
       const msg =
@@ -50,12 +65,47 @@ const ExamBank = () => {
       setError(msg);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
+  // Reset to page 1 and fetch on filter/search change
   useEffect(() => {
-    fetchExams();
-  }, [currentPage, searchTerm, filterStatus]);
+    setCurrentPage(1);
+    fetchExams(1, false);
+  }, [searchTerm, filterStatus]);
+
+  // Load more when currentPage increments
+  useEffect(() => {
+    if (currentPage > 1) {
+      fetchExams(currentPage, true);
+    }
+  }, [currentPage]);
+
+  // Intersection Observer for infinite scroll (robust for any scroll container)
+  useEffect(() => {
+    if (loading || loadingMore || currentPage >= totalPages) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setCurrentPage((prev) => prev + 1);
+        }
+      },
+      { threshold: 0.1, rootMargin: "150px" }
+    );
+
+    const currentTarget = observerRef.current;
+    if (currentTarget) {
+      observer.observe(currentTarget);
+    }
+
+    return () => {
+      if (currentTarget) {
+        observer.unobserve(currentTarget);
+      }
+    };
+  }, [loading, loadingMore, currentPage, totalPages]);
 
   // no inline preview; navigate to edit page instead
 
@@ -181,7 +231,7 @@ const ExamBank = () => {
           </div>
         )}
 
-        {loading ? (
+        {loading && currentPage === 1 ? (
           <div className="flex justify-center py-16">
             <LoadingSpinner size="lg" />
           </div>
@@ -293,6 +343,14 @@ const ExamBank = () => {
                 </div>
               </div>
             ))}
+
+            {loadingMore && (
+              <div className="flex justify-center py-4">
+                <LoadingSpinner size="md" />
+              </div>
+            )}
+            {/* Target element for IntersectionObserver to trigger loading more */}
+            <div ref={observerRef} className="h-4 w-full bg-transparent" />
           </div>
         )}
       </div>

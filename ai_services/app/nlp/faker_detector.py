@@ -140,7 +140,7 @@ FAKER_PHRASES = [
     # r"^[a-z]{1,3}$",                     # Đã loại bỏ để tránh chặn từ khóa SQL như FOR, TOP
     r"\bblah\s*blah\b",
     r"\byolo\b",
-    r"\btest\b.*\btest\b",               # "test test test"
+    r"\btest\b\s*\btest\b\s*\btest\b",   # "test test test"
     r"\basdf\b", r"\bqwer\b", r"\bzxcv\b",  # Keyboard mashing
     r"\bjkl\b",
     r"^[a-zA-Z]\s+[a-zA-Z]\s+[a-zA-Z]$",  # "a b c"
@@ -164,7 +164,7 @@ FAKER_PHRASES = [
 _FAKER_PATTERNS = [re.compile(p, re.IGNORECASE) for p in FAKER_PHRASES]
 
 
-def is_meaningless_answer(student_text: str, model_text: str = "", question_text: str = None) -> tuple:
+def is_meaningless_answer(student_text: str, model_text: str = "", question_text: "str | None" = None) -> tuple:
     if not student_text:
         return True, "Câu trả lời trống"
     
@@ -225,28 +225,101 @@ def is_meaningless_answer(student_text: str, model_text: str = "", question_text
     if len(cleaned_chars) >= 3 and len(set(cleaned_chars)) <= 2:
         logger.info(f"[Faker] Spam ký tự lặp: '{text}'")
         return True, "Câu trả lời spam ký tự lặp lại"
+
+    # === 0c. Nhận diện nếu câu trả lời là Code/SQL hoặc các ký tự ngắn hợp lệ thì KHÔNG lọc nhồi nhét/vô nghĩa ===
+    is_code_or_sql = False
+    code_indicators = [
+        r"\bdef\s+\w+", r"\breturn\b", r"\bclass\s+\w+", r"\bimport\s+", r"[{};()\[\]]",
+        r"\bSELECT\b", r"\bFROM\b", r"\bWHERE\b", r"\bJOIN\b", r"\bINSERT\b", r"\bUPDATE\b", r"\bDELETE\b"
+    ]
+    if any(re.search(p, text, re.IGNORECASE) for p in code_indicators):
+        is_code_or_sql = True
+
+    tech_keywords = {
+        'top', 'for', 'in', 'as', 'on', 'sum', 'avg', 'min', 'max', 'join', 
+        'after', 'before', 'with', 'exec', 'int', 'bool', 'void', 'and', 'or', 'not',
+        'select', 'where', 'from', 'create', 'update', 'delete', 'having', 'group', 'order'
+    }
     
-    # === 5. Kiểm tra spam từ lặp (abc abc abc abc) ===
-    words = text_lower.split()
-    if len(words) >= 3:
-        unique_words = set(words)
-        if len(unique_words) <= 2 and len(words) >= 4:
-            logger.info(f"[Faker] Spam từ lặp lại: '{text}'")
-            return True, "Câu trả lời spam từ lặp lại"
-        
-        if len(text) > 30:
-            half = len(text) // 2
-            if text[:half].strip().lower() == text[half:].strip().lower():
-                logger.info(f"[Faker] Lặp lại cả đoạn văn: '{text[:50]}...'")
-                return True, "Câu trả lời lặp lại nội dung"
+    words_clean = [w.lower() for w in re.findall(r'\b\w+\b', text)]
+    if words_clean and all(w in tech_keywords or w.isdigit() for w in words_clean):
+        is_code_or_sql = True
+
+    # === 1.5. Kiểm tra các chuỗi phím kề nhau hoặc chuỗi lặp phổ biến (Keyboard Mashing Substrings) ===
+    mashing_substrings = ["asdf", "qwer", "zxcv", "hjkl", "asda", "dsad", "dasd"]
+    for sub in mashing_substrings:
+        if sub in text_lower:
+            # Chỉ chặn nếu không phải một phần của đáp án mẫu và không phải code
+            if not is_code_or_sql and not (m_text and text_lower in m_text):
+                logger.info(f"[Faker] Keyboard mashing substring detected: '{text}' containing '{sub}'")
+                return True, "Câu trả lời chứa chuỗi ký tự điền bừa (keyboard mashing)"
+
+    # === 4b. Kiểm tra ký tự lặp liên tiếp và lặp cụm vô nghĩa trong từng từ ===
+    if not is_code_or_sql:
+        for word in text_lower.split():
+            # Chặn nếu chữ cái lặp lại >= 4 lần liên tục (aaaa, hhhh, zzzz)
+            if re.search(r'(.)\1{3,}', word):
+                logger.info(f"[Faker] Ký tự lặp liên tiếp trong từ '{word}'")
+                return True, "Câu trả lời chứa từ có ký tự lặp vô nghĩa"
             
-            parts = [w for w in re.split(r'[,.\s]+', text_lower) if w]
-            if len(parts) >= 10:
-                prefix = " ".join(parts[:3])
-                if text_lower.count(prefix) >= 3:
-                    logger.info(f"[Faker] Lặp lại cụm từ '{prefix}' nhiều lần")
-                    return True, "Câu trả lời lặp lại cụm từ nhiều lần"
-    
+            # Chặn nếu lặp lại cụm ký tự ngắn >= 3 lần (sdsdsd, ababab)
+            if len(word) >= 6:
+                for sz in (2, 3):
+                    prefix = word[:sz]
+                    if word.count(prefix) >= 3:
+                        logger.info(f"[Faker] Cặp ký tự lặp vô nghĩa: '{word}'")
+                        return True, "Câu trả lời chứa cụm ký tự lặp vô nghĩa"
+
+    # === 5. Phân tích nhồi từ và lặp từ/cụm từ đối phó ===
+    if not is_code_or_sql:
+        words_all = [w for w in re.findall(r'\b[a-zA-Z0-9À-ỹ_]+\b', text_lower) if len(w) >= 2]
+        if len(words_all) >= 4:
+            unique_words = set(words_all)
+            unique_ratio = len(unique_words) / len(words_all)
+            
+            # 5a. Kiểm tra tần suất một từ lặp lại quá nhiều lần
+            word_counts = {}
+            for w in words_all:
+                word_counts[w] = word_counts.get(w, 0) + 1
+            max_count = max(word_counts.values())
+            most_freq_word = max(word_counts, key=word_counts.get)
+            
+            if max_count >= 3:
+                is_spam = False
+                if len(words_all) <= 10 and unique_ratio < 0.50:
+                    is_spam = True
+                elif len(words_all) > 10 and unique_ratio < 0.35:
+                    is_spam = True
+                    
+                if is_spam:
+                    # Tránh chặn nhầm từ lặp hợp pháp có trong đáp án mẫu
+                    m_words_count = model_text.lower().count(most_freq_word) if model_text else 0
+                    if m_words_count <= 2:
+                        logger.info(f"[Faker] Word spam: '{most_freq_word}' repeated {max_count} times")
+                        return True, f"Câu trả lời lặp lại từ '{most_freq_word}' quá nhiều lần"
+
+            # 5b. Kiểm tra lặp lại cụm 2 từ (Bigram, ví dụ: "vật chất vật chất")
+            bigrams = [" ".join(words_all[i:i+2]) for i in range(len(words_all)-1)]
+            if bigrams:
+                bigram_counts = {}
+                for bg in bigrams:
+                     bigram_counts[bg] = bigram_counts.get(bg, 0) + 1
+                max_bg_count = max(bigram_counts.values())
+                most_freq_bg = max(bigram_counts, key=bigram_counts.get)
+                
+                if max_bg_count >= 2:
+                    is_bg_spam = False
+                    if len(words_all) <= 10 and max_bg_count >= 2:
+                        is_bg_spam = True
+                    elif len(words_all) > 10 and max_bg_count >= 3:
+                        is_bg_spam = True
+                        
+                    if is_bg_spam:
+                        m_bg_count = model_text.lower().count(most_freq_bg) if model_text else 0
+                        if m_bg_count <= 1:
+                            logger.info(f"[Faker] Bigram spam: '{most_freq_bg}' repeated {max_bg_count} times")
+                            return True, f"Câu trả lời lặp lại cụm từ '{most_freq_bg}' nhiều lần"
+
     # === 6. Kiểm tra chuỗi ký tự ngẫu nhiên (keyboard mashing) ===
     text_no_space = re.sub(r'\s+', '', text_lower)
     if len(text_no_space) >= 5: # Hạ ngưỡng từ 8 xuống 5
@@ -270,13 +343,15 @@ def is_meaningless_answer(student_text: str, model_text: str = "", question_text
                 logger.info(f"[Faker] Gibberish (consonant ratio {ratio:.1f}): '{text}'")
                 return True, "Câu trả lời có cấu trúc từ bất thường (vô nghĩa)"
 
-    # 6b. Sự đa dạng ký tự quá thấp trong chuỗi dài
+    # 6b. Sự đa dạng ký tự quá thấp trong chuỗi dài (nghi ngờ điền bừa / vô nghĩa)
     char_variety = len(set(text_no_space))
-    if len(text_no_space) >= 12:
+    if len(text_no_space) >= 15:
         variety_ratio = char_variety / len(text_no_space)
-        if variety_ratio < 0.25: # Ví dụ 12 ký tự mà chỉ có 2-3 loại chữ
-            logger.info(f"[Faker] Low character variety ({variety_ratio:.2f}): '{text}'")
-            return True, "Câu trả lời quá ít loại ký tự (nghi ngờ điền bừa)"
+        # Giảm ngưỡng đối với câu dài vì tiếng Việt lặp lại chữ cái nhiều
+        threshold = 0.20 if len(text_no_space) > 50 else 0.30
+        if variety_ratio < threshold and not is_code_or_sql:
+            logger.info(f"[Faker] Low character variety ({variety_ratio:.2f}) for length {len(text_no_space)}: '{text}'")
+            return True, "Câu trả lời quá ít loại ký tự (nghi ngờ điền bừa/vô nghĩa)"
     
     # 6c. Chuỗi quá dài không có khoảng trắng
     if len(text) > 20 and ' ' not in text and not text.startswith(('http', 'www', '/')):
@@ -284,13 +359,14 @@ def is_meaningless_answer(student_text: str, model_text: str = "", question_text
         return True, "Câu trả lời là chuỗi ký tự quá dài không có khoảng trắng"
 
     # === 8. Kiểm tra nhồi nhét từ khóa (Keyword Spam) ===
-    sql_keywords = {"select", "insert", "update", "delete", "where", "from", "join", "group", "order", "having", "distinct", "top", "limit", "offset"}
-    s_words = set(text_lower.split())
-    if len(s_words) >= 4:
-        kw_count = sum(1 for w in s_words if w in sql_keywords)
-        if kw_count >= 4 and len(words) <= 12:
-            logger.info(f"[Faker] Keyword Spam detected: {kw_count} keywords in {len(words)} words")
-            return True, "Câu trả lời nhồi nhét quá nhiều từ khóa (Keyword Spam)"
+    if not is_code_or_sql:
+        sql_keywords = {"select", "insert", "update", "delete", "where", "from", "join", "group", "order", "having", "distinct", "top", "limit", "offset"}
+        s_words = set(text_lower.split())
+        if len(s_words) >= 4:
+            kw_count = sum(1 for w in s_words if w in sql_keywords)
+            if kw_count >= 4 and len(text_lower.split()) <= 12:
+                logger.info(f"[Faker] Keyword Spam detected: {kw_count} keywords")
+                return True, "Câu trả lời nhồi nhét quá nhiều từ khóa (Keyword Spam)"
 
     return False, ""
 
@@ -370,9 +446,9 @@ def is_copy_of_question(student_text: str, question_text: str) -> tuple:
         
     # 1. Kiểm tra chứa đề bài (Containment) - Xử lý trường hợp "sdfsdf + Đề bài"
     if q_norm in s_norm:
-        # Nếu phần dư ra không quá nhiều (dưới 50% độ dài đề hoặc < 100 ký tự)
+        # Nếu phần dư ra không quá nhiều (dưới 50% độ dài đề VÀ < 50 ký tự thực tế)
         extra_len = len(s_norm) - len(q_norm)
-        if extra_len < len(q_norm) * 0.5 or extra_len < 100:
+        if extra_len < len(q_norm) * 0.5 and extra_len < 50:
              return True, "Nội dung chủ yếu là lặp lại đề bài (Copy-paste)"
 
     # 2. Ngược lại: Đề bài chứa bài làm (Trường hợp SV copy 1 đoạn đề)
@@ -402,6 +478,58 @@ def is_copy_of_question(student_text: str, question_text: str) -> tuple:
         from difflib import SequenceMatcher
         match = SequenceMatcher(None, s_norm, q_norm).find_longest_match(0, len(s_norm), 0, len(q_norm))
         if match.size > len(q_norm) * 0.8:
-            return True, "Phát hiện đoạn copy từ đề bài quá lớn"
+            extra_len = len(s_norm) - match.size
+            if extra_len < min(len(q_norm) * 0.5, 50):
+                return True, "Phát hiện đoạn copy từ đề bài quá lớn"
 
     return False, ""
+
+
+def smart_strip_gibberish_noise(text: str) -> str:
+    if not text:
+        return text
+        
+    words = text.split()
+    if not words:
+        return text
+        
+    mashing_substrings = ["asdf", "qwer", "zxcv", "hjkl", "asda", "dsad", "dasd"]
+    cleaned_words = []
+    
+    for word in words:
+        word_lower = word.lower()
+        # 1. Ký tự lặp liên tiếp >= 4 lần (aaaa, hhhh, ...)
+        if re.search(r'(.)\1{3,}', word_lower):
+            continue
+            
+        # 2. Lặp cụm vô nghĩa >= 3 lần (sdsdsd, ababab)
+        is_repeat_pattern = False
+        if len(word_lower) >= 6:
+            for sz in (2, 3):
+                prefix = word_lower[:sz]
+                if word_lower.count(prefix) >= 3:
+                    is_repeat_pattern = True
+                    break
+        if is_repeat_pattern:
+            continue
+            
+        # 3. Chứa chuỗi keyboard mashing
+        if any(sub in word_lower for sub in mashing_substrings):
+            continue
+            
+        # 4. Ký tự đặc biệt hoặc rác quá nhiều
+        clean_char = re.sub(r'[\W_]+', '', word_lower)
+        if len(word_lower) > 2 and len(clean_char) == 0:
+            continue
+            
+        cleaned_words.append(word)
+        
+    # Nếu lọc xong mà còn lại từ có nghĩa, và số từ bị lọc ít hơn tổng số từ (tránh lọc sạch sẽ nếu toàn bộ là từ có nghĩa)
+    if cleaned_words and len(cleaned_words) < len(words):
+        cleaned_text = " ".join(cleaned_words)
+        # Chỉ trả về cleaned_text nếu nó không trống rỗng
+        if cleaned_text.strip():
+            logger.info(f"[Smart Strip] Filtered gibberish noise. Original: '{text[:50]}...' -> Cleaned: '{cleaned_text[:50]}...'")
+            return cleaned_text
+            
+    return text

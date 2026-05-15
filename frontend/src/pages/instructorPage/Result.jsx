@@ -1,7 +1,8 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
-import { API_SERVER_URL } from "../../api/config";
+import { API_SERVER_URL, SOCKET_URL } from "../../api/config";
+import io from "socket.io-client";
 import {
   HiChartBar,
   HiClipboardList,
@@ -201,6 +202,7 @@ const renderViolationDetail = (log) => {
 
 export default function Result() {
   const nav = useNavigate();
+  const socketRef = React.useRef(null);
 
   const [examId, setExamId] = React.useState("");
   const [examList, setExamList] = React.useState([]);
@@ -317,9 +319,9 @@ export default function Result() {
     setConfirmDialog({ show: false, message: "", onConfirm: null });
   };
 
-  const load = async (id) => {
+  const load = async (id, isQuiet = false) => {
     if (!id) return;
-    setLoading(true);
+    if (!isQuiet) setLoading(true);
     try {
       const [s, r, adminMod] = await Promise.all([
         axiosClient.get(`/instructor/exams/${id}/summary`),
@@ -334,7 +336,7 @@ export default function Result() {
       setSummary(null);
       setAdminModifiedIds([]);
     } finally {
-      setLoading(false);
+      if (!isQuiet) setLoading(false);
     }
   };
 
@@ -343,22 +345,36 @@ export default function Result() {
       try {
         const res = await axiosClient.get("/instructor/exams/my");
         const list = Array.isArray(res.data) ? res.data : [];
-        setExamList(list);
+
+        // ✅ Sắp xếp danh sách (Logic thuần Frontend): 
+        // Ưu tiên "published" lên đầu, sau đó là mới nhất (dựa trên updated_at / created_at)
+        const sortedList = [...list].sort((a, b) => {
+          const statA = String(a.status) === "published" ? 0 : 1;
+          const statB = String(b.status) === "published" ? 0 : 1;
+          if (statA !== statB) return statA - statB;
+
+          const dateA = new Date(a.updated_at || a.created_at || 0);
+          const dateB = new Date(b.updated_at || b.created_at || 0);
+          return dateB - dateA;
+        });
+
+        setExamList(sortedList);
 
         const url = new URL(window.location.href);
         const idQ = url.searchParams.get("exam_id");
         let examToLoad = null;
         if (idQ) {
           setExamId(idQ);
-          examToLoad = list.find((e) => String(e.id) === String(idQ));
+          examToLoad = sortedList.find((e) => String(e.id) === String(idQ));
         } else {
-          examToLoad =
-            list.find((e) => String(e.status) === "published") || list[0];
+          // Lấy phần tử đầu tiên đã sắp xếp (sẽ là Published & mới nhất)
+          examToLoad = sortedList[0];
           if (examToLoad) setExamId(String(examToLoad.id));
         }
+
         if (examToLoad) load(String(examToLoad.id));
 
-        // ✅ Polling: Kiểm tra time_close và tự động archive + reload kết quả
+        // ✅ Polling check: Theo dõi thay đổi trạng thái time_close
         if (examToLoad) {
           const interval = setInterval(async () => {
             try {
@@ -371,12 +387,12 @@ export default function Result() {
               ) {
                 console.log("✅ Exam archived, reloading results...");
                 clearInterval(interval);
-                load(String(examToLoad.id));
+                load(String(examToLoad.id), true);
               }
             } catch (err) {
               console.error("Failed to check exam status:", err);
             }
-          }, 5000); // Kiểm tra mỗi 5s
+          }, 15000); // Tăng lên 15s cho nhẹ server
           return () => clearInterval(interval);
         }
       } catch (err) {
@@ -390,9 +406,93 @@ export default function Result() {
     setExamId(id);
     load(id);
   };
+  // ==========================================
+  // 📡 GLOBAL REAL-TIME MONITORING & AUTO-SWITCHING
+  // ==========================================
+  React.useEffect(() => {
+    if (!examList || examList.length === 0) return;
+
+    // Lấy tất cả exam ID đang mở để lắng nghe cùng lúc
+    const activeExamIds = examList
+      .filter((e) => String(e.status) === "published")
+      .map((e) => parseInt(e.id));
+
+    if (activeExamIds.length === 0) return;
+
+    console.log("📡 [Socket.IO] Connecting monitoring dashboard for:", activeExamIds);
+
+    const socketUrl = SOCKET_URL || window.location.origin;
+    const socket = io(socketUrl, {
+      reconnection: true,
+      transports: ["websocket", "polling"],
+      forceNew: false,
+    });
+
+    socketRef.current = socket;
+
+    const joinRooms = () => {
+      console.log("📡 [Socket.IO] Joining multiple rooms via instructor:join-exam...", activeExamIds);
+      socket.emit("instructor:join-exam", activeExamIds);
+    };
+
+    socket.on("connect", () => {
+      console.log("✅ [Socket.IO] Connected and joined dashboards");
+      joinRooms();
+    });
+
+    // Auto re-join upon reconnection
+    socket.on("reconnect", () => {
+      joinRooms();
+    });
+
+    const handleExamActivity = (data) => {
+      const incomingId = data?.examId || data?.exam_id;
+      if (!incomingId) return;
+
+      console.log(`🔔 [Socket] Activity received for exam #${incomingId}`);
+
+      // Tự động di chuyển bài thi có tương tác lên đầu danh sách dropdown
+      setExamList(prev => {
+        const cpy = [...prev];
+        const idx = cpy.findIndex(x => parseInt(x.id) === parseInt(incomingId));
+        if (idx > 0) {
+          const [target] = cpy.splice(idx, 1);
+          cpy.unshift(target);
+        }
+        return cpy;
+      });
+
+      // TH1: Đang xem chính bài thi này -> Reload dữ liệu tức thì (Quiet)
+      if (String(examId) === String(incomingId)) {
+        load(String(incomingId), true);
+        return;
+      }
+
+      // TH2: Có hoạt động ở bài thi KHÁC -> AUTO SWITCH
+      // Chỉ chuyển vùng nhìn khi GV không bận chấm bài cụ thể (drawer đang đóng)
+      if (!drawer.open) {
+        setExamId(String(incomingId));
+        load(String(incomingId), false);
+        showToast("info", `Cập nhật hoạt động mới tại bài thi #${incomingId}. Tự động chuyển vùng theo dõi.`);
+      } else {
+        showToast("info", `Bài thi #${incomingId} có cập nhật hoạt động mới.`);
+      }
+    };
+
+    socket.on("student:registered", handleExamActivity);
+    socket.on("student:submission-finished", handleExamActivity);
+    socket.on("cheating:detected", handleExamActivity);
+
+    return () => {
+      console.log("🔌 [Socket.IO] Cleaning up background listener socket...");
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [examList, examId, drawer.open]);
+
+  // ✅ Vẫn duy trì Long Polling cũ cho bài thi đang chọn như 1 backup theo dõi ngầm
   React.useEffect(() => {
     if (!examId) return;
-
     let isActive = true;
     let currentCount = rows.length;
 
@@ -401,40 +501,23 @@ export default function Result() {
         try {
           const res = await axiosClient.get(
             `/instructor/exams/${examId}/submissions/count?lastCount=${currentCount}`
-          ).catch(() => ({ data: { count: currentCount, hasChanges: false, hasNew: false } }));
+          ).catch(() => ({ data: { count: currentCount, hasChanges: false } }));
 
           if (!isActive) break;
 
-          if (res.data && (res.data.hasChanges || res.data.hasNew || res.data.count !== currentCount)) {
-            const newCount = res.data.count;
-
-            const [summaryRes, resultsRes, adminMod] = await Promise.all([
-              axiosClient.get(`/instructor/exams/${examId}/summary`),
-              axiosClient.get(`/instructor/exams/${examId}/results`),
-              axiosClient.get(`/instructor/exams/${examId}/admin-modified`).catch(() => ({ data: { submission_ids: [] } })),
-            ]);
-
-            setSummary(summaryRes?.data || null);
-            setRows(Array.isArray(resultsRes?.data) ? resultsRes.data : []);
-            setAdminModifiedIds(adminMod?.data?.submission_ids || []);
-
-            currentCount = newCount;
+          // Nếu phát hiện chênh lệch số lượng, reload âm thầm
+          if (res.data && (res.data.hasChanges || res.data.count !== currentCount)) {
+            await load(examId, true);
+            currentCount = res.data.count || 0;
           }
-
-          // Prevent busy loop - Wait 3s before next check
-          await new Promise((resolve) => setTimeout(resolve, 3000));
-        } catch (err) {
-          console.error("Long polling error:", err);
-          await new Promise((resolve) => setTimeout(resolve, 5000));
+          await new Promise((resolve) => setTimeout(resolve, 6000)); // Nghỉ 6s mỗi lượt poll
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 10000));
         }
       }
     };
-
     waitForNewSubmissions();
-
-    return () => {
-      isActive = false;
-    };
+    return () => { isActive = false; };
   }, [examId, rows.length]);
 
   const filtered = React.useMemo(() => {

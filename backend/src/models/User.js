@@ -60,6 +60,14 @@ const User = sequelize.define(
       defaultValue: false,
       allowNull: false,
     },
+    refresh_token: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    fcm_token: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
   },
   { tableName: "users", timestamps: false }
 );

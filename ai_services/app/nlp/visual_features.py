@@ -1,8 +1,13 @@
+# pyrefly: ignore [missing-import]
 import cv2
 import numpy as np
+# pyrefly: ignore [missing-import]
 import torch
+# pyrefly: ignore [missing-import]
 import torch.nn as nn
+# pyrefly: ignore [missing-import]
 import torchvision.models as models
+# pyrefly: ignore [missing-import]
 import torchvision.transforms as transforms
 from PIL import Image
 import os

@@ -1,13 +1,14 @@
 import os
 import pandas as pd
 import numpy as np
-import joblib
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, classification_report
+import joblib  # type: ignore[import-untyped]
+from sklearn.ensemble import RandomForestClassifier  # type: ignore[import-untyped]
+from sklearn.model_selection import train_test_split  # type: ignore[import-untyped]
+from sklearn.metrics import accuracy_score, classification_report  # type: ignore[import-untyped]
 import logging
 import json
-import onnxruntime as ort
+from typing import Dict, Any
+import onnxruntime as ort  # type: ignore[import-untyped]
 from app.nlp.visual_features import visual_extractor
 
 logger = logging.getLogger(__name__)
@@ -153,13 +154,13 @@ class BehaviorDetectionModel:
             logger.info(f"✅ Lưu model PKL thành công tại: {MODEL_PATH}")
 
             try:
-                from skl2onnx import to_onnx
-                from skl2onnx.common.data_types import FloatTensorType
+                from skl2onnx import to_onnx  # type: ignore[import-untyped]
+                from skl2onnx.common.data_types import FloatTensorType  # type: ignore[import-untyped]
                 initial_type = [('float_input', FloatTensorType([None, len(FEATURES)]))]
-                onx = to_onnx(clf, initial_types=initial_type, target_opset=12)
+                onx = to_onnx(clf, initial_types=initial_type, target_opset=12)  # type: ignore[arg-type]
                 
                 with open(ONNX_MODEL_PATH, "wb") as f:
-                    f.write(onx.SerializeToString())
+                    f.write(onx.SerializeToString())  # type: ignore[union-attr]
                 self.ort_session = ort.InferenceSession(ONNX_MODEL_PATH)
                 logger.info(f"🚀 Tự động chuyển đổi và lưu ONNX thành công: {ONNX_MODEL_PATH}")
             except Exception as e:
@@ -224,11 +225,12 @@ class BehaviorDetectionModel:
                 
         if len(blur_durations) > 0:
             features['max_blur_duration_ms'] = max(blur_durations)
-            features['avg_blur_duration_ms'] = sum(blur_durations) / len(blur_durations)
+            features['avg_blur_duration_ms'] = float(sum(blur_durations) / len(blur_durations))  # type: ignore
             
         return features
 
     def detect_cheating(self, events):
+        vision_override_reason = None
         # ==========================================
         # LUỒNG 0: PHÂN TÍCH NGỮ CẢNH HỆ THỐNG (Smart Buffer)
         # ==========================================
@@ -251,8 +253,8 @@ class BehaviorDetectionModel:
 
             # [HÀNH VI GIAN LẬN XÁC ĐỊNH BẤT CHẤP NGỮ CẢNH]
             confirm_reason = None
-            if event_type == 'visibility_hidden':
-                confirm_reason = "Phát hiện ẩn tab (Hidden) - Hành vi cố tình bất chấp ngữ cảnh."
+            if event_type in ['visibility_hidden', 'paste_attempt', 'copy_attempt', 'blocked_key']:
+                confirm_reason = f"Phát hiện hành vi gian lận cố tình ({event_type}) - Chốt vi phạm tuyệt đối."
             elif is_mouse_in_prohibited_area:
                 confirm_reason = f"Chuột di chuyển vào vùng Tab Bar ({mouse_pos.get('y')}px) - Nghi ngờ tương tác với thanh điều hướng."
             elif event_type == 'window_blur' and details.get('duration_ms', 0) > 5000:
@@ -272,11 +274,12 @@ class BehaviorDetectionModel:
                 if snapshot_path and os.path.exists(snapshot_path) and self.visual_model:
                     try:
                         v_features, v_info = visual_extractor.get_full_feature_vector(snapshot_path)
+                        v_info_dict: Dict[str, Any] = v_info  # type: ignore
                         v_probs = self.visual_model.predict_proba([v_features])[0]
                         v_prob_cheating = v_probs[1]
-                        if v_info.get('is_desktop_likely'):
+                        if v_info_dict.get('is_desktop_likely'):
                             v_prob_cheating = min(1.0, v_prob_cheating + 0.30)
-                        elif v_info.get('is_browser_ui_likely'):
+                        elif v_info_dict.get('is_browser_ui_likely'):
                             v_prob_cheating = min(1.0, v_prob_cheating + 0.20)
                         THRESHOLD = 0.65
                         
@@ -286,9 +289,9 @@ class BehaviorDetectionModel:
                         
                         elif v_prob_cheating >= THRESHOLD:
                             vision_reason = "Phát hiện giao diện ứng dụng lạ bên ngoài bài thi."
-                            if v_info.get('is_desktop_likely'):
+                            if v_info_dict.get('is_desktop_likely'):
                                 vision_reason = "Phát hiện thí sinh đang sử dụng Màn hình nền (Desktop) hoặc Taskbar ứng dụng khác."
-                            elif v_info.get('is_browser_ui_likely'):
+                            elif v_info_dict.get('is_browser_ui_likely'):
                                 vision_reason = "Phát hiện thí sinh đang tương tác với các thẻ Tab hoặc thanh công cụ trình duyệt bên ngoài."
                                 
                             logger.info(f"🚨 [AI Vision] {vision_reason} ({v_prob_cheating:.2f}). Hủy ân xá!")
@@ -300,9 +303,9 @@ class BehaviorDetectionModel:
                         else:
                             logger.info(f"⚖️ [AI Vision] Kết quả không chắc chắn ({v_prob_cheating:.2f}). Giữ nguyên cảnh báo ban đầu.")
                             return { 
-                                "is_cheating": is_cheating, 
+                                "is_cheating": False, 
                                 "confidence": v_prob_cheating, 
-                                "reason": f"AI không chắc chắn về hình ảnh ({v_prob_cheating:.2f}). {final_reason}"
+                                "reason": f"AI không chắc chắn về hình ảnh ({v_prob_cheating:.2f}). Có thể do mạng yếu hoặc pin yếu."
                             }
                     except Exception as ve:
                         logger.error(f"Vision Inference Error: {ve}")
@@ -386,12 +389,13 @@ class BehaviorDetectionModel:
             if snapshot_path and os.path.exists(snapshot_path) and self.visual_model:
                 try:
                     v_features, v_info = visual_extractor.get_full_feature_vector(snapshot_path)
+                    v_info_dict: Dict[str, Any] = v_info  # type: ignore
                     v_probs = self.visual_model.predict_proba([v_features])[0]
                     v_prob_cheating = v_probs[1]    
-                    if v_info.get('is_desktop_likely'):
+                    if v_info_dict.get('is_desktop_likely'):
                         v_prob_cheating = min(1.0, v_prob_cheating + 0.35) 
                         logger.info(f"🚀 [AI Boost] Phát hiện Desktop -> Nâng xác suất lên {v_prob_cheating:.2f}")
-                    elif v_info.get('is_browser_ui_likely'):
+                    elif v_info_dict.get('is_browser_ui_likely'):
                         v_prob_cheating = min(1.0, v_prob_cheating + 0.20) # Boost cho Browser
                         logger.info(f"🚀 [AI Boost] Phát hiện Browser Tab -> Nâng xác suất lên {v_prob_cheating:.2f}")
 
@@ -411,8 +415,8 @@ class BehaviorDetectionModel:
                     # Cập nhật thông tin reason từ Vision nếu Vision quá rõ ràng
                     if v_prob_cheating >= V_THRESHOLD:
                         v_reason = "Phát hiện ứng dụng lạ."
-                        if v_info.get('is_desktop_likely'): v_reason = "Thí sinh đang tương tác với Màn hình nền (Desktop)/Taskbar."
-                        elif v_info.get('is_browser_ui_likely'): v_reason = "Thí sinh đang tương tác với các thẻ Tab hoặc thanh địa chỉ trình duyệt."
+                        if v_info_dict.get('is_desktop_likely'): v_reason = "Thí sinh đang tương tác với Màn hình nền (Desktop)/Taskbar."
+                        elif v_info_dict.get('is_browser_ui_likely'): v_reason = "Thí sinh đang tương tác với các thẻ Tab hoặc thanh địa chỉ trình duyệt."
                         vision_confirm_msg = f"[AI VISION CONFIRMED]: {v_reason}"
                         # Gán trực tiếp vào reason nếu đạt ngưỡng
                         vision_override_reason = vision_confirm_msg
@@ -426,7 +430,7 @@ class BehaviorDetectionModel:
         
         if is_cheating:
             # 1. Ưu tiên lý do từ Vision (nếu có và rõ ràng)
-            if 'vision_override_reason' in locals():
+            if vision_override_reason is not None:
                 final_reason = vision_override_reason
             else:
                 found_reason = False

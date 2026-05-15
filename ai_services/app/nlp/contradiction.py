@@ -147,6 +147,7 @@ class LogicAnalyzer:
         return 'hard'
 
     def _is_temporal_reversed(self, s: str, m: str, marker: str) -> bool:
+        # pyrefly: ignore [missing-import]
         from sentence_transformers import util
         s_parts = s.split(marker, 1)
         m_parts = m.split(marker, 1)
@@ -165,6 +166,7 @@ class LogicAnalyzer:
         return sim > 0.75
 
     def _is_causal_mismatch(self, s: str, m: str, marker: str) -> bool:
+        # pyrefly: ignore [missing-import]
         from sentence_transformers import util
         s_parts = s.split(marker, 1)
         m_parts = m.split(marker, 1)

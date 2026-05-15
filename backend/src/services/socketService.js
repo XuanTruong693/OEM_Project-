@@ -69,9 +69,14 @@ function initializeSocket(httpServer) {
         "https://oes.io.vn",
         "http://www.oes.io.vn",
         "https://www.oes.io.vn",
+        "https://api.oes.io.vn",
       ],
       methods: ["GET", "POST"],
       credentials: true,
+    },
+    allowRequest: (req, callback) => {
+      // Cho phép mobile apps kết nối (không có origin header hoặc origin khác)
+      callback(null, true);
     },
     pingTimeout: 20000,
     pingInterval: 10000,

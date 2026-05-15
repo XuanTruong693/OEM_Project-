@@ -301,6 +301,17 @@ async function performStudentAction(req, res) {
                 { replacements: [submissionId, studentId, examId, JSON.stringify({ granted_by: instructorId })] }
             );
 
+            // Force sync cheating_count with actual count in cheating_logs (excluding admin_bypass) to override DB trigger
+            const [cntRows] = await sequelize.query(
+                "SELECT COUNT(*) as cnt FROM cheating_logs WHERE submission_id = ? AND event_type != 'admin_bypass'",
+                { replacements: [submissionId], type: QueryTypes.SELECT }
+            );
+            const actualCount = cntRows?.[0]?.cnt || cntRows?.cnt || 0;
+            await sequelize.query(
+                "UPDATE submissions SET cheating_count = ? WHERE id = ?",
+                { replacements: [actualCount, submissionId], type: QueryTypes.UPDATE }
+            );
+
             // Notify student to refresh or proceed
             if (io) {
                 io.emit(`student:bypass-granted:${submissionId}`);

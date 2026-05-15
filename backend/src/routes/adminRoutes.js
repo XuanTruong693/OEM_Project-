@@ -374,7 +374,7 @@ router.put('/users/:id', verifyToken, verifyRole('admin'), async (req, res) => {
     if (role !== undefined && user.role !== 'admin') updateData.role = role;
     if (phone_number !== undefined) updateData.phone_number = phone_number;
     if (address !== undefined) updateData.address = address;
-    if (gender !== undefined) updateData.gender = gender;
+    if (gender !== undefined) updateData.gender = gender === '' ? null : gender;
 
     await user.update(updateData);
 
@@ -705,6 +705,15 @@ router.get('/results', verifyToken, verifyRole('admin'), async (req, res) => {
     console.error('❌ Error fetching results:', error);
     res.status(500).json({ success: false, message: error.message });
   }
+});
+
+/**
+ * GET /api/admin/submissions/:submissionId/questions
+ * Lấy chi tiết câu hỏi và câu trả lời của submission cho Admin
+ */
+router.get('/submissions/:submissionId/questions', verifyToken, verifyRole('admin'), (req, res) => {
+  const submissionController = require('../controllers/submissionController');
+  return submissionController.getSubmissionQuestions(req, res);
 });
 
 /**

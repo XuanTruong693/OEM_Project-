@@ -213,6 +213,17 @@ class CodeAnalyzer:
             "order_by": r"ORDER\s+BY\s+(.+?)(?:LIMIT|$)",
         }
 
+    def _clean_html_to_code(self, text: str) -> str:
+        if not text:
+            return ""
+        import html
+        text = html.unescape(text)
+        valid_tags = r'</?(p|div|pre|code|br|tr|li|span|h\d|b|i|strong|em|html|body|head|style|script|table|thead|tbody|td|th)\b[^>]*>'
+        text = re.sub(valid_tags, '\n', text, flags=re.IGNORECASE)
+        # Only strip tag-like structures that start with a valid tag name character to protect math/code operators
+        text = re.sub(r'</?[a-zA-Z_][\w-]*[^>]*>', '', text)
+        return "\n".join([line.rstrip() for line in text.splitlines()])
+
     # TYPE DETECTION METHODS
     
     def detect_answer_type(self, text: str) -> str:
@@ -222,6 +233,8 @@ class CodeAnalyzer:
         """
         if not text:
             return "text"
+        
+        text = self._clean_html_to_code(text)
         
         # Check SQL (Strong patterns vs Generic keywords)
         sql_strong = [
@@ -244,13 +257,14 @@ class CodeAnalyzer:
         strong_code_indicators = [
             r"\bdef\s+\w+\s*\(", r"\bclass\s+\w+", r"\bpublic\s+(static\s+)?void\b",
             r"\bpublic\s+class\b", r"#include\s*<", r"def\s+__init__", r"super\(\)\.",
-            r"\bconsole\.log\s*\(", r"System\.out\.print"
+            r"\bconsole\.log\s*\(", r"System\.out\.print",
+            r"\bvoid\s+\w+\s*\(", r"\bint\s+\w+\s*\(", r"\bswap\s*\(", r"\bstd::"
         ]
         has_strong_code = any(re.search(p, text) for p in strong_code_indicators)
         
         generic_code_indicators = [
             r"\breturn\b", r"\bfor\s+\w+\s+in\b", r"\bif\s+.+:", r"\bwhile\s+.+:",
-            r"([{}();])", r"=>\s*{", r"\bconst\s+\w+\s*=", r"\blet\s+\w+\s*="
+            r"([{};])", r"=>\s*{", r"\bconst\s+\w+\s*=", r"\blet\s+\w+\s*="
         ]
         # Count generic indicators (at least 2 distinct types or multiple symbols)
         generic_code_count = 0
@@ -259,7 +273,7 @@ class CodeAnalyzer:
                 generic_code_count += 1
         
         # Symbol density check
-        symbols = len(re.findall(r"([{}();])", text))
+        symbols = len(re.findall(r"([{};])", text))
         
         if has_strong_code or generic_code_count >= 3 or symbols >= 4:
             return "code"
@@ -520,30 +534,38 @@ class CodeAnalyzer:
         
         penalties = []
         multiplier = 1.0
+        # Luôn quét các khối code bị thiếu để phát hiện khuyết logic lõi
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag in ('delete', 'replace'):
+                missing_segment = m_tokens[i1:i2]
+                filtered_segment = [t for t in missing_segment if t not in (',', ';', '{', '}', '(', ')', '.', ':', '<VAR>', '<NUM>', '<STR>')]
+                
+                if filtered_segment:
+                    expr = " ".join(filtered_segment)
+                    msg = ""
+                    if 'return' in filtered_segment:
+                        msg = f"Thiếu luồng trả về kết quả (Lệnh return)"
+                    elif 'for' in filtered_segment or 'while' in filtered_segment:
+                        msg = f"Thiếu cấu trúc vòng lặp cốt lõi"
+                    elif 'if' in filtered_segment or 'else' in filtered_segment or 'elif' in filtered_segment:
+                        msg = f"Thiếu rẽ nhánh điều kiện logic"
+                    elif any(op in filtered_segment for op in ('+=', '-=', '*=', '/=', '%=', '=', '+', '-', '*', '/', '%')):
+                        msg = f"Thiếu/Sai đoạn thuật toán tính toán/gán giá trị"
+                    else:
+                        msg = f"Thiếu phần thân xử lý thuật toán (chứa: {expr})"
+                        
+                    if msg and msg not in penalties:
+                        penalties.append(msg)
+                        
         if coverage < 0.85:
-            missing_segments = []
-            for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-                if tag in ('delete', 'replace'):
-                    missing_segment = m_tokens[i1:i2]
-                    filtered_segment = [t for t in missing_segment if t not in (',', ';', '{', '}', '(', ')', '.', ':', '<VAR>', '<NUM>', '<STR>')]
-                    
-                    if filtered_segment:
-                        expr = " ".join(filtered_segment)
-                        msg = ""
-                        if 'return' in filtered_segment:
-                            msg = f"Thiếu luồng trả về kết quả (Lệnh return)"
-                        elif 'for' in filtered_segment or 'while' in filtered_segment:
-                            msg = f"Thiếu cấu trúc vòng lặp cốt lõi"
-                        elif 'if' in filtered_segment or 'else' in filtered_segment or 'elif' in filtered_segment:
-                            msg = f"Thiếu rẽ nhánh điều kiện logic"
-                        elif any(op in filtered_segment for op in ('+=', '-=', '*=', '/=', '%=', '=', '+', '-', '*', '/', '%')):
-                            msg = f"Thiếu/Sai đoạn thuật toán tính toán/gán giá trị"
-                        else:
-                            msg = f"Thiếu phần thân xử lý thuật toán (chứa: {expr})"
-                            
-                        if msg and msg not in penalties:
-                            penalties.append(msg)
-                            
+            if 'if' in m_tokens and ('else' in m_tokens or 'return' in m_tokens):
+                if 'return' in s_tokens and 'if' not in s_tokens:
+                    m_ops = {t for t in m_tokens if t in ('==', '!=', '>', '<', '>=', '<=', '%', '+', '-', '*', '/')}
+                    s_ops = {t for t in s_tokens if t in ('==', '!=', '>', '<', '>=', '<=', '%', '+', '-', '*', '/')}
+                    if m_ops and m_ops.issubset(s_ops):
+                        logger.info("Student used simplified boolean return instead of if/else!")
+                        return 1.0, [], 1.0
+                        
             if coverage < 0.35:
                 multiplier = 0.2
             elif coverage < 0.60:
@@ -606,6 +628,7 @@ class CodeAnalyzer:
         if m_skeleton and s_skeleton:
             matcher = difflib.SequenceMatcher(None, m_skeleton, s_skeleton)
             skeleton_score = matcher.ratio()
+        self.last_skeleton_score = skeleton_score
             
         # 3. Generic Token Match (For C/C++/Java & Snippets)
         def basic_normalize(c):
@@ -635,7 +658,32 @@ class CodeAnalyzer:
             return token_score, penalties
             
         struct_sim = max(token_score * 0.85, (strict_score * 0.6) + (skeleton_score * 0.4))
+
+        # === LINE-BY-LINE STRICT DIFF ANALYZER ===
+        def clean_lines(c):
+            no_cmt = re.sub(r'//.*', '', c)
+            no_cmt = re.sub(r'/\*.*?\*/', '', no_cmt, flags=re.DOTALL)
+            return [line.strip() for line in no_cmt.splitlines() if line.strip()]
+
+        m_lines_stripped = clean_lines(model)
+        s_lines_stripped = clean_lines(student)
         
+        line_matches = 0
+        for m_l in m_lines_stripped:
+            m_l_clean = re.sub(r'\s+', '', m_l)
+            for s_l in s_lines_stripped:
+                s_l_clean = re.sub(r'\s+', '', s_l)
+                if m_l_clean == s_l_clean:
+                    line_matches += 1
+                    break
+        
+        line_similarity = line_matches / len(m_lines_stripped) if m_lines_stripped else 1.0
+        self.last_line_similarity = line_similarity
+        
+        # Nếu thiếu dòng hoặc sai cú pháp chi tiết từng dòng -> Ghi nhận lỗi (Chỉ áp dụng nếu cấu trúc xương không khớp để tránh bắt oan đặt tên khác)
+        if line_similarity < 0.95 and skeleton_score < 0.80:
+            penalties.append(f"Lỗi Khuyết dòng / Sai biệt cú pháp: So khớp chi tiết từng dòng code phát hiện sai lệch hoặc thiếu hụt {int((1.0 - line_similarity)*100)}% số dòng so với đáp án mẫu.")
+
         # === INTERFACE BASE SCORE ===
         interface_base_score = self._grade_interface_only(m_struct, s_struct)
         
@@ -659,10 +707,12 @@ class CodeAnalyzer:
                 struct_sim *= 0.95
                 penalties.append("Lỗi Code Style: Code rối, dài dòng trên một hàng, khó đọc")
         # Áp dụng điểm vớt nếu struct_sim tụt xuống quá thấp do thiếu thuật toán lõi hoặc bị phạt
-        if struct_sim < interface_base_score and interface_base_score > 0.1:
-            logger.info(f"Rescue: struct_sim ({struct_sim:.2f}) < interface_base_score ({interface_base_score:.2f}). Bumping score.")
-            struct_sim = interface_base_score
-            penalties.append(f"Điểm vớt cấu trúc (Interface): Sinh viên tạo cấu trúc OOP/Hàm hợp lệ nhưng thiếu logic/vận hành cốt lõi. (Base score: {interface_base_score:.2f})")
+        if line_similarity < 0.95:
+            if skeleton_score >= 0.80 or (block_coverage == 1.0 and block_multiplier == 1.0):
+                penalty_pct = 0.0
+            else:
+                penalty_pct = (1.0 - line_similarity) * 0.8
+            struct_sim *= (1.0 - penalty_pct)
 
         return max(0.0, struct_sim), list(set(penalties))
     
@@ -1008,6 +1058,9 @@ class CodeAnalyzer:
     
     # MAIN GRADING METHOD
     def grade(self, model_text: str, student_text: str, max_points: float) -> Optional[Dict[str, Any]]:
+        model_text = self._clean_html_to_code(model_text)
+        student_text = self._clean_html_to_code(student_text)
+
         # 1. EARLY FAKER CHECK (Always check even if type unknown)
         from .faker_detector import is_meaningless_answer
         is_faker, faker_reason = is_meaningless_answer(student_text)
@@ -1032,10 +1085,14 @@ class CodeAnalyzer:
                 logger.info(f"Global Typo Rescue: {model_text} vs {student_text}")
                 pass # Cho phép đi tiếp
             else:
+                explanation = (
+                    f"Sai bản chất: Yêu cầu trả lời dạng câu lệnh {model_type.upper()} hoàn chỉnh. "
+                    "Câu trả lời của sinh viên chỉ chứa các từ khóa rời rạc hoặc viết văn bản thường không đúng cấu trúc cú pháp chuyên môn."
+                )
                 return {
                     "score": 0.0,
                     "type": "Wrong Format",
-                    "explanation": f"Sai bản chất: Yêu cầu trả lời dạng {model_type}, sinh viên viết văn bản thường không chứa thuật ngữ chuyên môn."
+                    "explanation": explanation
                 }
         
         # CODE GRADING
@@ -1111,6 +1168,27 @@ class CodeAnalyzer:
             else:
                 final_score_ratio = struct_sim * 0.3
                 
+            # Khống chế điểm số không được vượt quá độ tương đồng của dòng code (Line-by-Line Match Cap)
+            line_sim = getattr(self, 'last_line_similarity', 1.0)
+            skeleton_sc = getattr(self, 'last_skeleton_score', 1.0)
+            if skeleton_sc < 0.80 and struct_sim < 0.95:
+                final_score_ratio = min(final_score_ratio, line_sim)
+
+            # Phạt nặng các lỗi logic cốt lõi
+            for p in penalties:
+                if "vòng lặp cốt lõi" in p:
+                    final_score_ratio -= 0.35
+                elif "thuật toán tính toán/gán giá trị" in p or "gán giá trị" in p:
+                    final_score_ratio -= 0.25
+                elif "rẽ nhánh điều kiện" in p:
+                    final_score_ratio -= 0.2
+
+            # Đảm bảo bài làm có cấu trúc hợp lệ đạt điểm vớt xứng đáng (0.35 - 0.5)
+            if line_sim >= 0.5:
+                final_score_ratio = max(0.4, final_score_ratio)
+            else:
+                final_score_ratio = max(0.0, final_score_ratio)
+                
             if struct_sim < 1.0 and penalties:
                 explanation = "Các lỗi vi phạm (AI Rubric):\n- " + "\n- ".join(penalties) + f"\n(Code Match: {struct_sim:.2f} / Score Ratio: {final_score_ratio:.2f})"
             else:
@@ -1131,10 +1209,14 @@ class CodeAnalyzer:
                 return {"score": 0.0, "type": "Đối phó", "explanation": f"Reasoning: {f_s_reas}. Không chấm điểm cho SQL chứa nội dung đối phó."}
 
             if student_type != "sql" and not self._is_short_tech_typo(model_text, student_text):
+                explanation = (
+                    "Sai định dạng: Yêu cầu trả lời bằng câu lệnh SQL hoàn chỉnh. "
+                    "Câu trả lời của sinh viên chỉ chứa các từ khóa rời rạc hoặc viết văn bản thường không đúng cấu trúc truy vấn SQL."
+                )
                 return {
                     "score": 0.0,
                     "type": "Wrong Format",
-                    "explanation": "Sai định dạng: Yêu cầu trả lời bằng câu lệnh hoặc thuật ngữ SQL chuyên môn."
+                    "explanation": explanation
                 }
             
             score, feedback = self.compare_sql_queries(model_text, student_text)

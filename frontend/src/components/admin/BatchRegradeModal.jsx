@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X, AlertTriangle, Calendar, Clock, Hash, Check, RefreshCw, User, Mail, FileText } from "lucide-react";
+import { X, AlertTriangle, Calendar, Clock, Hash, Check, RefreshCw, User, Mail, FileText, Search } from "lucide-react";
 import axiosClient from "../../api/axiosClient";
 import { useLanguage } from "../../context/LanguageContext";
 
@@ -16,12 +16,20 @@ const BatchRegradeModal = ({ onClose, onSuccess }) => {
   const [error, setError] = useState(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [pinnedSubmissions, setPinnedSubmissions] = useState([]);
 
   const fetchPreview = async () => {
     setFetchingPreview(true);
     try {
       const response = await axiosClient.get("/admin/ai-grading-logs/batch-preview", {
-        params: { mode, startDate, endDate, limit: parseInt(limit) || null }
+        params: { 
+          mode, 
+          startDate, 
+          endDate, 
+          limit: parseInt(limit) || null,
+          search: searchTerm || null
+        }
       });
       if (response.data.success) {
         setPreviewList(response.data.preview || []);
@@ -39,11 +47,11 @@ const BatchRegradeModal = ({ onClose, onSuccess }) => {
     }, 500);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [mode, startDate, endDate, limit]);
+  }, [mode, startDate, endDate, limit, searchTerm]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (previewList.length === 0) {
+    if (previewList.length === 0 && pinnedSubmissions.length === 0) {
       setError(t('noMatchingSubmissions'));
       return;
     }
@@ -57,12 +65,18 @@ const BatchRegradeModal = ({ onClose, onSuccess }) => {
     setSuccess(false);
 
     try {
-      const response = await axiosClient.post("/admin/ai-grading-logs/batch-regrade", {
+      const payload = {
         mode,
         startDate,
         endDate,
         limit: parseInt(limit) || null
-      });
+      };
+
+      if (pinnedSubmissions.length > 0) {
+        payload.submissionIds = pinnedSubmissions.map(p => p.submission_id);
+      }
+
+      const response = await axiosClient.post("/admin/ai-grading-logs/batch-regrade", payload);
 
       if (response.data.success) {
         setSuccess(true);
@@ -196,11 +210,31 @@ const BatchRegradeModal = ({ onClose, onSuccess }) => {
 
           {/* Right Panel: Preview Table */}
           <div className="flex-1 p-8 bg-gray-900/40 [.light-theme_&]:bg-gray-50 overflow-hidden flex flex-col transition-colors">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
               <h3 className="text-lg font-bold text-white [.light-theme_&]:text-gray-900 flex items-center gap-2">
                 <FileText size={20} />
-                {t('previewMatching')} ({fetchingPreview ? t('loading') : previewList.length})
+                {t('previewMatching')} ({fetchingPreview ? t('loading') : (pinnedSubmissions.length + previewList.filter(item => !pinnedSubmissions.some(p => p.submission_id === item.submission_id)).length)})
               </h3>
+              
+              {/* Premium Search Box */}
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                <input
+                  type="text"
+                  placeholder="Tìm kiếm sinh viên..."
+                  className="w-full pl-9 pr-8 py-1.5 bg-gray-850 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 text-sm transition-colors"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
               {fetchingPreview && <RefreshCw size={18} className="animate-spin text-blue-400" />}
             </div>
 
@@ -208,6 +242,7 @@ const BatchRegradeModal = ({ onClose, onSuccess }) => {
               <table className="w-full text-left border-collapse text-sm">
                 <thead className="bg-gray-700/50 [.light-theme_&]:bg-gray-50 sticky top-0 outline outline-1 outline-gray-700 [.light-theme_&]:outline-gray-200 transition-colors">
                   <tr>
+                    <th className="px-4 py-3 text-gray-300 [.light-theme_&]:text-gray-500 font-medium w-12 text-center">Chọn</th>
                     <th className="px-4 py-3 text-gray-300 [.light-theme_&]:text-gray-500 font-medium">{t('id')}</th>
                     <th className="px-4 py-3 text-gray-300 [.light-theme_&]:text-gray-500 font-medium">{t('studentName')}</th>
                     <th className="px-4 py-3 text-gray-300 [.light-theme_&]:text-gray-500 font-medium">{t('examTitle')}</th>
@@ -216,40 +251,71 @@ const BatchRegradeModal = ({ onClose, onSuccess }) => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-700 [.light-theme_&]:divide-gray-100 transition-colors">
-                  {previewList.length === 0 ? (
-                    <tr>
-                      <td colSpan="5" className="px-4 py-10 text-center text-gray-400 italic">
-                        {fetchingPreview ? "Đang đồng bộ dữ liệu..." : "Không tìm thấy bài thi nào thỏa mãn điều kiện."}
-                      </td>
-                    </tr>
-                  ) : (
-                    previewList.map((item) => (
-                      <tr key={item.submission_id} className="hover:bg-gray-700/30 [.light-theme_&]:hover:bg-gray-50 transition-colors">
-                        <td className="px-5 py-4 text-blue-400 font-mono font-bold text-sm">#{item.submission_id}</td>
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-3">
-                            <User size={16} className="text-gray-500" />
-                            <div>
-                              <p className="text-white [.light-theme_&]:text-gray-900 font-bold text-sm">{item.student_name}</p>
-                              <p className="text-xs text-gray-500 font-medium truncate max-w-[180px]">{item.student_email}</p>
+                  {(() => {
+                    const unpinned = previewList.filter(item => !pinnedSubmissions.some(p => p.submission_id === item.submission_id));
+                    const displayed = [...pinnedSubmissions, ...unpinned];
+
+                    if (displayed.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan="6" className="px-4 py-10 text-center text-gray-400 italic">
+                            {fetchingPreview ? "Đang đồng bộ dữ liệu..." : "Không tìm thấy bài thi nào thỏa mãn điều kiện."}
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return displayed.map((item) => {
+                      const isPinned = pinnedSubmissions.some(p => p.submission_id === item.submission_id);
+                      return (
+                        <tr key={item.submission_id} className={`hover:bg-gray-700/30 [.light-theme_&]:hover:bg-gray-50 transition-colors ${isPinned ? 'bg-blue-950/20' : ''}`}>
+                          <td className="px-4 py-4 text-center w-12">
+                            <input
+                              type="checkbox"
+                              checked={isPinned}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setPinnedSubmissions(prev => [...prev, item]);
+                                } else {
+                                  setPinnedSubmissions(prev => prev.filter(p => p.submission_id !== item.submission_id));
+                                }
+                              }}
+                              className="w-4 h-4 rounded border-gray-600 text-blue-600 focus:ring-blue-500 bg-gray-900/40 cursor-pointer"
+                            />
+                          </td>
+                          <td className="px-5 py-4 text-blue-400 font-mono font-bold text-sm">#{item.submission_id}</td>
+                          <td className="px-5 py-4">
+                            <div className="flex items-center gap-3">
+                              <User size={16} className="text-gray-500" />
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-white [.light-theme_&]:text-gray-900 font-bold text-sm">{item.student_name}</p>
+                                  {isPinned && (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/20 text-green-400 border border-green-500/30">
+                                      Đã chọn
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-gray-500 font-medium truncate max-w-[180px]">{item.student_email}</p>
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-5 py-4 text-gray-300 [.light-theme_&]:text-gray-600 text-sm font-medium">
-                          {item.exam_title}
-                        </td>
-                        <td className="px-5 py-4">
-                          <div className="flex flex-col gap-1">
-                            <div className="flex items-center">{getStatusLabel(item.status)}</div>
-                            {item.error && <p className="text-[10px] text-red-400/80 italic line-clamp-1 max-w-[120px]" title={item.error}>{item.error}</p>}
-                          </div>
-                        </td>
-                        <td className="px-5 py-4 text-right text-xs text-gray-400 font-medium transition-colors">
-                          {new Date(item.submitted_at).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US')}
-                        </td>
-                      </tr>
-                    ))
-                  )}
+                          </td>
+                          <td className="px-5 py-4 text-gray-300 [.light-theme_&]:text-gray-600 text-sm font-medium">
+                            {item.exam_title}
+                          </td>
+                          <td className="px-5 py-4">
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center">{getStatusLabel(item.status)}</div>
+                              {item.error && <p className="text-[10px] text-red-400/80 italic line-clamp-1 max-w-[120px]" title={item.error}>{item.error}</p>}
+                            </div>
+                          </td>
+                          <td className="px-5 py-4 text-right text-xs text-gray-400 font-medium transition-colors">
+                            {new Date(item.submitted_at).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US')}
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
                 </tbody>
               </table>
             </div>
@@ -262,7 +328,7 @@ const BatchRegradeModal = ({ onClose, onSuccess }) => {
             {success && (
               <div className="flex items-center gap-2 text-green-400 font-bold animate-fade-in">
                 <Check className="p-1 bg-green-400/20 rounded-full" size={24} />
-                Đang xử lý hàng loạt... bài sẽ sớm có điểm mới!
+                Đang xử lý chấm lại... bài sẽ sớm có điểm mới!
               </div>
             )}
             {error && (
@@ -282,11 +348,11 @@ const BatchRegradeModal = ({ onClose, onSuccess }) => {
             </button>
             <button
               onClick={handleSubmit}
-              disabled={loading || previewList.length === 0 || success}
+              disabled={loading || (previewList.length === 0 && pinnedSubmissions.length === 0) || success}
               className="px-12 py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-black rounded-2xl transition-all shadow-xl shadow-blue-900/40 flex items-center gap-2 whitespace-nowrap active:scale-95"
             >
               {loading && <RefreshCw size={20} className="animate-spin" />}
-              {t('startRegrading')} ({previewList.length})
+              {t('startRegrading')} ({pinnedSubmissions.length > 0 ? pinnedSubmissions.length : previewList.length})
             </button>
           </div>
         </div>
@@ -300,7 +366,7 @@ const BatchRegradeModal = ({ onClose, onSuccess }) => {
               </div>
               <h3 className="text-2xl font-black text-white [.light-theme_&]:text-gray-900 mb-4">{t('confirmRegrade')}</h3>
               <p className="text-gray-300 [.light-theme_&]:text-gray-600 mb-8 leading-relaxed">
-                {t('confirmRegradeDesc').replace('?', ` cho ${previewList.length} bài thi đã chọn?`)}
+                {t('confirmRegradeDesc').replace('?', ` cho ${pinnedSubmissions.length > 0 ? pinnedSubmissions.length : previewList.length} bài thi đã chọn?`)}
                 <br />
                 <span className="text-red-400 font-medium">⚠️ {t('scoreUpdateNote')}</span>
               </p>

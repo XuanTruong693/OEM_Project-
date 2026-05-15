@@ -56,6 +56,18 @@ const initializePool = async () => {
       console.warn('⚠️ [DB] Could not fix SQL mode:', err.message);
     }
   }
+
+  // Ensure users table has fcm_token column
+  try {
+    await pool.query("ALTER TABLE users ADD COLUMN fcm_token VARCHAR(255) NULL");
+    console.log('✅ [DB] fcm_token column created successfully');
+  } catch (err) {
+    if (err.code === 'ER_DUP_FIELDNAME' || err.errno === 1060) {
+      console.log('✅ [DB] fcm_token column verified (already exists)');
+    } else {
+      console.warn('⚠️ [DB] Could not verify fcm_token column:', err.message);
+    }
+  }
 };
 
 // Run init

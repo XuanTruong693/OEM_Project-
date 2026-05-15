@@ -161,28 +161,36 @@ export default function InstructorOverlay() {
 
       setQueue((prev) => {
         const updated = [...prev, newNotification];
-        // Sort by timestamp (oldest first - priority)
-        updated.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        
+        // Sort: Device Change always comes first. Then sort by timestamp (oldest first).
+        updated.sort((a, b) => {
+          if (a.deviceChange && !b.deviceChange) return -1;
+          if (!a.deviceChange && b.deviceChange) return 1;
+          return new Date(a.timestamp) - new Date(b.timestamp);
+        });
+        
         console.log(
           `📬 [Instructor] Queue updated. Total: ${updated.length} notifications`
         );
+
+        // Interrupt currently showing event if it's NOT a device change but the new one IS.
+        setEvent((currentEvent) => {
+          if (currentEvent && !currentEvent.deviceChange && newNotification.deviceChange) {
+            console.log("🚨 [Instructor] Interrupting current cheating alert for PRIORITY Device Change!");
+            return newNotification; // Show priority event immediately! (Old event remains in queue to be shown later)
+          }
+          if (!currentEvent) {
+            console.log(`🎯 [Instructor] Showing first notification (modal was hidden)`);
+            return updated[0];
+          }
+          console.log(`📦 [Instructor] Notification queued (modal already showing).`);
+          return currentEvent;
+        });
+
         return updated;
       });
 
-      // If modal not showing, show first item from updated queue
-      setShow((currentShow) => {
-        if (!currentShow) {
-          setEvent(newNotification);
-          console.log(
-            `🎯 [Instructor] Showing first notification (modal was hidden)`
-          );
-        } else {
-          console.log(
-            `📦 [Instructor] Notification queued (modal already showing). Will auto-advance in 10s`
-          );
-        }
-        return true; // Always show modal
-      });
+      setShow(true); // Always ensure modal is visible
     });
 
     // ===== Handle Disconnect =====

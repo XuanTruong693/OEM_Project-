@@ -1,5 +1,7 @@
 import logging
+# pyrefly: ignore [missing-import]
 import torch
+# pyrefly: ignore [missing-import]
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from typing import Optional
 
@@ -79,7 +81,7 @@ class AIModel:
     def bi_encoder(self) -> SentenceTransformer:
         if self._bi_encoder is None:
             self._initialize_models()
-        return self._bi_encoder
+        return self._bi_encoder # pyright: ignore[reportReturnType]
 
     @property
     def cross_encoder(self) -> CrossEncoder:
@@ -97,7 +99,7 @@ class AIModel:
     def reranker(self) -> CrossEncoder:
         if self._reranker is None:
             self._initialize_models()
-        return self._reranker
+        return self._reranker # pyright: ignore[reportReturnType]
 
 # Global helper to get the singleton instance
 def get_ai_model():

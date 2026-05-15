@@ -94,7 +94,7 @@ exports.getAIGradingLogs = async (req, res) => {
               (latest_check.ai_suggested_score IS NULL AND sa_check.score > 0 AND (sa_check.status = 'graded' OR sa_check.status = 'confirmed'))
           )
           LIMIT 1
-        ) IS NOT NULL as is_instructor_modified
+        ) IS NOT NULL AND s.ai_grading_status = 'completed' as is_instructor_modified
       FROM submissions s
       LEFT JOIN exams e ON s.exam_id = e.id
       LEFT JOIN users u ON s.user_id = u.id
@@ -386,51 +386,57 @@ exports.getMissedSubmissions = async (req, res) => {
 
 exports.forceRegradeBatch = async (req, res) => {
     try {
-        const { mode, startDate, endDate, limit } = req.body;
+        const { mode, startDate, endDate, limit, submissionIds } = req.body;
         
-        let whereClause = "1=1";
-        const params = [];
+        let subIds = [];
 
-        // Apply filters
-        if (startDate) {
-            whereClause += " AND s.submitted_at >= ?";
-            params.push(startDate);
-        }
-        if (endDate) {
-            whereClause += " AND s.submitted_at <= ?";
-            params.push(endDate);
-        }
-
-        // Apply mode
-        if (mode === 'missed_only') {
-            whereClause += " AND s.ai_grading_status IS NULL";
-        } else if (mode === 'failed_only') {
-            whereClause += " AND s.ai_grading_status = 'failed'";
+        if (submissionIds && Array.isArray(submissionIds) && submissionIds.length > 0) {
+            subIds = submissionIds;
         } else {
-            // mode 'all'
-            whereClause += " AND (s.ai_grading_status IS NULL OR s.ai_grading_status != 'not_required')";
+            let whereClause = "1=1";
+            const params = [];
+
+            // Apply filters
+            if (startDate) {
+                whereClause += " AND s.submitted_at >= ?";
+                params.push(startDate);
+            }
+            if (endDate) {
+                whereClause += " AND s.submitted_at <= ?";
+                params.push(endDate);
+            }
+
+            // Apply mode
+            if (mode === 'missed_only') {
+                whereClause += " AND s.ai_grading_status IS NULL";
+            } else if (mode === 'failed_only') {
+                whereClause += " AND s.ai_grading_status = 'failed'";
+            } else {
+                // mode 'all'
+                whereClause += " AND (s.ai_grading_status IS NULL OR s.ai_grading_status != 'not_required')";
+            }
+
+            // Ensure they have essays
+            whereClause += ` AND EXISTS (
+                SELECT 1 FROM student_answers sa
+                JOIN exam_questions q ON sa.question_id = q.id
+                WHERE sa.submission_id = s.id AND q.type = 'Essay' AND sa.answer_text IS NOT NULL
+            )`;
+
+            // Fetch IDs first to apply limit if needed
+            let query = `SELECT s.id FROM submissions s WHERE ${whereClause} ORDER BY s.submitted_at DESC`;
+            if (limit) {
+                query += ` LIMIT ${parseInt(limit)}`;
+            }
+
+            const [submissions] = await pool.query(query, params);
+            
+            if (submissions.length === 0) {
+                return res.json({ success: true, message: 'Không tìm thấy bài thi nào thỏa mãn bộ lọc', affectedRows: 0 });
+            }
+
+            subIds = submissions.map(s => s.id);
         }
-
-        // Ensure they have essays
-        whereClause += ` AND EXISTS (
-            SELECT 1 FROM student_answers sa
-            JOIN exam_questions q ON sa.question_id = q.id
-            WHERE sa.submission_id = s.id AND q.type = 'Essay' AND sa.answer_text IS NOT NULL
-        )`;
-
-        // Fetch IDs first to apply limit if needed
-        let query = `SELECT s.id FROM submissions s WHERE ${whereClause} ORDER BY s.submitted_at DESC`;
-        if (limit) {
-            query += ` LIMIT ${parseInt(limit)}`;
-        }
-
-        const [submissions] = await pool.query(query, params);
-        
-        if (submissions.length === 0) {
-            return res.json({ success: true, message: 'Không tìm thấy bài thi nào thỏa mãn bộ lọc', affectedRows: 0 });
-        }
-
-        const subIds = submissions.map(s => s.id);
 
         // Batch Reset Scores and Status
         // Note: As per user request, we DO NOT delete ai_logs.
@@ -455,7 +461,7 @@ exports.forceRegradeBatch = async (req, res) => {
             await req.logActivity({
                 actionType: 'admin_batch_regrade',
                 targetTable: 'submissions',
-                description: `Admin ép chấm lại hàng loạt cho ${subIds.length} bài thi. Mode: ${mode}`
+                description: `Admin ép chấm lại cho ${subIds.length} bài thi đã chọn.`
             });
         }
 
@@ -473,7 +479,7 @@ exports.forceRegradeBatch = async (req, res) => {
 
 exports.getBatchRegradePreview = async (req, res) => {
     try {
-        const { mode, startDate, endDate, limit } = req.query;
+        const { mode, startDate, endDate, limit, search } = req.query;
         
         let whereClause = "1=1";
         const params = [];
@@ -493,6 +499,11 @@ exports.getBatchRegradePreview = async (req, res) => {
             whereClause += " AND s.ai_grading_status = 'failed'";
         } else {
             whereClause += " AND (s.ai_grading_status IS NULL OR s.ai_grading_status != 'not_required')";
+        }
+
+        if (search) {
+            whereClause += " AND (u.full_name LIKE ? OR u.email LIKE ?)";
+            params.push(`%${search}%`, `%${search}%`);
         }
 
         whereClause += ` AND EXISTS (

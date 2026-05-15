@@ -39,6 +39,7 @@ CREATE TABLE users (
     two_factor_secret VARCHAR(255) NULL,
     is_two_factor_enabled BOOLEAN DEFAULT FALSE NOT NULL,
     refresh_token TEXT NULL,
+    fcm_token VARCHAR(255) NULL,
     INDEX idx_users_role (role)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 

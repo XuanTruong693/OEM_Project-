@@ -23,6 +23,15 @@ const RegisterPage = () => {
   const role = localStorage.getItem("selectedRole") || "";
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [timer, setTimer] = useState(0);
+
+  // Đếm ngược 60s cho gửi lại OTP
+  useEffect(() => {
+    if (timer > 0) {
+      const countdown = setTimeout(() => setTimer((prev) => prev - 1), 1000);
+      return () => clearTimeout(countdown);
+    }
+  }, [timer]);
 
   // --- Kiểm tra role + roomId ---
   useEffect(() => {
@@ -101,6 +110,7 @@ const RegisterPage = () => {
       console.log("[Send OTP] Response:", res.data);
       setSuccess("Mã OTP đã được gửi đến email của bạn");
       setOtpStep(true);
+      setTimer(60);
     } catch (error) {
       console.error("❌ Send OTP Error:", error);
       setErrors({
@@ -421,7 +431,23 @@ const RegisterPage = () => {
                   </button>
                 </div>
                 {errors.otp && <p className="text-red-500 text-sm">{errors.otp}</p>}
-                <button type="button" onClick={() => { setOtpStep(false); setOtpCode(''); setErrors({}); }} className="text-sm text-blue-600 hover:text-blue-800 underline">Quay lại nhập email</button>
+                <div className="flex justify-between items-center text-sm pt-1">
+                  <button
+                    type="button"
+                    onClick={() => { setOtpStep(false); setOtpCode(''); setErrors({}); }}
+                    className="text-blue-600 hover:text-blue-800 underline"
+                  >
+                    Quay lại nhập email
+                  </button>
+                  <button
+                    type="button"
+                    disabled={timer > 0 || otpLoading}
+                    onClick={handleSendOTP}
+                    className={`font-semibold ${timer > 0 ? "text-gray-400 cursor-not-allowed" : "text-green-600 hover:underline"}`}
+                  >
+                    {timer > 0 ? `Gửi lại mã (${timer}s)` : "Gửi lại mã"}
+                  </button>
+                </div>
               </div>
             )}
 

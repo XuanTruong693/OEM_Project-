@@ -593,6 +593,34 @@ async function requestDeviceChange(req, res) {
                 status: 'requesting',
                 detectedAt: new Date()
             });
+
+            // Gửi thông báo đẩy FCM khi có yêu cầu đổi thiết bị (để giảng viên tắt màn hình vẫn nhận được)
+            try {
+                const [instructorRows] = await sequelize.query(`
+                    SELECT u.fcm_token 
+                    FROM exams e
+                    LEFT JOIN users u ON u.id = e.instructor_id
+                    WHERE e.id = ? LIMIT 1
+                `, { replacements: [data.exam_id] });
+                
+                if (instructorRows && instructorRows[0] && instructorRows[0].fcm_token) {
+                    const { sendPushNotification } = require("../../services/fcmService");
+                    const m1 = data.first_device_name || "Không rõ";
+                    const m2 = data.second_device_name || "Không rõ";
+                    sendPushNotification(
+                        instructorRows[0].fcm_token,
+                        `🚨 XIN ĐỔI THIẾT BỊ - ${data.student_name}`,
+                        `🔴 Máy 1: ${m1} ➡️ Máy 2: ${m2}`,
+                        {
+                            submissionId: String(submissionId),
+                            examId: String(data.exam_id),
+                            deviceChange: "true"
+                        }
+                    ).catch(err => console.error("⚠️ [FCM Device Change] Error:", err.message));
+                }
+            } catch (fcmErr) {
+                console.error("⚠️ [FCM Device Change] Error checking instructor fcm_token:", fcmErr.message);
+            }
         }
 
         return res.json({ success: true, status: 'requesting', message: 'Yêu cầu đổi máy đã được gửi tới giảng viên.' });

@@ -11,12 +11,13 @@ import axiosClient from "../../api/axiosClient";
 import ExcelJS from "exceljs";
 import mammoth from "mammoth";
 import * as pdfjsLib from "pdfjs-dist";
+import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import { RiFileExcel2Fill, RiFileWord2Fill } from "react-icons/ri";
 import { API_BASE_URL } from "../../api/config";
 
-// Configure PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// Configure PDF.js worker dynamically via Vite bundled asset
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 // Supported file extensions
 const SUPPORTED_EXTENSIONS = ['.xlsx', '.xls', '.docx', '.pdf'];
@@ -172,7 +173,7 @@ const parseTextContent = (text) => {
       // 2. Detect Long Essay: Question... (Point)
       const longMatch = line.match(/(.+?)\s*\((\d+(?:[.,]\d+)?)\s*(?:points?|đ)\)\s*$/i);
       if (longMatch && !optionPrefixPattern.test(line)) {
-        let qText = longMatch[1].replace(/^\d+[:.]?\s*/, "").trim();
+        let qText = longMatch[1].replace(questionPrefixPattern, "").trim();
         const pts = parseFloat(longMatch[2].replace(",", "."));
 
         let modelAnswer = "";
@@ -180,13 +181,28 @@ const parseTextContent = (text) => {
 
         while (nextI < lines.length) {
           const nextLine = lines[nextI];
-          if (nextLine.toLowerCase().startsWith("đáp án")) {
+          const lowerNext = nextLine.toLowerCase();
+          let prefixLength = 0;
+          if (lowerNext.startsWith("đáp án")) prefixLength = "đáp án".length;
+          else if (lowerNext.startsWith("câu trả lời")) prefixLength = "câu trả lời".length;
+          else if (lowerNext.startsWith("trả lời")) prefixLength = "trả lời".length;
+          else if (lowerNext.startsWith("model answer")) prefixLength = "model answer".length;
+          else if (lowerNext.startsWith("answer")) prefixLength = "answer".length;
+
+          if (prefixLength > 0) {
+            let firstLineAns = nextLine.substring(prefixLength).trim();
+            if (firstLineAns.startsWith(":") || firstLineAns.startsWith("-")) {
+              firstLineAns = firstLineAns.substring(1).trim();
+            }
+            modelAnswer = firstLineAns;
             nextI++;
             while (nextI < lines.length) {
               const ansLine = lines[nextI];
               if (scorePattern.test(ansLine) || questionPrefixPattern.test(ansLine) ||
                 ansLine.toLowerCase().includes("trắc nghiệm") ||
-                ansLine.toLowerCase().includes("tự luận")) {
+                ansLine.toLowerCase().includes("tự luận") ||
+                ansLine.toLowerCase().includes("mcq") ||
+                ansLine.toLowerCase().includes("essay")) {
                 break;
               }
               modelAnswer += (modelAnswer ? "\n" : "") + ansLine;
@@ -200,7 +216,7 @@ const parseTextContent = (text) => {
 
         questions.push({
           row: questions.length + 1,
-          question_text: (contextText ? contextText + "\n" : "") + line.replace(/^\d+[:.]?\s*/, "").trim(),
+          question_text: (contextText ? contextText + "\n" : "") + qText,
           original_question_text: line,
           type: "Essay",
           model_answer: modelAnswer.trim(),
@@ -277,7 +293,35 @@ const parsePDFFile = async (file) => {
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
       const content = await page.getTextContent();
-      const pageText = content.items.map(item => item.str).join(" ");
+
+      let pageText = "";
+      let lastItem = null;
+
+      // Tái thiết lập lại cấu trúc xuống dòng dựa trên tọa độ Y (transform[5])
+      for (const item of content.items) {
+        if (!item.str || item.str.trim() === "" && !item.hasEOL) continue;
+
+        if (lastItem) {
+          const lastY = lastItem.transform[5];
+          const currentY = item.transform[5];
+
+          // Nếu độ cao khác biệt đáng kể (> 3), chèn dấu xuống dòng \n
+          if (Math.abs(lastY - currentY) > 3) {
+            pageText += "\n";
+          } else if (
+            item.str.trim() &&
+            !pageText.endsWith(" ") &&
+            !item.str.startsWith(" ")
+          ) {
+            // Nếu cùng một dòng, thêm khoảng trắng cách ra để nối từ
+            pageText += " ";
+          }
+        }
+
+        pageText += item.str;
+        lastItem = item;
+      }
+
       fullText += pageText + "\n";
     }
 
@@ -285,6 +329,7 @@ const parsePDFFile = async (file) => {
       throw new Error("File PDF không có nội dung hoặc không đọc được");
     }
 
+    // Đưa vào hàm phân tích text dùng chung với Word
     return parseTextContent(fullText);
   } catch (err) {
     throw new Error(`Lỗi đọc file PDF: ${err.message}`);

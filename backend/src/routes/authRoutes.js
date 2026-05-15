@@ -28,6 +28,25 @@ router.post("/role", (req, res) => {
   return res.json({ role: getAppRole() });
 });
 
+router.post("/update-fcm", async (req, res) => {
+  try {
+    const { userId, fcmToken } = req.body;
+    if (!userId || !fcmToken) {
+      return res.status(400).json({ message: "userId and fcmToken are required" });
+    }
+    const user = await User.findByPk(userId);
+    if (user) {
+      await user.update({ fcm_token: fcmToken });
+      console.log(`✅ [FCM Sync] Updated fcm_token for user ID ${userId}`);
+      return res.json({ status: "success" });
+    }
+    return res.status(404).json({ message: "User not found" });
+  } catch (err) {
+    console.error("❌ [FCM Sync] Error:", err.message);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 // Helper to get client IP
 const getClientIp = (req) => {
   return req.ip ||
@@ -44,12 +63,16 @@ const generateToken = (user, req) => {
 };
 
 // Generate both access and refresh tokens
-const generateTokens = (user, req) => {
+const generateTokens = async (user, req) => {
   const payload = { id: user.id, email: user.email, role: user.role };
   const clientIp = req ? getClientIp(req) : null;
+  const refreshToken = generateRefreshToken(payload);
+  
+  await user.update({ refresh_token: refreshToken });
+  
   return {
     accessToken: generateAccessToken(payload, clientIp),
-    refreshToken: generateRefreshToken(payload),
+    refreshToken,
   };
 };
 
@@ -221,7 +244,7 @@ router.post("/google", async (req, res) => {
   console.log("🟢 [BACKEND] Google login/register API hit!");
 
   try {
-    const { idToken, role, roomId } = req.body;
+    const { idToken, role, roomId, fcmToken } = req.body;
     if (!idToken || !role)
       return res
         .status(400)
@@ -353,7 +376,10 @@ router.post("/google", async (req, res) => {
 
     // Removed appRole enforcement - users should be able to log in with their actual role
 
-    const tokens = generateTokens(user, req);
+    const tokens = await generateTokens(user, req);
+    if (fcmToken) {
+      await user.update({ fcm_token: fcmToken });
+    }
     //console.log(`[Google Login] 🔑 JWT Token: ${tokens.accessToken}`);
     res.json({
       message: "Đăng nhập Google thành công",
@@ -523,7 +549,7 @@ router.post("/register", async (req, res) => {
 // --- Login thường ---
 router.post("/login", async (req, res) => {
   try {
-    const { email, password, role, roomId } = req.body;
+    const { email, password, role, roomId, fcmToken } = req.body;
     console.log("[Login] Payload:", req.body);
 
     if (!email || !password) {
@@ -706,7 +732,10 @@ router.post("/login", async (req, res) => {
       }
     }
 
-    const tokens = generateTokens(user, req);
+    const tokens = await generateTokens(user, req);
+    if (fcmToken) {
+      await user.update({ fcm_token: fcmToken });
+    }
     console.log(`[Login] ✅ Đăng nhập thành công cho user: ${email}`);
     console.log(`[Token] 🔑 JWT Token: ${tokens.accessToken}`);
 
@@ -769,7 +798,7 @@ router.post("/verify-2fa", async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy người dùng", status: "error" });
     }
 
-    const tokens = generateTokens(user, req);
+    const tokens = await generateTokens(user, req);
 
     let response = {
       message: "Đăng nhập thành công",

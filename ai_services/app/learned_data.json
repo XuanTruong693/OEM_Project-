@@ -500,16 +500,6 @@
     "score_ratio": 1.0
   },
   {
-    "student_answer": "Tân Duy sityuniver",
-    "model_answer": "Duy Tân University.",
-    "confirmed_score": 0.2,
-    "max_points": 2.0,
-    "ai_score": 0.53,
-    "feedback": "",
-    "learned_at": "2026-04-14T19:59:11.195254",
-    "score_ratio": 0.1
-  },
-  {
     "student_answer": "Tham số",
     "model_answer": "tham so",
     "confirmed_score": 0.2,
@@ -2030,16 +2020,6 @@
     "learned_at": "2026-04-17T18:53:16.541196"
   },
   {
-    "student_answer": "Biến cố năm 1930 đã giải quyết triệt để sự bế tắc của phong trào giải phóng dân tộc cuối thế kỷ 19. Bằng việc vũ trang lý luận Mác - Leenin cho lực lượng vô sản, tổ chức đã đưa phong trao chống thực dân từ tính chất tự phát tiến lên tự giác hoàn toàn, tự nắm lấy ngọn cờ thế kỷ.",
-    "model_answer": "Sự ra đời của Đảng là một bước ngoặt vĩ đại trong lịch sử cách mạng Việt Nam, chấm dứt hoàn toàn thời kỳ khủng hoảng về đường lối cứu nước và giai cấp lãnh đạo. Nó khẳng định giai cấp công nhân đã trưởng thành và đủ sức bước lên vũ đài chính trị.",
-    "confirmed_score": 2.0,
-    "ai_score": 0.08,
-    "max_points": 2.0,
-    "score_ratio": 1.0,
-    "feedback": "Đúng ý chính diễn đạt giỏi theo cách hiểu",
-    "learned_at": "2026-04-23T10:15:25.639410"
-  },
-  {
     "student_answer": "Hello",
     "model_answer": "Mạch gốc của ADN đóng vai trò làm khuôn mẫu để tổng hợp nên phân tử mARN thông qua nguyên tắc bổ sung.",
     "confirmed_score": 0,
@@ -2048,16 +2028,6 @@
     "score_ratio": 0.0,
     "feedback": "",
     "learned_at": "2026-05-01T16:07:25.276899"
-  },
-  {
-    "student_answer": "Là sao là như lào m muốn gì",
-    "model_answer": "Mạch gốc của ADN đóng vai trò làm khuôn mẫu để tổng hợp nên phân tử mARN thông qua nguyên tắc bổ sung.",
-    "confirmed_score": 0.3,
-    "ai_score": 0,
-    "max_points": 2.0,
-    "score_ratio": 0.15,
-    "feedback": "",
-    "learned_at": "2026-05-01T16:07:25.277887"
   },
   {
     "student_answer": "su kien thay doi du lieu\n",
@@ -2268,5 +2238,15 @@
     "score_ratio": 0.7499999999999999,
     "feedback": "",
     "learned_at": "2026-05-05T10:48:54.961067"
+  },
+  {
+    "student_answer": "Tân Duy sityuniver",
+    "model_answer": "Duy Tân University.",
+    "confirmed_score": 0.2,
+    "ai_score": 0.53,
+    "max_points": 2.0,
+    "score_ratio": 0.1,
+    "feedback": "",
+    "learned_at": "2026-05-08T20:37:23.998756"
   }
 ]

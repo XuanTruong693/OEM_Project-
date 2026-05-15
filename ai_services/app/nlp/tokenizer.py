@@ -139,6 +139,7 @@ ABBREVIATIONS: Dict[str, str] = {
     "wa": "quá", "lun": "luôn", "đag": "đang", "đg": "đang",
     "zv": "như vậy",
     "lm": "làm", "nhe": "nhé", "nha": "nhé",
+    "mò đel": "model", "vew": "view", "côn chôn lơ": "controller", "dao diện": "giao diện", "trug tâm": "trung tâm", "dữ liêu": "dữ liệu",
     
     # Xin xỏ (Noise)
     "xin xỏ": "noise", "thầy ơi": "noise", "giúp em": "noise",

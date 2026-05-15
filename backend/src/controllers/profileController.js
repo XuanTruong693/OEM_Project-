@@ -62,7 +62,7 @@ const updateProfile = async (req, res) => {
 		if (typeof phone_number !== "undefined") user.phone_number = phone_number;
 		if (typeof address !== "undefined") user.address = address;
 		if (typeof avatar !== "undefined") user.avatar = avatar;
-		if (typeof gender !== "undefined") user.gender = gender;
+		if (typeof gender !== "undefined") user.gender = gender === '' ? null : gender;
 
 		// Ensure email is not changed by profile update
 		// (do not assign req.body.email anywhere)
