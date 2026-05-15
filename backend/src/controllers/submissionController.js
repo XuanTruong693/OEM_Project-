@@ -253,7 +253,26 @@ exports.postProctorEvent = async (req, res) => {
             'win_d': "Sử dụng Win+D ẩn màn hình nhanh",
             'multi_monitor': "Sử dụng nhiều màn hình",
           };
-          const readableEvent = eventDict[event_type] || event_type || "Hành vi đáng ngờ";
+          let readableEvent = eventDict[event_type] || event_type || "Hành vi đáng ngờ";
+          const keyId = details && (details.key || details.key_id);
+          if (event_type === "blocked_key" && keyId) {
+             const k = String(keyId).toLowerCase();
+             switch (k) {
+               case "f12": readableEvent = "Mở công cụ lập trình (F12)"; break;
+               case "f11": readableEvent = "Can thiệp kích thước màn hình (F11)"; break;
+               case "escape": readableEvent = "Thoát toàn màn hình (ESC)"; break;
+               case "f5": readableEvent = "Làm mới bài thi (F5)"; break;
+               case "alt+tab": readableEvent = "Chuyển ứng dụng (Alt+Tab)"; break;
+               case "meta+d": readableEvent = "Ẩn nhanh ra Desktop (Win+D)"; break;
+               case "meta+p": readableEvent = "Kết nối màn hình phụ (Win+P)"; break;
+               case "alt+f4": readableEvent = "Đóng cửa sổ trình duyệt (Alt+F4)"; break;
+               case "printscreen": readableEvent = "Chụp ảnh bài thi (PrintScreen)"; break;
+               case "copy": readableEvent = "Sao chép nội dung (Ctrl+C)"; break;
+               case "drag_drop": readableEvent = "Kéo thả tài liệu vào bài thi"; break;
+               case "ctrl+v": readableEvent = "Dán nội dung (Ctrl+V)"; break;
+               default: readableEvent = `Dùng phím bị chặn (${k.toUpperCase()})`; break;
+             }
+          }
           sendPushNotification(
             examRows[0].fcm_token,
             `🚨 GIAN LẬN - ${studentName}`,
