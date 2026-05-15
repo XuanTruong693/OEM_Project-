@@ -9,6 +9,7 @@ import 'package:mobile/core/network/dio_client.dart';
 import 'package:mobile/core/utils/excel_parser_service.dart';
 import 'package:mobile/core/storage/secure_storage_helper.dart';
 import 'package:mobile/core/utils/notification_helper.dart';
+import 'package:mobile/core/utils/violation_dictionary.dart';
 
 // --- IMPORT MÀN HÌNH AUTH ---
 import 'package:mobile/features/auth/data/datasources/auth_remote_data_source.dart';
@@ -794,7 +795,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                     _buildSectionTitle("LOẠI VI PHẠM"),
                     const SizedBox(height: 4),
                     Text(
-                      "[AI PHÁT HIỆN] ${_getViolationTitle(violation.eventType).toUpperCase()}",
+                      ViolationDictionary.getDynamicViolationTitle(
+                        violation.eventType, 
+                        keyId: violation.eventDetails['key']?.toString() ?? violation.eventDetails['key_id']?.toString()
+                      ).toUpperCase(),
                       style: const TextStyle(
                         color: Colors.red,
                         fontWeight: FontWeight.bold,
@@ -820,7 +824,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              _getViolationDescription(violation.eventType),
+                              ViolationDictionary.getDynamicViolationReason(
+                                violation.eventType, 
+                                keyId: violation.eventDetails['key']?.toString() ?? violation.eventDetails['key_id']?.toString(),
+                                defaultMsg: violation.eventDetails['message']?.toString() ?? '',
+                              ),
                               style: TextStyle(
                                 color: Colors.grey[700],
                                 fontSize: 13,
