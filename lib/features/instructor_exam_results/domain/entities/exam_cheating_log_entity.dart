@@ -9,6 +9,7 @@ class ExamCheatingLogEntity {
   final String? snapshotId;
   final String? message;
   final String? severity;
+  final String? keyId;
 
   const ExamCheatingLogEntity({
     this.id,
@@ -19,6 +20,7 @@ class ExamCheatingLogEntity {
     this.snapshotId,
     this.message,
     this.severity,
+    this.keyId,
   });
 
   factory ExamCheatingLogEntity.fromJson(Map<String, dynamic> json) {
@@ -26,6 +28,7 @@ class ExamCheatingLogEntity {
     String? detailsString;
     String? snapshotId;
     String? message;
+    String? keyId;
 
     void parseMap(Map map) {
       snapshotId = map['snapshot_id']?.toString();
@@ -35,6 +38,7 @@ class ExamCheatingLogEntity {
       } else {
         message = msg?.toString();
       }
+      keyId = map['key']?.toString() ?? map['key_id']?.toString();
     }
 
     if (rawDetails is Map) {
@@ -61,6 +65,7 @@ class ExamCheatingLogEntity {
       snapshotId: snapshotId,
       message: message,
       severity: json['severity']?.toString(),
+      keyId: keyId,
     );
   }
 }

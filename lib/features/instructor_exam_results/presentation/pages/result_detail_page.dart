@@ -9,6 +9,7 @@ import '../../domain/entities/exam_result_entity.dart';
 import '../../domain/entities/exam_cheating_log_entity.dart';
 import '../../domain/entities/exam_answer_entity.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
+import '../../../../core/utils/violation_dictionary.dart';
 
 const violationMap = {
   'copy_attempt': 'Cố tình sao chép (Copy)',
@@ -646,8 +647,10 @@ class _ResultDetailPageState extends State<ResultDetailPage>
             itemCount: _logs.length,
             itemBuilder: (context, index) {
               final log = _logs[index];
-              final translatedType =
-                  violationMap[log.eventType] ?? log.eventType ?? '';
+              final translatedType = ViolationDictionary.getDynamicViolationTitle(
+                log.eventType ?? '',
+                keyId: log.keyId,
+              );
               final severityColor = log.severity == 'high'
                   ? Colors.red
                   : (log.severity == 'low'
@@ -722,9 +725,11 @@ class _ResultDetailPageState extends State<ResultDetailPage>
                           border: Border.all(color: Colors.grey[200]!),
                         ),
                         child: Text(
-                          log.message ??
-                              log.eventDetails ??
-                              'Không có chi tiết vi phạm',
+                          ViolationDictionary.getDynamicViolationReason(
+                            log.eventType ?? '',
+                            keyId: log.keyId,
+                            defaultMsg: log.message ?? log.eventDetails ?? 'Không có chi tiết vi phạm',
+                          ),
                           style: TextStyle(
                             fontSize: 14,
                             color: Colors.blueGrey[800],
