@@ -133,275 +133,322 @@ class _ExamEditPageState extends State<ExamEditPage> {
                 .where((q) => q.type == 'essay')
                 .toList();
 
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // --- HEADER: TIÊU ĐỀ & UPLOAD FILE ---
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.blue.shade100),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          "📝 Tiêu đề đề thi",
-                          style: TextStyle(fontWeight: FontWeight.bold),
+            return CustomScrollView(
+              slivers: [
+                SliverPadding(
+                  padding: const EdgeInsets.all(16.0),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate([
+                      // --- HEADER: TIÊU ĐỀ & UPLOAD FILE ---
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.blue.shade100),
                         ),
-                        const SizedBox(height: 8),
-                        TextFormField(
-                          initialValue: exam.title,
-                          onChanged: (val) => context
-                              .read<ExamEditorBloc>()
-                              .add(UpdateExamTitleEvent(val)),
-                          decoration: InputDecoration(
-                            filled: true,
-                            fillColor: Colors.white,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide.none,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              "📝 Tiêu đề đề thi",
+                              style: TextStyle(fontWeight: FontWeight.bold),
                             ),
-                            hintText: "Nhập tiêu đề...",
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              foregroundColor: Colors.blue.shade700,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                side: BorderSide(color: Colors.blue.shade200),
-                              ),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                            onPressed: _pickExcelFile,
-                            icon: const Icon(Icons.upload_file),
-                            label: const Text("Import từ Excel"),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // --- THÔNG BÁO LỖI LƯU (NẾU CÓ) ---
-                  if (state.saveError != null)
-                    Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.only(bottom: 16),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.red.shade200),
-                      ),
-                      child: Text(
-                        state.saveError!,
-                        style: TextStyle(color: Colors.red.shade700),
-                      ),
-                    ),
-
-                  // --- PREVIEW EXCEL ---
-                  if (state.isPreviewOpen && state.previewQuestions.isNotEmpty)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 16),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.yellow.shade50,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.yellow.shade400),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            "Preview: Các câu hỏi tìm được",
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          if (state.previewMessage != null)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 8.0,
-                              ),
-                              child: Text(
-                                state.previewMessage!,
-                                style: TextStyle(
-                                  color: Colors.orange.shade800,
-                                  fontSize: 13,
+                            const SizedBox(height: 8),
+                            TextFormField(
+                              initialValue: exam.title,
+                              onChanged: (val) => context
+                                  .read<ExamEditorBloc>()
+                                  .add(UpdateExamTitleEvent(val)),
+                              decoration: InputDecoration(
+                                filled: true,
+                                fillColor: Colors.white,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide.none,
                                 ),
+                                hintText: "Nhập tiêu đề...",
                               ),
                             ),
-                          const SizedBox(height: 8),
-                          // List thu gọn
-                          SizedBox(
-                            height: 250,
-                            child: ListView.builder(
-                              itemCount: state.previewQuestions.length,
-                              itemBuilder: (ctx, i) {
-                                final q = state.previewQuestions[i];
-                                final isSelected = state.selectedPreviewIds
-                                    .contains(q.id);
-                                return CheckboxListTile(
-                                  title: Text(
-                                    q.content,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 13),
-                                  ),
-                                  subtitle: Text(
-                                    "Điểm: ${q.points} | ${q.type == 'MCQ' ? 'Trắc nghiệm' : 'Tự luận'}",
-                                    style: const TextStyle(fontSize: 12),
-                                  ),
-                                  value: isSelected,
-                                  onChanged: (_) => context
-                                      .read<ExamEditorBloc>()
-                                      .add(TogglePreviewSelectionEvent(q.id)),
-                                );
-                              },
-                            ),
-                          ),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              TextButton(
-                                onPressed: () => context
-                                    .read<ExamEditorBloc>()
-                                    .add(CancelPreviewEvent()),
-                                child: const Text("Hủy"),
-                              ),
-                              ElevatedButton(
-                                onPressed: () => context
-                                    .read<ExamEditorBloc>()
-                                    .add(AddSelectedPreviewQuestionsEvent()),
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.green,
+                                  backgroundColor: Colors.white,
+                                  foregroundColor: Colors.blue.shade700,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    side: BorderSide(color: Colors.blue.shade200),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
                                 ),
-                                child: const Text("Thêm vào đề"),
+                                onPressed: _pickExcelFile,
+                                icon: const Icon(Icons.upload_file),
+                                label: const Text("Import từ Excel"),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // --- THÔNG BÁO LỖI LƯU (NẾU CÓ) ---
+                      if (state.saveError != null)
+                        Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 16),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.red.shade200),
+                          ),
+                          child: Text(
+                            state.saveError!,
+                            style: TextStyle(color: Colors.red.shade700),
+                          ),
+                        ),
+
+                      // --- PREVIEW EXCEL ---
+                      if (state.isPreviewOpen && state.previewQuestions.isNotEmpty)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 16),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.yellow.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.yellow.shade400),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                "Preview: Các câu hỏi tìm được",
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              if (state.previewMessage != null)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8.0,
+                                  ),
+                                  child: Text(
+                                    state.previewMessage!,
+                                    style: TextStyle(
+                                      color: Colors.orange.shade800,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              const SizedBox(height: 8),
+                              // List thu gọn
+                              SizedBox(
+                                height: 250,
+                                child: ListView.builder(
+                                  itemCount: state.previewQuestions.length,
+                                  itemBuilder: (ctx, i) {
+                                    final q = state.previewQuestions[i];
+                                    final isSelected = state.selectedPreviewIds
+                                        .contains(q.id);
+                                    return CheckboxListTile(
+                                      title: Text(
+                                        q.content,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 13),
+                                      ),
+                                      subtitle: Text(
+                                        "Điểm: ${q.points} | ${q.type == 'MCQ' ? 'Trắc nghiệm' : 'Tự luận'}",
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                      value: isSelected,
+                                      onChanged: (_) => context
+                                          .read<ExamEditorBloc>()
+                                          .add(TogglePreviewSelectionEvent(q.id)),
+                                    );
+                                  },
+                                ),
+                              ),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  TextButton(
+                                    onPressed: () => context
+                                        .read<ExamEditorBloc>()
+                                        .add(CancelPreviewEvent()),
+                                    child: const Text("Hủy"),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () => context
+                                        .read<ExamEditorBloc>()
+                                        .add(AddSelectedPreviewQuestionsEvent()),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.green,
+                                    ),
+                                    child: const Text("Thêm vào đề"),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
+                        ),
+
+                      // --- TIÊU ĐỀ MCQ ---
+                      if (mcqQuestions.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: Text(
+                            "📝 Phần trắc nghiệm (${mcqQuestions.length} câu)",
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ),
+                    ]),
+                  ),
+                ),
+
+                // --- DANH SÁCH MCQ (LAZY LOADED) ---
+                if (mcqQuestions.isNotEmpty)
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          final q = mcqQuestions[index];
+                          return McqEditorCard(
+                            key: ValueKey(q.id), // Rất quan trọng để Flutter không nhầm lẫn khi recycle widget
+                            index: index + 1,
+                            question: q,
+                            errors: state.validationErrors[q.id] ?? [],
+                            onDelete: () => _showDeleteConfirmDialog(q.id),
+                          );
+                        },
+                        childCount: mcqQuestions.length,
+                      ),
+                    ),
+                  ),
+
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        TextButton.icon(
+                          onPressed: () => context.read<ExamEditorBloc>().add(
+                                AddQuestionEvent('MCQ'),
+                              ),
+                          icon: const Icon(Icons.add),
+                          label: const Text("Thêm câu trắc nghiệm"),
+                        ),
+                        const SizedBox(height: 24),
+
+                        // --- DANH SÁCH ESSAY HEADER ---
+                        if (essayQuestions.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: Text(
+                              "✏️ Phần tự luận (${essayQuestions.length} câu)",
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.purple,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // --- DANH SÁCH ESSAY (LAZY LOADED) ---
+                if (essayQuestions.isNotEmpty)
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          final q = essayQuestions[index];
+                          return EssayEditorCard(
+                            key: ValueKey(q.id),
+                            index: mcqQuestions.length + index + 1,
+                            question: q,
+                            errors: state.validationErrors[q.id] ?? [],
+                            onDelete: () => _showDeleteConfirmDialog(q.id),
+                          );
+                        },
+                        childCount: essayQuestions.length,
+                      ),
+                    ),
+                  ),
+
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate([
+                      TextButton.icon(
+                        onPressed: () => context.read<ExamEditorBloc>().add(
+                              AddQuestionEvent('essay'),
+                            ),
+                        icon: const Icon(Icons.add, color: Colors.purple),
+                        label: const Text(
+                          "Thêm câu tự luận",
+                          style: TextStyle(color: Colors.purple),
+                        ),
+                      ),
+                      const SizedBox(height: 40),
+
+                      // --- ACTION BUTTONS ---
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => context.pop(),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                              ),
+                              child: const Text(
+                                "Hủy",
+                                style: TextStyle(fontSize: 16),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: state.isSaving
+                                  ? null
+                                  : () => context.read<ExamEditorBloc>().add(
+                                        SaveExamEvent(),
+                                      ),
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                              ),
+                              child: state.isSaving
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Text(
+                                      "Lưu thay đổi",
+                                      style: TextStyle(fontSize: 16),
+                                    ),
+                            ),
+                          ),
                         ],
                       ),
-                    ),
-
-                  // --- DANH SÁCH MCQ ---
-                  if (mcqQuestions.isNotEmpty) ...[
-                    Text(
-                      "📝 Phần trắc nghiệm (${mcqQuestions.length} câu)",
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    ...mcqQuestions.asMap().entries.map((entry) {
-                      final q = entry.value;
-                      return McqEditorCard(
-                        index: entry.key + 1,
-                        question: q,
-                        errors: state.validationErrors[q.id] ?? [],
-                        onDelete: () => _showDeleteConfirmDialog(q.id),
-                      );
-                    }),
-                  ],
-                  TextButton.icon(
-                    onPressed: () => context.read<ExamEditorBloc>().add(
-                      AddQuestionEvent('MCQ'),
-                    ),
-                    icon: const Icon(Icons.add),
-                    label: const Text("Thêm câu trắc nghiệm"),
+                    ]),
                   ),
-                  const SizedBox(height: 24),
-
-                  // --- DANH SÁCH ESSAY ---
-                  if (essayQuestions.isNotEmpty) ...[
-                    Text(
-                      "✏️ Phần tự luận (${essayQuestions.length} câu)",
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.purple,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    ...essayQuestions.asMap().entries.map((entry) {
-                      final q = entry.value;
-                      return EssayEditorCard(
-                        index: mcqQuestions.length + entry.key + 1,
-                        question: q,
-                        errors: state.validationErrors[q.id] ?? [],
-                        onDelete: () => _showDeleteConfirmDialog(q.id),
-                      );
-                    }),
-                  ],
-                  TextButton.icon(
-                    onPressed: () => context.read<ExamEditorBloc>().add(
-                      AddQuestionEvent('essay'),
-                    ),
-                    icon: const Icon(Icons.add, color: Colors.purple),
-                    label: const Text(
-                      "Thêm câu tự luận",
-                      style: TextStyle(color: Colors.purple),
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-
-                  // --- ACTION BUTTONS ---
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => context.pop(),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                          ),
-                          child: const Text(
-                            "Hủy",
-                            style: TextStyle(fontSize: 16),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: state.isSaving
-                              ? null
-                              : () => context.read<ExamEditorBloc>().add(
-                                  SaveExamEvent(),
-                                ),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                          ),
-                          child: state.isSaving
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text(
-                                  "Lưu thay đổi",
-                                  style: TextStyle(fontSize: 16),
-                                ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 40),
-                ],
-              ),
+                ),
+              ],
             );
           }
 

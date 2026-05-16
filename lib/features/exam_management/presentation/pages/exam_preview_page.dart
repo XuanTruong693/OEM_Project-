@@ -108,121 +108,132 @@ class _ExamPreviewPageState extends State<ExamPreviewPage> {
               children: [
                 // === LỚP DƯỚI CÙNG: GIAO DIỆN CHÍNH ===
                 SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // 1. Header Thống kê
-                        PreviewHeaderStats(
-                          total: total,
-                          mcq: mcq,
-                          essay: essay,
+                  child: CustomScrollView(
+                    slivers: [
+                      // 1. Header Thống kê
+                      SliverPadding(
+                        padding: const EdgeInsets.all(16.0),
+                        sliver: SliverToBoxAdapter(
+                          child: PreviewHeaderStats(
+                            total: total,
+                            mcq: mcq,
+                            essay: essay,
+                          ),
                         ),
-                        const SizedBox(height: 16),
+                      ),
 
-                        // 2. Danh sách câu hỏi (Cuộn được)
-                        Expanded(
-                          child: questions.isEmpty
-                              ? const Center(
-                                  child: Text(
-                                    "Chưa có câu hỏi nào trong đề thi này.",
-                                  ),
-                                )
-                              : ListView.builder(
-                                  itemCount: questions.length,
-                                  itemBuilder: (context, index) {
-                                    return QuestionPreviewCard(
-                                      question: questions[index],
-                                      index: index,
-                                    );
-                                  },
-                                ),
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        // 3. Footer: Nút bấm
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            TextButton.icon(
-                              onPressed: () => context.pop(),
-                              icon: const Icon(Icons.arrow_back, size: 18),
-                              label: const Text("Quay lại"),
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.blue.shade700,
-                              ),
+                      // 2. Danh sách câu hỏi (Lazy Loaded)
+                      if (questions.isEmpty)
+                        const SliverFillRemaining(
+                          child: Center(
+                            child: Text("Chưa có câu hỏi nào trong đề thi này."),
+                          ),
+                        )
+                      else
+                        SliverPadding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          sliver: SliverList(
+                            delegate: SliverChildBuilderDelegate(
+                              (context, index) {
+                                return QuestionPreviewCard(
+                                  question: questions[index],
+                                  index: index,
+                                );
+                              },
+                              childCount: questions.length,
                             ),
+                          ),
+                        ),
 
-                            // Nút Action phụ thuộc vào trạng thái
-                            if (!isInProgress)
-                              ElevatedButton(
-                                onPressed: () {
-                                  // Phát tín hiệu kiểm tra an toàn (CheckAndOpenRoomEvent)
-                                  context.read<ExamPreviewBloc>().add(
-                                    CheckAndOpenRoomEvent(),
-                                  );
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.green.shade600,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 12,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                child: Text(
-                                  (exam.status == 'published' &&
-                                          exam.timeClose != null &&
-                                          DateTime.now().isAfter(
-                                            DateTime.parse(exam.timeClose!),
-                                          ))
-                                      ? "Mở phòng lại"
-                                      : "Bắt đầu mở phòng",
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              )
-                            else
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 10,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.orange.shade50,
-                                  border: Border.all(
-                                    color: Colors.orange.shade200,
-                                  ),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.lock_outline,
-                                      size: 16,
-                                      color: Colors.orange,
+                      // 3. Footer: Nút bấm
+                      SliverPadding(
+                        padding: const EdgeInsets.all(16.0),
+                        sliver: SliverToBoxAdapter(
+                          child: Column(
+                            children: [
+                              const SizedBox(height: 16),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  TextButton.icon(
+                                    onPressed: () => context.pop(),
+                                    icon: const Icon(Icons.arrow_back, size: 18),
+                                    label: const Text("Quay lại"),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: Colors.blue.shade700,
                                     ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      "Đang diễn ra",
-                                      style: TextStyle(
-                                        color: Colors.orange.shade800,
-                                        fontWeight: FontWeight.bold,
+                                  ),
+
+                                  // Nút Action phụ thuộc vào trạng thái
+                                  if (!isInProgress)
+                                    ElevatedButton(
+                                      onPressed: () {
+                                        context.read<ExamPreviewBloc>().add(
+                                          CheckAndOpenRoomEvent(),
+                                        );
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.green.shade600,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 20,
+                                          vertical: 12,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        (exam.status == 'published' &&
+                                                exam.timeClose != null &&
+                                                DateTime.now().isAfter(
+                                                  DateTime.parse(exam.timeClose!),
+                                                ))
+                                            ? "Mở phòng lại"
+                                            : "Bắt đầu mở phòng",
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    )
+                                  else
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 10,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.orange.shade50,
+                                        border: Border.all(
+                                          color: Colors.orange.shade200,
+                                        ),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.lock_outline,
+                                            size: 16,
+                                            color: Colors.orange,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            "Đang diễn ra",
+                                            style: TextStyle(
+                                              color: Colors.orange.shade800,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
-                                  ],
-                                ),
+                                ],
                               ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
 
