@@ -238,11 +238,11 @@ class TakeExamBloc extends Bloc<TakeExamEvent, TakeExamState> {
     // Send to backend via proctor-event API to log in DB
     try {
       final response = await dioClient.dio.post('/submissions/${event.submissionId}/proctor-event', data: {
-        'event_type': eventTypeInVi,
+        'event_type': event.key,
         'cheating_count': newViolations,
         'details': {
           'message': event.description,
-          'key': eventTypeInVi,
+          'key': event.key,
           'severity': 'high',
         },
       });

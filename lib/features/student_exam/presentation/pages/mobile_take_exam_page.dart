@@ -131,85 +131,90 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
   void _enableScreenSecurity() async {
     final monitorScreen = await SecureStorageHelper.getMonitorScreen();
     if (!monitorScreen) {
-      debugPrint("Screen monitoring is disabled by instructor. Skipping secure screen mode.");
+      debugPrint("Chế độ giám sát và chặn màn hình đang tắt. SV có thể quay chụp tự do.");
       return;
     }
-    try {
-      await _securityChannel.invokeMethod('enableSecureMode');
-    } catch (e) {
-      debugPrint("Native secure mode error: $e");
-    }
-    try {
-      await ScreenProtector.preventScreenshotOn();
 
-      // Listen for screenshots or recordings (First is screenshotCallback [0 params], second is screenRecordCallback [1 param])
-      ScreenProtector.addListener(
-        () {
-          if (mounted) {
-            _handleCheatingEvent(
-              'screenshot_attempt',
-              'Thí sinh đã chụp màn hình bài thi (Screenshot Attempt)',
-            );
-          }
-        },
-        (isRecording) {
-          if (mounted) {
+    // Chỉ khi bật giám sát mới kích hoạt các bộ quét gian lận và chặn màn hình
+    _startCheatMonitoring();
+
+    try {
+      // 1. Kích hoạt chặn cấp Native (Android: FLAG_SECURE, iOS: SecureField)
+      await _securityChannel.invokeMethod('enableSecureMode');
+      // 2. Kích hoạt chặn chụp màn hình cấp thư viện
+      await ScreenProtector.preventScreenshotOn();
+    } catch (e) {
+      debugPrint("Lỗi kích hoạt bảo mật màn hình: $e");
+    }
+  }
+
+  void _startCheatMonitoring() {
+    // 1. Lắng nghe sự kiện Screenshot/Record từ thư viện (Thường nhạy hơn trên iOS)
+    ScreenProtector.addListener(
+      () {
+        if (mounted) {
+          _handleCheatingEvent(
+            'screenshot_attempt',
+            'Thí sinh thực hiện hành vi chụp ảnh màn hình bài thi',
+          );
+        }
+      },
+      (isRecording) {
+        if (mounted) {
+          _handleCheatingEvent(
+            'screen_record_attempt',
+            'Thí sinh đang sử dụng tính năng quay màn hình bài thi',
+          );
+        }
+      },
+    );
+
+    // 2. Chạy Timer định kỳ kiểm tra trạng thái màn hình (Native)
+    // Ưu điểm: Bắt được cả Split-Screen, Overlay, Casting/Sharing
+    Timer.periodic(const Duration(seconds: 3), (timer) async {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      try {
+        final Map? status = await _securityChannel.invokeMethod<Map>(
+          'checkScreenStatus',
+        );
+        if (status != null) {
+          final bool isRecording = status['isRecording'] == true;
+          final bool isSharing = status['isSharing'] == true;
+          final bool isSplitScreen = status['isSplitScreen'] == true;
+          final bool isOverlayActive = status['isOverlayActive'] == true;
+
+          if (isRecording) {
             _handleCheatingEvent(
               'screen_record_attempt',
-              'Thí sinh đang quay màn hình bài thi (Screen Record Attempt)',
+              'Học viên đang sử dụng phần mềm quay màn hình bài thi',
             );
           }
-        },
-      );
-
-      // Periodically check for screen capture (recording or sharing)
-      Timer.periodic(const Duration(seconds: 3), (timer) async {
-        if (!mounted) {
-          timer.cancel();
-          return;
-        }
-        try {
-          final Map? status = await _securityChannel.invokeMethod<Map>(
-            'checkScreenStatus',
-          );
-          if (status != null) {
-            final bool isRecording = status['isRecording'] == true;
-            final bool isSharing = status['isSharing'] == true;
-            final bool isSplitScreen = status['isSplitScreen'] == true;
-            final bool isOverlayActive = status['isOverlayActive'] == true;
-
-            if (isRecording) {
-              _handleCheatingEvent(
-                'screen_record_attempt',
-                'Học viên đang sử dụng phần mềm quay màn hình bài thi',
-              );
-            }
-            if (isSharing) {
-              _handleCheatingEvent(
-                'screen_share_attempt',
-                'Học viên đang chia sẻ hoặc trình chiếu màn hình (Casting/Mirroring)',
-              );
-            }
-            if (isSplitScreen) {
-              _handleCheatingEvent(
-                'split_screen_attempt',
-                'Học viên đang sử dụng chế độ Chia đôi màn hình (Split-Screen / Slide Over)',
-              );
-            }
-            if (isOverlayActive) {
-              _handleCheatingEvent(
-                'overlay_app_attempt',
-                'Học viên mở ứng dụng bong bóng nổi, bong bóng chat hoặc che khuất giao diện thi (Overlay/Inactive)',
-              );
-            }
+          if (isSharing) {
+            _handleCheatingEvent(
+              'screen_share_attempt',
+              'Học viên đang thực hiện chia sẻ/trình chiếu màn hình (Casting/Mirroring)',
+            );
           }
-        } catch (e) {
-          // ignore
+          if (isSplitScreen) {
+            _handleCheatingEvent(
+              'split_screen_attempt',
+              'Học viên đang sử dụng chế độ Chia đôi màn hình (Split-Screen / Slide Over)',
+            );
+          }
+          if (isOverlayActive) {
+            _handleCheatingEvent(
+              'overlay_app_attempt',
+              'Học viên mở ứng dụng bong bóng nổi hoặc che khuất giao diện thi (Overlay/Focus Lost)',
+            );
+          }
         }
-      });
-    } catch (e) {
-      debugPrint("Screen security error: $e");
-    }
+      } catch (e) {
+        // ignore
+      }
+    });
   }
 
   void _disableScreenSecurity() async {
@@ -268,8 +273,8 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
     if (!mounted) return;
 
     final now = DateTime.now();
-    if (now.difference(_pageInitTime).inSeconds < 10) {
-      return; // Ignore any initial glitches within first 10s
+    if (now.difference(_pageInitTime).inSeconds < 3) {
+      return; // Bỏ qua các nhiễu ban đầu trong 3 giây đầu tiên (trước đây là 10s)
     }
 
     // Global debounce: Prevent any two cheating events from firing within 2 seconds
@@ -280,8 +285,8 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
 
     if (_lastEventTimes.containsKey(key)) {
       final diff = now.difference(_lastEventTimes[key]!);
-      if (diff.inSeconds < 3) {
-        return; // Debounced
+      if (diff.inSeconds < 2) {
+        return; // Debounce 2s để khớp với Timer 3s
       }
     }
     _lastEventTimes[key] = now;
