@@ -37,6 +37,8 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
   late final DateTime _pageInitTime;
   String? _lastShownError;
   int _lastExamSync = -1;
+  bool? _lastMonitorScreen;
+  Timer? _cheatPollingTimer;
 
   // List of GlobalKeys for scrolling directly to specific question
   final List<GlobalKey> _keys = [];
@@ -57,7 +59,11 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                 Expanded(
                   child: Text(
                     'Hệ thống giám sát hoạt động! Bắt đầu tính lỗi vi phạm quy chế thi.',
-                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      fontSize: 13,
+                    ),
                   ),
                 ),
               ],
@@ -82,8 +88,8 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
       LoadExamQuestionsEvent(submissionId: widget.submissionId),
     );
 
-    // Secure the UI using ScreenProtector
-    _enableScreenSecurity();
+    // Bỏ gọi _enableScreenSecurity ở đây vì monitor_screen phải đợi Bloc load xong mới biết chính xác
+    // _enableScreenSecurity();
 
     // Start local timer
     _startLocalCountdown();
@@ -128,10 +134,27 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
     _inactiveSeconds = 0;
   }
 
-  void _enableScreenSecurity() async {
-    final monitorScreen = await SecureStorageHelper.getMonitorScreen();
+  void _enableScreenSecurity(bool monitorScreen) async {
+    // Thông báo cho người dùng biết trạng thái giám sát hiện tại
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            monitorScreen
+                ? '🛡️ Chế độ giám sát bài thi: ĐANG BẬT'
+                : '🔓 Chế độ giám sát bài thi: ĐANG TẮT (Quay chụp tự do)',
+          ),
+          backgroundColor: monitorScreen ? Colors.green : Colors.grey,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+
     if (!monitorScreen) {
-      debugPrint("Chế độ giám sát và chặn màn hình đang tắt. SV có thể quay chụp tự do.");
+      debugPrint(
+        "Chế độ giám sát và chặn màn hình đang tắt. SV có thể quay chụp tự do.",
+      );
+      _disableScreenSecurity();
       return;
     }
 
@@ -171,7 +194,9 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
 
     // 2. Chạy Timer định kỳ kiểm tra trạng thái màn hình (Native)
     // Ưu điểm: Bắt được cả Split-Screen, Overlay, Casting/Sharing
-    Timer.periodic(const Duration(seconds: 3), (timer) async {
+    _cheatPollingTimer = Timer.periodic(const Duration(seconds: 3), (
+      timer,
+    ) async {
       if (!mounted) {
         timer.cancel();
         return;
@@ -218,6 +243,8 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
   }
 
   void _disableScreenSecurity() async {
+    _cheatPollingTimer?.cancel();
+    _cheatPollingTimer = null;
     try {
       await _securityChannel.invokeMethod('disableSecureMode');
     } catch (e) {
@@ -273,9 +300,7 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
     if (!mounted) return;
 
     final now = DateTime.now();
-    if (now.difference(_pageInitTime).inSeconds < 3) {
-      return; // Bỏ qua các nhiễu ban đầu trong 3 giây đầu tiên (trước đây là 10s)
-    }
+    // Bỏ qua thời gian chờ ban đầu để test được ngay (trước đây là 3s)
 
     // Global debounce: Prevent any two cheating events from firing within 2 seconds
     if (_lastAnyEventTime != null &&
@@ -294,6 +319,15 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
 
     // Rung cảnh báo trực tiếp trên máy Sinh viên vi phạm
     HapticFeedback.vibrate();
+
+    // Hiển thị thông báo đỏ trực tiếp trên App để xác nhận đã bắt được
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('🚨 PHÁT HIỆN GIAN LẬN: $description'),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 2),
+      ),
+    );
 
     final state = context.read<TakeExamBloc>().state;
     final newViolations = state.violations + 1;
@@ -336,8 +370,8 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
     super.didChangeAppLifecycleState(state);
 
     final now = DateTime.now();
-    if (now.difference(_pageInitTime).inSeconds < 10) {
-      return; // Ignore initial transition glitches
+    if (now.difference(_pageInitTime).inSeconds < 3) {
+      return; // Đồng bộ thời gian bỏ qua nhiễu ban đầu là 3 giây
     }
 
     // Ignore inactive state completely (triggered when pulling notification/status bars)
@@ -851,6 +885,17 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
               );
             }
           }
+
+          // Kích hoạt bảo mật dựa trên cấu hình (Nằm ngoài block lastSync để đảm bảo luôn chạy)
+          final mVal = examData['monitor_screen'];
+          final currentMonitor = (mVal == true || mVal == 1 || mVal == 'true');
+
+          if (_lastMonitorScreen == null ||
+              currentMonitor != _lastMonitorScreen) {
+            _lastMonitorScreen = currentMonitor;
+            debugPrint("DEBUG: Cấu hình giám sát thay đổi -> $currentMonitor");
+            _enableScreenSecurity(currentMonitor);
+          }
         }
       },
       builder: (context, state) {
@@ -1348,60 +1393,60 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                                 );
                               }),
                             ] else ...[
-                               EssayAnswerField(
-                                 initialAnswer: currentAnswer ?? '',
-                                 questionId: qId,
-                                 submissionId: widget.submissionId,
-                                 isDarkMode: _isDarkMode,
-                                 textColor: textColor,
-                                 onChanged: (val) {
-                                   _resetInactivityTimer();
-                                   context.read<TakeExamBloc>().add(
-                                     SaveAnswerEvent(
-                                       submissionId: widget.submissionId,
-                                       questionId: qId,
-                                       answer: val,
-                                     ),
-                                   );
-                                 },
-                                 contextMenuBuilder: (menuContext, editableTextState) {
-                                   final List<ContextMenuButtonItem>
-                                   buttonItems =
-                                       editableTextState.contextMenuButtonItems;
+                              EssayAnswerField(
+                                initialAnswer: currentAnswer ?? '',
+                                questionId: qId,
+                                submissionId: widget.submissionId,
+                                isDarkMode: _isDarkMode,
+                                textColor: textColor,
+                                onChanged: (val) {
+                                  _resetInactivityTimer();
+                                  context.read<TakeExamBloc>().add(
+                                    SaveAnswerEvent(
+                                      submissionId: widget.submissionId,
+                                      questionId: qId,
+                                      answer: val,
+                                    ),
+                                  );
+                                },
+                                contextMenuBuilder: (menuContext, editableTextState) {
+                                  final List<ContextMenuButtonItem>
+                                  buttonItems =
+                                      editableTextState.contextMenuButtonItems;
 
-                                   final state = takeExamBloc.state;
+                                  final state = takeExamBloc.state;
 
-                                   final isMonitoring =
-                                       state.examData?['monitor_screen'] == true;
+                                  final isMonitoring =
+                                      state.examData?['monitor_screen'] == true;
 
-                                   if (isMonitoring) {
-                                     final pasteIndex = buttonItems.indexWhere(
-                                       (item) =>
-                                           item.type ==
-                                           ContextMenuButtonType.paste,
-                                     );
-                                     if (pasteIndex >= 0) {
-                                       buttonItems[pasteIndex] =
-                                           ContextMenuButtonItem(
-                                             type: ContextMenuButtonType.paste,
-                                             onPressed: () {
-                                               _handleCheatingEvent(
-                                                 'paste_attempt',
-                                                 'Thực hiện thao tác dán (Paste) nội dung từ nguồn bên ngoài.',
-                                               );
-                                               ContextMenuController.removeAny();
-                                             },
-                                           );
-                                     }
-                                   }
+                                  if (isMonitoring) {
+                                    final pasteIndex = buttonItems.indexWhere(
+                                      (item) =>
+                                          item.type ==
+                                          ContextMenuButtonType.paste,
+                                    );
+                                    if (pasteIndex >= 0) {
+                                      buttonItems[pasteIndex] =
+                                          ContextMenuButtonItem(
+                                            type: ContextMenuButtonType.paste,
+                                            onPressed: () {
+                                              _handleCheatingEvent(
+                                                'paste_attempt',
+                                                'Thực hiện thao tác dán (Paste) nội dung từ nguồn bên ngoài.',
+                                              );
+                                              ContextMenuController.removeAny();
+                                            },
+                                          );
+                                    }
+                                  }
 
-                                   return AdaptiveTextSelectionToolbar.buttonItems(
-                                     anchors:
-                                         editableTextState.contextMenuAnchors,
-                                     buttonItems: buttonItems,
-                                   );
-                                 },
-                               ),
+                                  return AdaptiveTextSelectionToolbar.buttonItems(
+                                    anchors:
+                                        editableTextState.contextMenuAnchors,
+                                    buttonItems: buttonItems,
+                                  );
+                                },
+                              ),
                             ],
                           ],
                         ),
@@ -1510,10 +1555,7 @@ class _EssayAnswerFieldState extends State<EssayAnswerField> {
       contextMenuBuilder: widget.contextMenuBuilder,
       decoration: InputDecoration(
         hintText: 'Nhập câu trả lời tự luận của bạn...',
-        hintStyle: TextStyle(
-          color: Colors.grey.shade400,
-          fontSize: 13,
-        ),
+        hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
         filled: true,
         fillColor: widget.isDarkMode
             ? const Color(0xFF334155)
@@ -1536,15 +1578,10 @@ class _EssayAnswerFieldState extends State<EssayAnswerField> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(
-            color: Color(0xFF2563EB),
-          ),
+          borderSide: const BorderSide(color: Color(0xFF2563EB)),
         ),
       ),
-      style: TextStyle(
-        fontSize: 13,
-        color: widget.textColor,
-      ),
+      style: TextStyle(fontSize: 13, color: widget.textColor),
       onChanged: widget.onChanged,
     );
   }
