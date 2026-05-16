@@ -9,7 +9,6 @@ import 'package:mobile/core/network/dio_client.dart';
 import 'package:mobile/core/utils/excel_parser_service.dart';
 import 'package:mobile/core/storage/secure_storage_helper.dart';
 import 'package:mobile/core/utils/notification_helper.dart';
-import 'package:mobile/core/utils/violation_dictionary.dart';
 
 // --- IMPORT MÀN HÌNH AUTH ---
 import 'package:mobile/features/auth/data/datasources/auth_remote_data_source.dart';
@@ -151,8 +150,13 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   await NotificationHelper.init();
   debugPrint("📩 Nhận thông báo chạy ngầm: ${message.notification?.title}");
-  // Hệ điều hành đã tự động hiển thị thông báo đẩy FCM từ Server một cách tự nhiên khi app ở chế độ chạy nền / Home.
-  // Không gọi NotificationHelper.showNotification ở đây để tránh bị lặp (double notification).
+  if (message.notification != null) {
+    await NotificationHelper.showNotification(
+      id: DateTime.now().millisecondsSinceEpoch % 100000,
+      title: message.notification!.title ?? '',
+      body: message.notification!.body ?? '',
+    );
+  }
 }
 
 Future<void> main() async {
@@ -164,11 +168,7 @@ Future<void> main() async {
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
     final messaging = FirebaseMessaging.instance;
-    await messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
+    await messaging.requestPermission(alert: true, badge: true, sound: true);
 
     final token = await messaging.getToken();
     if (token != null) {
@@ -177,8 +177,13 @@ Future<void> main() async {
     }
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      // Khi đang mở app, giao diện trong ứng dụng (In-app overlay) sẽ hiển thị trực tiếp.
-      // Không cần hiển thị thêm Banner thông báo cục bộ ở đây để tránh lặp.
+      if (message.notification != null) {
+        NotificationHelper.showNotification(
+          id: DateTime.now().millisecondsSinceEpoch % 100000,
+          title: message.notification!.title ?? '',
+          body: message.notification!.body ?? '',
+        );
+      }
     });
   } catch (e) {
     debugPrint("⚠️ Firebase Init error: $e");
@@ -656,8 +661,6 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
-  bool _isOverlayOpen = false;
-
   @override
   void initState() {
     super.initState();
@@ -675,7 +678,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       print("📱 [MyApp] App resumed, ensuring socket connection is active");
       if (socketClient.socket != null && !socketClient.isConnected) {
-        print("🔌 [MyApp] Socket disconnected on resume, force reconnecting...");
+        print(
+          "🔌 [MyApp] Socket disconnected on resume, force reconnecting...",
+        );
         socketClient.socket?.connect();
       }
     }
@@ -700,16 +705,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 );
                 return;
               }
-              
-              if (_isOverlayOpen) {
-                // Đóng dialog hiện tại (nếu có) trước khi hiển thị dialog mới (ưu tiên)
-                final navContext = widget.router.configuration.navigatorKey.currentContext;
-                if (navContext != null) {
-                  Navigator.of(navContext).pop('interrupt');
-                }
-              }
-
-              _isOverlayOpen = true;
               print(
                 "🚨 [MyApp] Displaying global cheating dialog for student: ${state.violation.studentName}",
               );
@@ -724,13 +719,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   void _showGlobalCheatingDialog(BuildContext context, dynamic violation) {
     if (violation != null && violation.deviceChange == true) {
-      _showDeviceChangeDialog(context, violation).then((_) {
-        _isOverlayOpen = false;
-      });
+      _showDeviceChangeDialog(context, violation);
       return;
     }
     showDialog(
-      context: widget.router.configuration.navigatorKey.currentContext ?? context,
+      context:
+          widget.router.configuration.navigatorKey.currentContext ?? context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -795,10 +789,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                     _buildSectionTitle("LOẠI VI PHẠM"),
                     const SizedBox(height: 4),
                     Text(
-                      ViolationDictionary.getDynamicViolationTitle(
-                        violation.eventType, 
-                        keyId: violation.eventDetails['key']?.toString() ?? violation.eventDetails['key_id']?.toString()
-                      ).toUpperCase(),
+                      "[AI PHÁT HIỆN] ${_getViolationTitle(violation.eventType).toUpperCase()}",
                       style: const TextStyle(
                         color: Colors.red,
                         fontWeight: FontWeight.bold,
@@ -824,11 +815,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              ViolationDictionary.getDynamicViolationReason(
-                                violation.eventType, 
-                                keyId: violation.eventDetails['key']?.toString() ?? violation.eventDetails['key_id']?.toString(),
-                                defaultMsg: violation.eventDetails['message']?.toString() ?? '',
-                              ),
+                              _getViolationDescription(violation.eventType),
                               style: TextStyle(
                                 color: Colors.grey[700],
                                 fontSize: 13,
@@ -974,9 +961,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           ),
         ),
       ),
-    ).then((_) {
-      _isOverlayOpen = false;
-    });
+    );
   }
 
   Widget _buildSectionTitle(String title) {
@@ -1035,9 +1020,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     return "${now.hour}:${now.minute}:${now.second}  ${now.day}/${now.month}/${now.year}";
   }
 
-  Future<void> _showDeviceChangeDialog(BuildContext context, dynamic violation) {
-    return showDialog(
-      context: widget.router.configuration.navigatorKey.currentContext ?? context,
+  void _showDeviceChangeDialog(BuildContext context, dynamic violation) {
+    showDialog(
+      context:
+          widget.router.configuration.navigatorKey.currentContext ?? context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),

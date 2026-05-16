@@ -73,9 +73,17 @@ class _PrepareExamPageState extends State<PrepareExamPage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () async {
+            onPressed: () {
               if (_submissionId != null) {
-                await _checkDeviceVerification(_submissionId!);
+                // Xoá sạch toàn bộ state
+                context.read<VerifyExamBloc>().add(ResetAllVerificationEvent());
+                // Tải lại dữ liệu bài thi
+                context.read<VerifyExamBloc>().add(
+                  LoadVerifyExamDataEvent(
+                    examId: widget.examId,
+                    submissionId: _submissionId!,
+                  ),
+                );
               }
             },
           ),

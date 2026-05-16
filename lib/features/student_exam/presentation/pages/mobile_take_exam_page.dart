@@ -175,16 +175,31 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
           if (status != null) {
             final bool isRecording = status['isRecording'] == true;
             final bool isSharing = status['isSharing'] == true;
+            final bool isSplitScreen = status['isSplitScreen'] == true;
+            final bool isOverlayActive = status['isOverlayActive'] == true;
+
             if (isRecording) {
               _handleCheatingEvent(
                 'screen_record_attempt',
-                'Học viên đang quay màn hình bài thi',
+                'Học viên đang sử dụng phần mềm quay màn hình bài thi',
               );
             }
             if (isSharing) {
               _handleCheatingEvent(
                 'screen_share_attempt',
-                'Học viên đang chia sẻ màn hình bài thi',
+                'Học viên đang chia sẻ hoặc trình chiếu màn hình (Casting/Mirroring)',
+              );
+            }
+            if (isSplitScreen) {
+              _handleCheatingEvent(
+                'split_screen_attempt',
+                'Học viên đang sử dụng chế độ Chia đôi màn hình (Split-Screen / Slide Over)',
+              );
+            }
+            if (isOverlayActive) {
+              _handleCheatingEvent(
+                'overlay_app_attempt',
+                'Học viên mở ứng dụng bong bóng nổi, bong bóng chat hoặc che khuất giao diện thi (Overlay/Inactive)',
               );
             }
           }
@@ -1244,6 +1259,7 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                                   child: CupertinoButton(
                                     padding: EdgeInsets.zero,
                                     onPressed: () {
+                                      _resetInactivityTimer();
                                       context.read<TakeExamBloc>().add(
                                         SaveAnswerEvent(
                                           submissionId: widget.submissionId,
@@ -1334,6 +1350,7 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
                                  isDarkMode: _isDarkMode,
                                  textColor: textColor,
                                  onChanged: (val) {
+                                   _resetInactivityTimer();
                                    context.read<TakeExamBloc>().add(
                                      SaveAnswerEvent(
                                        submissionId: widget.submissionId,

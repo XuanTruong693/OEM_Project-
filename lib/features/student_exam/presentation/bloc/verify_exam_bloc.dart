@@ -42,6 +42,7 @@ class VerifyExamBloc extends Bloc<VerifyExamEvent, VerifyExamState> {
     on<CompareFacesApiEvent>(_onCompareFacesApi);
     on<UploadFinalImagesEvent>(_onUploadFinalImages);
     on<ResetFaceVerificationEvent>(_onResetFace);
+    on<ResetAllVerificationEvent>(_onResetAll);
 
     on<EnableMonitorEvent>(_onEnableMonitor);
 
@@ -376,6 +377,13 @@ class VerifyExamBloc extends Bloc<VerifyExamEvent, VerifyExamState> {
         faceGuideMsg: 'Hãy căn khuôn mặt vào khung và nhìn thẳng',
       ),
     );
+  }
+
+  void _onResetAll(
+    ResetAllVerificationEvent event,
+    Emitter<VerifyExamState> emit,
+  ) {
+    emit(const VerifyExamState());
   }
 
   // ==========================================

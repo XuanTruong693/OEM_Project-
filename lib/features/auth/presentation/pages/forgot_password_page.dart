@@ -85,12 +85,15 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       final dio = DioClient(onLogout: () {});
 
       // 1. Check if email exists
-      final checkRes = await dio.dio.post('/auth/check-email', data: {
-        'email': email,
-      });
+      final checkRes = await dio.dio.post(
+        '/auth/check-email',
+        data: {'email': email},
+      );
 
       if (checkRes.statusCode != 200) {
-        _showSnackBar(checkRes.data['message'] ?? "Lỗi server khi kiểm tra email.");
+        _showSnackBar(
+          checkRes.data['message'] ?? "Lỗi server khi kiểm tra email.",
+        );
         setState(() => _isLoading = false);
         return;
       }
@@ -102,9 +105,10 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       }
 
       // 2. Send OTP
-      final otpRes = await dio.dio.post('/auth/forgot-send-otp', data: {
-        'email': email,
-      });
+      final otpRes = await dio.dio.post(
+        '/auth/forgot-send-otp',
+        data: {'email': email},
+      );
 
       if (otpRes.statusCode != 200 && otpRes.data['status'] != 'success') {
         _showSnackBar(otpRes.data['message'] ?? "Không thể gửi mã xác thực.");
@@ -119,7 +123,9 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       });
       _startTimer();
     } on DioException catch (e) {
-      _showSnackBar(e.response?.data?['message'] ?? "Lỗi kết nối. Vui lòng thử lại.");
+      _showSnackBar(
+        e.response?.data?['message'] ?? "Lỗi kết nối. Vui lòng thử lại.",
+      );
       setState(() => _isLoading = false);
     } catch (e) {
       _showSnackBar("Lỗi kết nối. Vui lòng thử lại.");
@@ -144,12 +150,13 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       final dio = DioClient(onLogout: () {});
       final email = _emailController.text.toLowerCase().trim();
 
-      final verifyRes = await dio.dio.post('/auth/verify-otp', data: {
-        'email': email,
-        'otp': otp,
-      });
+      final verifyRes = await dio.dio.post(
+        '/auth/verify-otp',
+        data: {'email': email, 'otp': otp},
+      );
 
-      if (verifyRes.data['status'] == 'success' || verifyRes.statusCode == 200) {
+      if (verifyRes.data['status'] == 'success' ||
+          verifyRes.statusCode == 200) {
         _showSnackBar("✅ Xác minh OTP thành công!", isError: false);
         setState(() {
           _isLoading = false;
@@ -176,9 +183,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     setState(() => _isLoading = true);
     try {
       final dio = DioClient(onLogout: () {});
-      await dio.dio.post('/auth/forgot-send-otp', data: {
-        'email': email,
-      });
+      await dio.dio.post('/auth/forgot-send-otp', data: {'email': email});
 
       _showSnackBar("✅ Mã OTP mới đã được gửi lại!", isError: false);
       setState(() {
@@ -220,14 +225,16 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       final email = _emailController.text.toLowerCase().trim();
       final otp = _otpController.text.trim();
 
-      final res = await dio.dio.post('/auth/reset-password', data: {
-        'email': email,
-        'newPassword': password,
-        'otp': otp,
-      });
+      final res = await dio.dio.post(
+        '/auth/reset-password',
+        data: {'email': email, 'newPassword': password, 'otp': otp},
+      );
 
       if (res.statusCode == 200 || res.data['status'] == 'success') {
-        _showSnackBar("✅ Đổi mật khẩu thành công! Hãy đăng nhập lại...", isError: false);
+        _showSnackBar(
+          "✅ Đổi mật khẩu thành công! Hãy đăng nhập lại...",
+          isError: false,
+        );
         setState(() {
           _isLoading = false;
           _successMessage = "✅ Đổi mật khẩu thành công!";
@@ -236,11 +243,15 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
           if (mounted) context.go('/login');
         });
       } else {
-        _showSnackBar(res.data['message'] ?? "Có lỗi xảy ra khi cập nhật mật khẩu.");
+        _showSnackBar(
+          res.data['message'] ?? "Có lỗi xảy ra khi cập nhật mật khẩu.",
+        );
         setState(() => _isLoading = false);
       }
     } on DioException catch (e) {
-      _showSnackBar(e.response?.data?['message'] ?? "Có lỗi xảy ra khi cập nhật mật khẩu.");
+      _showSnackBar(
+        e.response?.data?['message'] ?? "Có lỗi xảy ra khi cập nhật mật khẩu.",
+      );
       setState(() => _isLoading = false);
     } catch (e) {
       _showSnackBar("Có lỗi xảy ra khi cập nhật mật khẩu.");
@@ -326,9 +337,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         keyboardType: TextInputType.emailAddress,
         decoration: InputDecoration(
           hintText: "Email đã đăng ký",
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
         ),
       ),
       const SizedBox(height: 25),
@@ -408,14 +417,20 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         keyboardType: TextInputType.number,
         maxLength: 6,
         textAlign: TextAlign.center,
-        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 8),
+        style: const TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 8,
+        ),
         decoration: InputDecoration(
           hintText: "Mã OTP 6 số",
-          hintStyle: const TextStyle(fontSize: 14, letterSpacing: 0, fontWeight: FontWeight.normal),
-          counterText: "",
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
+          hintStyle: const TextStyle(
+            fontSize: 14,
+            letterSpacing: 0,
+            fontWeight: FontWeight.normal,
           ),
+          counterText: "",
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
         ),
       ),
       const SizedBox(height: 15),
@@ -508,13 +523,9 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         enabled: !_isLoading,
         decoration: InputDecoration(
           hintText: "Mật khẩu mới",
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
           suffixIcon: IconButton(
-            icon: Icon(
-              _showPassword ? Icons.visibility : Icons.visibility_off,
-            ),
+            icon: Icon(_showPassword ? Icons.visibility : Icons.visibility_off),
             onPressed: () => setState(() => _showPassword = !_showPassword),
           ),
         ),
@@ -526,14 +537,13 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         enabled: !_isLoading,
         decoration: InputDecoration(
           hintText: "Xác nhận mật khẩu",
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
           suffixIcon: IconButton(
             icon: Icon(
               _showConfirmPassword ? Icons.visibility : Icons.visibility_off,
             ),
-            onPressed: () => setState(() => _showConfirmPassword = !_showConfirmPassword),
+            onPressed: () =>
+                setState(() => _showConfirmPassword = !_showConfirmPassword),
           ),
         ),
       ),
@@ -585,7 +595,11 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
           child: Text(
             _successMessage!,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 14),
+            style: const TextStyle(
+              color: Colors.green,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
           ),
         ),
     ];

@@ -24,9 +24,19 @@ import UIKit
         if call.method == "checkScreenStatus" {
           let isCaptured = UIScreen.main.isCaptured
           let isMirrored = UIScreen.screens.count > 1 || UIScreen.main.mirrored != nil
+          
+          let windowSize = self?.window?.bounds.size ?? UIScreen.main.bounds.size
+          let screenSize = UIScreen.main.bounds.size
+          let isSplitScreen = windowSize.width < screenSize.width || windowSize.height < screenSize.height
+          
+          let state = UIApplication.shared.applicationState
+          let isOverlayActive = (state == .inactive)
+          
           result([
             "isRecording": isCaptured && !isMirrored,
-            "isSharing": isMirrored
+            "isSharing": isMirrored,
+            "isSplitScreen": isSplitScreen,
+            "isOverlayActive": isOverlayActive
           ])
         } else if call.method == "isScreenCaptured" {
           result(UIScreen.main.isCaptured)

@@ -39,6 +39,8 @@ class VerifyStudentCodeEvent extends VerifyExamEvent {
 // 3. Đổi/Reset MSSV (Nut Nhập lại)
 class ResetCardVerificationEvent extends VerifyExamEvent {}
 
+class ResetAllVerificationEvent extends VerifyExamEvent {}
+
 // 4. Các Event của AI ML Kit (Bước 2)
 class UpdateBlinkPhaseEvent extends VerifyExamEvent {
   final String phase;

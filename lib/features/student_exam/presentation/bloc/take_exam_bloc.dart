@@ -214,6 +214,8 @@ class TakeExamBloc extends Bloc<TakeExamEvent, TakeExamState> {
     if (event.key == 'screenshot_attempt') eventTypeInVi = 'Chụp màn hình';
     if (event.key == 'screen_record_attempt') eventTypeInVi = 'Quay màn hình';
     if (event.key == 'screen_share_attempt') eventTypeInVi = 'Chia sẻ màn hình';
+    if (event.key == 'split_screen_attempt') eventTypeInVi = 'Chia đôi màn hình';
+    if (event.key == 'overlay_app_attempt') eventTypeInVi = 'Mở ứng dụng đè';
     if (event.key == 'minimize_app') eventTypeInVi = 'Thoát về Home';
     if (event.key == 'window_blur') eventTypeInVi = 'Mất tiêu điểm';
     if (event.key == 'app_switching') eventTypeInVi = 'Chuyển đổi ứng dụng';
