@@ -159,8 +159,25 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 }
 
+Future<void> _syncFcmTokenToServer(String token) async {
+  try {
+    final userIdStr = await SecureStorageHelper.getUserId();
+    if (userIdStr != null) {
+      final dio = DioClient();
+      await dio.dio.post(
+        '/auth/update-fcm',
+        data: {'userId': int.parse(userIdStr), 'fcmToken': token},
+      );
+      debugPrint("✅ [FCM Sync] Token synchronized to server successfully");
+    }
+  } catch (e) {
+    debugPrint("⚠️ [FCM Sync] Failed to sync token: $e");
+  }
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
   await NotificationHelper.init();
 
   try {
@@ -174,6 +191,8 @@ Future<void> main() async {
     if (token != null) {
       debugPrint("🔑 FCM Token: $token");
       await SecureStorageHelper.saveFcmToken(token);
+      // Đồng bộ Token lên Server nếu đã đăng nhập
+      _syncFcmTokenToServer(token);
     }
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
@@ -189,16 +208,11 @@ Future<void> main() async {
     debugPrint("⚠️ Firebase Init error: $e");
   }
 
-  // 👉 1.1 Khai báo biến nullable
+  // 3. Khởi tạo Router và Dio
   GoRouter? router;
 
-  // 👉 1.2 Load biến môi trường từ file .env (Nếu có
-  await dotenv.load(fileName: ".env");
-
-  // 2. KHỞI TẠO DIO
   final dioClient = DioClient(
     onLogout: () {
-      // Dùng dấu chấm hỏi (?) để gọi an toàn. Dart sẽ không la ó nữa.
       router?.go('/role');
     },
   );
@@ -683,6 +697,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         );
         socketClient.socket?.connect();
       }
+
+      // Đồng bộ lại FCM Token mỗi khi quay lại App để tránh bị lệch
+      FirebaseMessaging.instance.getToken().then((token) {
+        if (token != null) _syncFcmTokenToServer(token);
+      });
     }
   }
 
