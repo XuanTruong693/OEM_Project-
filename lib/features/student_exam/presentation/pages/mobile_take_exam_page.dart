@@ -405,24 +405,26 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
     super.didChangeAppLifecycleState(state);
     _currentLifecycleState = state;
 
-    // LUÔN LUÔN cho phép tắt lớp phủ khi quay lại, bất kể thời gian nào
-    if (state == AppLifecycleState.resumed) {
-      if (mounted) {
-        setState(() {
-          _showBlurOverlay = false;
-          _isExited = false;
+    // 1. KHI QUAY LẠI APP: Tắt ngay lớp phủ (Xử lý cả resumed và inactive để tránh treo)
+    if (state == AppLifecycleState.resumed || state == AppLifecycleState.inactive) {
+      if (mounted && _showBlurOverlay) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              _showBlurOverlay = false;
+              _isExited = false;
+            });
+          }
         });
       }
       return;
     }
 
-    final now = DateTime.now();
-    if (now.difference(_pageInitTime).inSeconds < 3) {
-      return; // Chỉ chặn các hành vi GIAN LẬN trong 3 giây đầu, không chặn việc tắt overlay
-    }
-
-    // Chỉ hiển thị lớp phủ và tính gian lận khi App thực sự bị ẩn (paused)
+    // 2. KHI THOÁT APP (PAUSED): Hiện lớp phủ và tính gian lận
     if (state == AppLifecycleState.paused) {
+      final now = DateTime.now();
+      if (now.difference(_pageInitTime).inSeconds < 3) return;
+
       if (!_isExited ||
           _lastLifecycleMinimize == null ||
           now.difference(_lastLifecycleMinimize!).inSeconds >= 10) {
@@ -433,9 +435,12 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
           'Học viên thoát ứng dụng về màn hình Home',
         );
       }
-      setState(() {
-        _showBlurOverlay = true;
-      });
+      
+      if (mounted) {
+        setState(() {
+          _showBlurOverlay = true;
+        });
+      }
     }
   }
 
