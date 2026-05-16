@@ -206,34 +206,62 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
           'checkScreenStatus',
         );
         if (status != null) {
-          final bool isRecording = status['isRecording'] == true;
-          final bool isSharing = status['isSharing'] == true;
-          final bool isSplitScreen = status['isSplitScreen'] == true;
-          final bool isOverlayActive = status['isOverlayActive'] == true;
+          final bool isRecordingNow = status['isRecording'] == true;
+          final bool isSharingNow = status['isSharing'] == true;
+          final bool isSplitScreenNow = status['isSplitScreen'] == true;
+          final bool isOverlayNow = status['isOverlayActive'] == true;
 
-          if (isRecording) {
-            _handleCheatingEvent(
-              'screen_record_attempt',
-              'Học viên đang sử dụng phần mềm quay màn hình bài thi',
-            );
+          // 1. Kiểm tra Quay màn hình
+          if (isRecordingNow) {
+            if (!_isRecordingActive) {
+              _isRecordingActive = true;
+              _handleCheatingEvent(
+                'screen_record_attempt',
+                'Học viên đang sử dụng phần mềm quay màn hình bài thi',
+              );
+            }
+          } else {
+            _isRecordingActive = false; // Reset khi đã tắt quay màn hình
           }
-          if (isSharing) {
-            _handleCheatingEvent(
-              'screen_share_attempt',
-              'Học viên đang thực hiện chia sẻ/trình chiếu màn hình (Casting/Mirroring)',
-            );
+
+          // 2. Kiểm tra Chia sẻ màn hình
+          if (isSharingNow) {
+            if (!_isSharingActive) {
+              _isSharingActive = true;
+              _handleCheatingEvent(
+                'screen_share_attempt',
+                'Học viên đang thực hiện chia sẻ/trình chiếu màn hình (Casting/Mirroring)',
+              );
+            }
+          } else {
+            _isSharingActive = false;
           }
-          if (isSplitScreen) {
-            _handleCheatingEvent(
-              'split_screen_attempt',
-              'Học viên đang sử dụng chế độ Chia đôi màn hình (Split-Screen / Slide Over)',
-            );
+
+          // 3. Kiểm tra Chia đôi màn hình
+          if (isSplitScreenNow) {
+            if (!_isSplitScreenActive) {
+              _isSplitScreenActive = true;
+              _handleCheatingEvent(
+                'split_screen_attempt',
+                'Học viên đang sử dụng chế độ Chia đôi màn hình (Split-Screen / Slide Over)',
+              );
+            }
+          } else {
+            _isSplitScreenActive = false;
           }
-          if (isOverlayActive) {
-            _handleCheatingEvent(
-              'overlay_app_attempt',
-              'Học viên mở ứng dụng bong bóng nổi hoặc che khuất giao diện thi (Overlay/Focus Lost)',
-            );
+
+          // 4. Kiểm tra Ứng dụng nổi (Overlay)
+          if (isOverlayNow &&
+              _currentLifecycleState == AppLifecycleState.resumed) {
+            if (!_isOverlayActiveStatus) {
+              _isOverlayActiveStatus = true;
+              _handleCheatingEvent(
+                'overlay_app_attempt',
+                'Học viên mở ứng dụng bong bóng nổi hoặc che khuất giao diện thi (Overlay/Focus Lost)',
+              );
+            }
+          } else {
+            _isOverlayActiveStatus = false;
           }
         }
       } catch (e) {
@@ -364,17 +392,36 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
   bool _showBlurOverlay = false;
   bool _isExited = false;
   DateTime? _lastLifecycleMinimize;
+  AppLifecycleState _currentLifecycleState = AppLifecycleState.resumed;
+  
+  // Các biến theo dõi trạng thái đang vi phạm để tránh tính lỗi liên tục
+  bool _isRecordingActive = false;
+  bool _isSharingActive = false;
+  bool _isSplitScreenActive = false;
+  bool _isOverlayActiveStatus = false;
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
+    _currentLifecycleState = state;
+
+    // LUÔN LUÔN cho phép tắt lớp phủ khi quay lại, bất kể thời gian nào
+    if (state == AppLifecycleState.resumed) {
+      if (mounted) {
+        setState(() {
+          _showBlurOverlay = false;
+          _isExited = false;
+        });
+      }
+      return;
+    }
 
     final now = DateTime.now();
     if (now.difference(_pageInitTime).inSeconds < 3) {
-      return; // Đồng bộ thời gian bỏ qua nhiễu ban đầu là 3 giây
+      return; // Chỉ chặn các hành vi GIAN LẬN trong 3 giây đầu, không chặn việc tắt overlay
     }
 
-    // Ignore inactive state completely (triggered when pulling notification/status bars)
+    // Chỉ hiển thị lớp phủ và tính gian lận khi App thực sự bị ẩn (paused)
     if (state == AppLifecycleState.paused) {
       if (!_isExited ||
           _lastLifecycleMinimize == null ||
@@ -388,15 +435,6 @@ class _MobileTakeExamPageState extends State<MobileTakeExamPage>
       }
       setState(() {
         _showBlurOverlay = true;
-      });
-    } else if (state == AppLifecycleState.resumed) {
-      Future.delayed(const Duration(milliseconds: 300), () {
-        if (mounted) {
-          setState(() {
-            _showBlurOverlay = false;
-            _isExited = false;
-          });
-        }
       });
     }
   }

@@ -482,7 +482,9 @@ class _StepFaceVerifyWidgetState extends State<StepFaceVerifyWidget> {
                   margin: const EdgeInsets.only(top: 12),
                   child: OutlinedButton.icon(
                     onPressed: () async {
-                      context.read<VerifyExamBloc>().add(ResetFaceVerificationEvent());
+                      context.read<VerifyExamBloc>().add(
+                        ResetFaceVerificationEvent(),
+                      );
                       _cameraHelper.dispose();
                       await _startCamera();
                     },
@@ -621,9 +623,11 @@ class _StepFaceVerifyWidgetState extends State<StepFaceVerifyWidget> {
               fit: BoxFit.cover,
               child: SizedBox(
                 width: 100,
-                height: 100 * (_cameraHelper.controller!.value.aspectRatio > 1 
-                  ? _cameraHelper.controller!.value.aspectRatio 
-                  : 1 / _cameraHelper.controller!.value.aspectRatio),
+                height:
+                    100 *
+                    (_cameraHelper.controller!.value.aspectRatio > 1
+                        ? _cameraHelper.controller!.value.aspectRatio
+                        : 1 / _cameraHelper.controller!.value.aspectRatio),
                 child: CameraPreview(_cameraHelper.controller!),
               ),
             ),
